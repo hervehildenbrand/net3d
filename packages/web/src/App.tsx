@@ -89,7 +89,13 @@ export function App() {
         </div>
       </div>
 
-      {selectedDevice && <DevicePanel device={selectedDevice} onClose={() => selectDevice(null)} />}
+      {selectedDevice && (
+        <DevicePanel
+          device={selectedDevice}
+          cables={siteDetail?.cables ?? []}
+          onClose={() => selectDevice(null)}
+        />
+      )}
 
       {level !== 'globe' && (
         <button

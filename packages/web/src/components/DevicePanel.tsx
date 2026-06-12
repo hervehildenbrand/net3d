@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { lldpDiff, type LldpNeighbor } from '@net3d/shared'
 import { UnreachableError, useNapalm } from '../hooks/useNapalm'
-import type { SiteDevice } from '../hooks/useSiteDetail'
+import type { SiteCable, SiteDevice } from '../hooks/useSiteDetail'
 
 interface Facts {
   vendor: string
@@ -80,7 +81,83 @@ function formatUptime(seconds: number): string {
   return `${d}d ${h}h`
 }
 
-export function DevicePanel({ device, onClose }: { device: SiteDevice; onClose: () => void }) {
+function LldpAudit({ device, cables }: { device: SiteDevice; cables: SiteCable[] }) {
+  const [enabled, setEnabled] = useState(false)
+  const lldp = useNapalm<Record<string, LldpNeighbor[]>>(
+    enabled ? device.id : null,
+    'get_lldp_neighbors',
+  )
+
+  if (!enabled) {
+    return (
+      <button
+        onClick={() => setEnabled(true)}
+        style={{
+          background: '#13283d',
+          color: '#cfe8ff',
+          border: '1px solid #2a4a6a',
+          borderRadius: 6,
+          padding: '5px 10px',
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          fontSize: 11,
+        }}
+      >
+        run audit (live LLDP, ~30 s)
+      </button>
+    )
+  }
+
+  if (lldp.isLoading || lldp.error) return <Status query={lldp} label="LLDP" />
+
+  const diff = lldpDiff(lldp.data ?? {}, cables, device.name)
+  return (
+    <>
+      {diff.matches.map((m) => (
+        <Row
+          key={m.cableId}
+          k={m.localInterface}
+          v={<span style={{ color: '#5ee08a' }}>✓ {m.neighbor.split('.')[0]}:{m.neighborPort}</span>}
+        />
+      ))}
+      {diff.cableOnly.map((c) => (
+        <Row
+          key={c.cableId}
+          k={c.localInterface}
+          v={
+            <span style={{ color: '#e0a056' }}>
+              ⚠ documented {c.documentedNeighbor ?? '?'} — not seen by LLDP
+            </span>
+          }
+        />
+      ))}
+      {diff.lldpOnly.map((l, i) => (
+        <Row
+          key={`${l.localInterface}-${i}`}
+          k={l.localInterface}
+          v={
+            <span style={{ color: '#e05656' }}>
+              ＋ LLDP sees {l.neighbor.split('.')[0]}:{l.neighborPort} — no cable in NetBox
+            </span>
+          }
+        />
+      ))}
+      {diff.matches.length + diff.cableOnly.length + diff.lldpOnly.length === 0 && (
+        <div style={{ color: '#5d83a6' }}>no LLDP neighbors and no documented interface cables</div>
+      )}
+    </>
+  )
+}
+
+export function DevicePanel({
+  device,
+  cables,
+  onClose,
+}: {
+  device: SiteDevice
+  cables: SiteCable[]
+  onClose: () => void
+}) {
   const facts = useNapalm<Facts>(device.id, 'get_facts')
   const env = useNapalm<Environment>(device.id, 'get_environment')
   const ifaces = useNapalm<Record<string, NapalmInterface>>(device.id, 'get_interfaces')
@@ -132,6 +209,10 @@ export function DevicePanel({ device, onClose }: { device: SiteDevice; onClose: 
             .filter(([, v]) => typeof v.temperature === 'number')
             .slice(0, 6)
             .map(([sensor, v]) => <Row key={sensor} k={sensor} v={`${v.temperature}°C`} />)}
+      </Section>
+
+      <Section title="LLDP audit — NetBox vs reality">
+        <LldpAudit device={device} cables={cables} />
       </Section>
 
       <Section title={`Interfaces${ifaces.data ? ` (${Object.keys(ifaces.data).length})` : ''}`}>
