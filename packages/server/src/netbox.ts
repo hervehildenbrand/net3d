@@ -1,6 +1,12 @@
 import type { SiteCircuit } from '@net3d/shared'
 import { normalizeRawCables, type RawCable, type SiteCable } from './cables'
-import { parseNetBoxMajor, siteRacksQuery, siteCablesQuery, type NetBoxMajor } from './graphql-dialect'
+import {
+  parseNetBoxMajor,
+  siteRacksQuery,
+  siteCablesQuery,
+  circuitsQuery,
+  type NetBoxMajor,
+} from './graphql-dialect'
 
 export interface NetBoxSite {
   id: string
@@ -105,20 +111,21 @@ export function normalizeRawRacks(raw: RawRack[]): SiteRack[] {
   }))
 }
 
-const CIRCUITS_QUERY = `{
-  circuit_list {
-    id
-    cid
-    provider { name }
-    terminations { term_side site { name } }
-  }
-}`
-
 interface RawCircuit {
   id: string
   cid: string
   provider: { name: string } | null
-  terminations: { term_side: string; site: { name: string } | null }[]
+  terminations: {
+    term_side: string
+    // 3.7 exposes the site directly; 4.x exposes it via the termination scope union
+    site?: { name: string } | null
+    termination?: { __typename?: string; name?: string } | null
+  }[]
+}
+
+/** Site name of a circuit termination, across the 3.7 (`site`) and 4.x (`termination`) shapes. */
+function terminationSiteName(t: RawCircuit['terminations'][number]): string | undefined {
+  return t.site?.name ?? t.termination?.name
 }
 
 interface RawSite {
@@ -184,11 +191,13 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
     },
 
     async getCircuits() {
-      const data = await graphql<{ circuit_list: RawCircuit[] }>(CIRCUITS_QUERY)
+      const data = await graphql<{ circuit_list: RawCircuit[] }>(circuitsQuery(await netboxMajor()))
       const circuits: SiteCircuit[] = []
       for (const c of data.circuit_list) {
-        const a = c.terminations.find((t) => t.term_side === 'A')?.site?.name
-        const z = c.terminations.find((t) => t.term_side === 'Z')?.site?.name
+        const aTerm = c.terminations.find((t) => t.term_side === 'A')
+        const zTerm = c.terminations.find((t) => t.term_side === 'Z')
+        const a = aTerm && terminationSiteName(aTerm)
+        const z = zTerm && terminationSiteName(zTerm)
         // only circuits with both ends documented can be drawn on the globe
         if (!a || !z) continue
         circuits.push({

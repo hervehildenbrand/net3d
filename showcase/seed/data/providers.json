@@ -1,0 +1,14 @@
+[
+  { "name": "Arelion",             "slug": "arelion" },
+  { "name": "Lumen",               "slug": "lumen" },
+  { "name": "Colt",                "slug": "colt" },
+  { "name": "GTT",                 "slug": "gtt" },
+  { "name": "Telia Carrier",       "slug": "telia-carrier" },
+  { "name": "Cogent",              "slug": "cogent" },
+  { "name": "Zayo",                "slug": "zayo" },
+  { "name": "NTT",                 "slug": "ntt" },
+  { "name": "PCCW Global",         "slug": "pccw-global" },
+  { "name": "Hurricane Electric",  "slug": "hurricane-electric" },
+  { "name": "Tata Communications", "slug": "tata-communications" },
+  { "name": "Orange",              "slug": "orange" }
+]

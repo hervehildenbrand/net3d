@@ -38,6 +38,8 @@ export function siteRacksQuery(site: string, version: NetBoxMajor): string {
 }
 
 const DEVICE_TERM = `name device { name rack { name } }`
+// Note: CircuitTerminationType.site exists in 3.7 but was removed in 4.x (scope).
+// cables.ts only needs circuit.cid, so we never select site here — valid on both.
 const TERMINATION_FRAGMENTS = `__typename
       ... on InterfaceType { ${DEVICE_TERM} }
       ... on FrontPortType { ${DEVICE_TERM} }
@@ -47,11 +49,18 @@ const TERMINATION_FRAGMENTS = `__typename
       ... on PowerPortType { ${DEVICE_TERM} }
       ... on PowerOutletType { ${DEVICE_TERM} }
       ... on PowerFeedType { name rack { name } }
-      ... on CircuitTerminationType { circuit { cid } site { name } }`
+      ... on CircuitTerminationType { circuit { cid } }`
+
+// CableFilter has no direct site field in 4.x; filter via the termination's site.
+function cableFilter(site: string, version: NetBoxMajor): string {
+  return version >= 4
+    ? `filters: {terminations: {site: {name: {exact: "${site}"}}}}`
+    : `site: "${site}"`
+}
 
 export function siteCablesQuery(site: string, version: NetBoxMajor): string {
   return `{
-  cable_list(${siteFilter(site, version)}) {
+  cable_list(${cableFilter(site, version)}) {
     id
     type
     status
@@ -62,6 +71,23 @@ export function siteCablesQuery(site: string, version: NetBoxMajor): string {
     b_terminations {
       ${TERMINATION_FRAGMENTS}
     }
+  }
+}`
+}
+
+// circuit_list itself isn't filtered, but the per-termination site field moved:
+// 3.7 exposes `site` directly; 4.x exposes it via the `termination` scope union.
+export function circuitsQuery(version: NetBoxMajor): string {
+  const termSite =
+    version >= 4
+      ? `termination { __typename ... on SiteType { name } }`
+      : `site { name }`
+  return `{
+  circuit_list {
+    id
+    cid
+    provider { name }
+    terminations { term_side ${termSite} }
   }
 }`
 }

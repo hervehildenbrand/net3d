@@ -5,6 +5,7 @@
   "description": "3D infrastructure visualization from NetBox (globe → site → rack)",
   "scripts": {
     "dev": "pnpm --parallel --filter @net3d/server --filter @net3d/web dev",
+    "dev:showcase": "pnpm --parallel --filter @net3d/server --filter @net3d/web dev:showcase",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "pnpm -r exec tsc --noEmit"

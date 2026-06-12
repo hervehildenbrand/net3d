@@ -1,0 +1,19 @@
+# Overlay applied on top of netbox-docker's own docker-compose.yml.
+# setup.sh copies this into ./netbox/ before bringing the stack up.
+services:
+  netbox:
+    ports:
+      # host 8088 -> container 8080 (NetBox listens on 8080 internally; 8080 host
+      # is often taken by other dev servers)
+      - "8088:8080"
+    environment:
+      # Create a deterministic superuser + API token on first boot so the seed
+      # script and the app can authenticate without manual steps. LOCAL SHOWCASE ONLY.
+      SKIP_SUPERUSER: "false"
+      SUPERUSER_NAME: "admin"
+      SUPERUSER_EMAIL: "admin@net3d.local"
+      SUPERUSER_PASSWORD: "admin"
+      SUPERUSER_API_TOKEN: "abcdef0123456789abcdef0123456789abcdef01"
+      # net3d's browser app reaches NetBox only via the server proxy, but allow
+      # CORS broadly for convenience when poking the API directly during a demo.
+      CORS_ORIGIN_ALLOW_ALL: "true"

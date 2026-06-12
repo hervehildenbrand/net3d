@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { parseNetBoxMajor, siteRacksQuery, siteCablesQuery } from '../src/graphql-dialect'
+import { parseNetBoxMajor, siteRacksQuery, siteCablesQuery, circuitsQuery } from '../src/graphql-dialect'
 
 describe('parseNetBoxMajor', () => {
   test('reads 3 from a 3.7.x version', () => {
@@ -49,9 +49,9 @@ describe('siteCablesQuery', () => {
     expect(siteCablesQuery('dc1', 3)).toContain('cable_list(site: "dc1")')
   })
 
-  test('v4 uses the strawberry filters argument', () => {
+  test('v4 filters cables via the termination site (CableFilter has no direct site)', () => {
     expect(siteCablesQuery('dc1', 4)).toContain(
-      'cable_list(filters: {site: {name: {exact: "dc1"}}})',
+      'cable_list(filters: {terminations: {site: {name: {exact: "dc1"}}}})',
     )
   })
 
@@ -61,6 +61,31 @@ describe('siteCablesQuery', () => {
       expect(q).toContain('a_terminations')
       expect(q).toContain('b_terminations')
       expect(q).toContain('CircuitTerminationType')
+    }
+  })
+
+  test('circuit termination fragment never selects site (dropped for 4.x compat)', () => {
+    // cables.ts only needs circuit.cid; CircuitTerminationType has no site field in 4.x
+    for (const v of [3, 4] as const) {
+      expect(siteCablesQuery('dc1', v)).not.toContain('CircuitTerminationType { circuit { cid } site')
+    }
+  })
+})
+
+describe('circuitsQuery', () => {
+  test('v3 reads the site directly off the termination', () => {
+    expect(circuitsQuery(3)).toContain('terminations { term_side site { name } }')
+  })
+
+  test('v4 reads the site through the termination scope', () => {
+    const q = circuitsQuery(4)
+    expect(q).toContain('termination { __typename ... on SiteType { name } }')
+  })
+
+  test('both select cid and provider', () => {
+    for (const v of [3, 4] as const) {
+      expect(circuitsQuery(v)).toContain('cid')
+      expect(circuitsQuery(v)).toContain('provider { name }')
     }
   })
 })
