@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'vitest'
 import {
+  CAMERA_REST_FACTOR,
   DEFAULT_THRESHOLDS,
   initialNavMachine,
   stepNavigation,
+  thresholdsForSpan,
   type NavMachine,
   type NavSignals,
 } from '../src/navigation'
@@ -107,5 +109,41 @@ describe('site ↔ rack', () => {
     r = stepNavigation(r.machine, { level: 'site', cameraDistToSite: 8, cameraDistToRack: 3.0, nearestRackId: '376' }, T)
     r = stepNavigation(r.machine, { level: 'site', cameraDistToSite: 8, cameraDistToRack: 2.3, nearestRackId: '376' }, T)
     expect(r.action).toEqual({ type: 'enterRack', rackId: '376' })
+  })
+})
+
+describe('thresholdsForSpan', () => {
+  test('small buildings keep the default exit thresholds', () => {
+    const t = thresholdsForSpan(8)
+    expect(t.siteExitDistance).toBe(DEFAULT_THRESHOLDS.siteExitDistance)
+    expect(t.siteExitRearm).toBe(DEFAULT_THRESHOLDS.siteExitRearm)
+  })
+
+  test('large buildings push the exit beyond the camera resting distance', () => {
+    // 50-rack showcase site: span ~20m, camera rests at ~1.3*span ≈ 26m —
+    // past the default 25m exit, which used to bounce the view back to map
+    const span = 20
+    const rest = span * CAMERA_REST_FACTOR
+    const t = thresholdsForSpan(span)
+    expect(t.siteExitDistance).toBeGreaterThan(rest)
+    expect(t.siteExitRearm).toBeGreaterThan(rest)
+    expect(t.siteExitRearm).toBeLessThan(t.siteExitDistance)
+  })
+
+  test('null span falls back to the defaults', () => {
+    expect(thresholdsForSpan(null)).toEqual(DEFAULT_THRESHOLDS)
+  })
+
+  test('settled camera at rest distance never exits a large site', () => {
+    const span = 20
+    const rest = span * CAMERA_REST_FACTOR
+    const t = thresholdsForSpan(span)
+    let m = initialNavMachine()
+    // fly-in passes close to the building (arms exit), then settles at rest
+    for (const d of [12, 16, 20, rest, rest, rest]) {
+      const r = stepNavigation(m, { level: 'site', cameraDistToSite: d }, t)
+      m = r.machine
+      expect(r.action).toBeUndefined()
+    }
   })
 })
