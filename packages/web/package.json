@@ -13,12 +13,15 @@
     "@react-three/drei": "^10.0.0",
     "@react-three/fiber": "^9.0.0",
     "@tanstack/react-query": "^5.50.0",
+    "leaflet": "^1.9.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-leaflet": "^5.0.0",
     "three": "^0.172.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.21",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/three": "^0.172.0",
