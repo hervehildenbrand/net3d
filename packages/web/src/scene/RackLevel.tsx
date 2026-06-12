@@ -22,6 +22,7 @@ export function RackLevel({
   placement,
   cables,
   lldpSegments = [],
+  napalmAvailable = true,
   onDeviceClick,
   selectedDeviceId,
   visible,
@@ -30,6 +31,7 @@ export function RackLevel({
   placement: RackPlacement
   cables: SiteCable[]
   lldpSegments?: LldpCableSegment[]
+  napalmAvailable?: boolean
   onDeviceClick: (deviceId: string) => void
   selectedDeviceId: string | null
   visible: boolean
@@ -39,7 +41,7 @@ export function RackLevel({
   // live cable coloring follows the selected device's interface states
   const selectedDevice = rack.devices.find((d) => d.id === selectedDeviceId)
   const { data: liveIfaces } = useNapalm<Record<string, NapalmInterface>>(
-    selectedDeviceId,
+    napalmAvailable ? selectedDeviceId : null,
     'get_interfaces',
   )
   const liveStatus = useMemo(

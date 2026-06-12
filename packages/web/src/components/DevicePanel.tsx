@@ -152,15 +152,19 @@ function LldpAudit({ device, cables }: { device: SiteDevice; cables: SiteCable[]
 export function DevicePanel({
   device,
   cables,
+  napalmAvailable = true,
   onClose,
 }: {
   device: SiteDevice
   cables: SiteCable[]
+  /** When the NetBox NAPALM plugin is absent, only the NetBox section renders. */
+  napalmAvailable?: boolean
   onClose: () => void
 }) {
-  const facts = useNapalm<Facts>(device.id, 'get_facts')
-  const env = useNapalm<Environment>(device.id, 'get_environment')
-  const ifaces = useNapalm<Record<string, NapalmInterface>>(device.id, 'get_interfaces')
+  const liveId = napalmAvailable ? device.id : null
+  const facts = useNapalm<Facts>(liveId, 'get_facts')
+  const env = useNapalm<Environment>(liveId, 'get_environment')
+  const ifaces = useNapalm<Record<string, NapalmInterface>>(liveId, 'get_interfaces')
 
   return (
     <div style={panel}>
@@ -180,6 +184,14 @@ export function DevicePanel({
         <Row k="position" v={device.position !== null ? `U${device.position} · ${device.face ?? ''}` : 'unpositioned'} />
       </Section>
 
+      {!napalmAvailable && (
+        <div style={{ color: '#94a3b8', marginBottom: 14 }}>
+          live data unavailable — NetBox NAPALM plugin not detected
+        </div>
+      )}
+
+      {napalmAvailable && (
+      <>
       <Section title="Facts (NAPALM)">
         <Status query={facts} label="facts" />
         {facts.data && (
@@ -233,6 +245,8 @@ export function DevicePanel({
               />
             ))}
       </Section>
+      </>
+      )}
     </div>
   )
 }

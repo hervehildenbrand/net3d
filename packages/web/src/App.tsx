@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber'
 import { lldpToSegments, type RackLocation } from '@net3d/shared'
 import { MapLayer } from './map/MapLayer'
 import { useLldpDiscovery } from './hooks/useLldpDiscovery'
+import { useCapabilities } from './hooks/useCapabilities'
 import { SiteLevel, useSiteLayout } from './scene/SiteLevel'
 import { RackLevel } from './scene/RackLevel'
 import { CameraRig } from './scene/CameraRig'
@@ -48,9 +49,15 @@ export function App() {
     () => siteDetail?.racks.flatMap((r) => r.devices) ?? [],
     [siteDetail],
   )
+  const capabilities = useCapabilities()
   const activeLldpIds = useMemo(
-    () => new Set(level === 'rack' && selectedRack ? selectedRack.devices.map((d) => d.id) : []),
-    [level, selectedRack],
+    () =>
+      new Set(
+        capabilities.napalmAvailable && level === 'rack' && selectedRack
+          ? selectedRack.devices.map((d) => d.id)
+          : [],
+      ),
+    [capabilities.napalmAvailable, level, selectedRack],
   )
   const lldp = useLldpDiscovery(allSiteDevices, activeLldpIds)
   const lldpSegments = useMemo(() => {
@@ -116,6 +123,7 @@ export function App() {
                 placement={selectedPlacement}
                 cables={siteDetail?.cables ?? []}
                 lldpSegments={lldpSegments}
+                napalmAvailable={capabilities.napalmAvailable}
                 onDeviceClick={selectDevice}
                 selectedDeviceId={selectedDeviceId}
                 visible
@@ -155,6 +163,7 @@ export function App() {
         <DevicePanel
           device={selectedDevice}
           cables={siteDetail?.cables ?? []}
+          napalmAvailable={capabilities.napalmAvailable}
           onClose={() => selectDevice(null)}
         />
       )}

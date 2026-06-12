@@ -30,6 +30,16 @@ export function buildApp({ netbox, napalmMaxQueue = 8 }: AppDeps): FastifyInstan
 
   app.get('/api/health', async () => ({ status: 'ok' }))
 
+  app.get('/api/meta', async () => {
+    try {
+      return await cache.getOrSet('meta', CACHE_TTL.sites, () => netbox.getStatus())
+    } catch (err) {
+      app.log.warn(err)
+      // showcase degrades gracefully: no capabilities ≠ broken app
+      return { netboxVersion: null, napalmAvailable: false }
+    }
+  })
+
   app.get('/api/sites', async (_req, reply) => {
     try {
       return await cache.getOrSet('sites', CACHE_TTL.sites, () => netbox.getSites())
