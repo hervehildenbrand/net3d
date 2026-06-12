@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import type { SiteCircuit } from '@net3d/shared'
 import { buildApp } from '../src/app'
-import type { NetBoxClient, NetBoxSite } from '../src/netbox'
+import type { NetBoxClient, NetBoxSite, SiteRack } from '../src/netbox'
 
 const SITES: NetBoxSite[] = [
   {
@@ -20,10 +20,34 @@ const CIRCUITS: SiteCircuit[] = [
   { id: '9', cid: 'PA3-PAR1-pos10', provider: 'apo', siteA: 'par1', siteZ: 'pa3' },
 ]
 
+const RACKS: SiteRack[] = [
+  {
+    id: '376',
+    name: 'C32-WAN1',
+    uHeight: 47,
+    location: null,
+    devices: [
+      {
+        id: '1771',
+        name: 'core-router-1',
+        position: 20,
+        face: 'FRONT',
+        roleName: 'router_rtcore',
+        roleColor: '9c27b0',
+        uHeight: 1,
+        model: 'ptx10001_36mr',
+        manufacturer: 'Juniper',
+        isFullDepth: true,
+      },
+    ],
+  },
+]
+
 function fakeNetbox(overrides: Partial<NetBoxClient> = {}): NetBoxClient {
   return {
     getSites: async () => SITES,
     getCircuits: async () => CIRCUITS,
+    getSiteRacks: async () => RACKS,
     ...overrides,
   }
 }
@@ -71,6 +95,52 @@ describe('GET /api/sites', () => {
     const res = await app.inject({ method: 'GET', url: '/api/sites' })
     expect(res.statusCode).toBe(502)
     expect(res.json()).toEqual({ error: 'netbox_unavailable' })
+  })
+})
+
+describe('GET /api/sites/:name', () => {
+  test('returns racks with devices for the site', async () => {
+    const requested: string[] = []
+    const app = buildApp({
+      netbox: fakeNetbox({
+        getSiteRacks: async (site) => {
+          requested.push(site)
+          return RACKS
+        },
+      }),
+    })
+    const res = await app.inject({ method: 'GET', url: '/api/sites/als' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ racks: RACKS })
+    expect(requested).toEqual(['als'])
+  })
+
+  test('caches per site name', async () => {
+    let calls = 0
+    const app = buildApp({
+      netbox: fakeNetbox({
+        getSiteRacks: async () => {
+          calls++
+          return RACKS
+        },
+      }),
+    })
+    await app.inject({ method: 'GET', url: '/api/sites/als' })
+    await app.inject({ method: 'GET', url: '/api/sites/als' })
+    await app.inject({ method: 'GET', url: '/api/sites/ams' })
+    expect(calls).toBe(2)
+  })
+
+  test('maps NetBox failure to 502', async () => {
+    const app = buildApp({
+      netbox: fakeNetbox({
+        getSiteRacks: async () => {
+          throw new Error('boom')
+        },
+      }),
+    })
+    const res = await app.inject({ method: 'GET', url: '/api/sites/als' })
+    expect(res.statusCode).toBe(502)
   })
 })
 

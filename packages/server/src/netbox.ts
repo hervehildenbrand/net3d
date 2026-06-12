@@ -9,9 +9,32 @@ export interface NetBoxSite {
   status: string
 }
 
+export interface SiteDevice {
+  id: string
+  name: string
+  /** U position; null for unpositioned (e.g. child/0U) devices. */
+  position: number | null
+  face: string | null
+  roleName: string
+  roleColor: string
+  uHeight: number
+  model: string
+  manufacturer: string
+  isFullDepth: boolean
+}
+
+export interface SiteRack {
+  id: string
+  name: string
+  uHeight: number
+  location: string | null
+  devices: SiteDevice[]
+}
+
 export interface NetBoxClient {
   getSites(): Promise<NetBoxSite[]>
   getCircuits(): Promise<SiteCircuit[]>
+  getSiteRacks(site: string): Promise<SiteRack[]>
 }
 
 // NetBox 3.7: *_list takes no pagination args and returns all rows.
@@ -25,6 +48,45 @@ const SITES_QUERY = `{
     region { name }
   }
 }`
+
+// $site is interpolated after validation — GraphQL variables aren't supported
+// for filter args in NetBox 3.7's auto-generated schema the same way.
+const siteRacksQuery = (site: string) => `{
+  rack_list(site: "${site}") {
+    id
+    name
+    u_height
+    location { name }
+    devices {
+      id
+      name
+      position
+      face
+      role { name color }
+      device_type { u_height model is_full_depth manufacturer { name } }
+    }
+  }
+}`
+
+interface RawRack {
+  id: string
+  name: string
+  u_height: number
+  location: { name: string } | null
+  devices: {
+    id: string
+    name: string
+    position: string | number | null
+    face: string | null
+    role: { name: string; color: string } | null
+    device_type: {
+      u_height: string | number
+      model: string
+      is_full_depth: boolean
+      manufacturer: { name: string } | null
+    }
+  }[]
+}
 
 const CIRCUITS_QUERY = `{
   circuit_list {
@@ -100,6 +162,29 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
         })
       }
       return circuits
+    },
+
+    async getSiteRacks(site) {
+      if (!/^[\w.-]+$/.test(site)) throw new Error(`invalid site name: ${site}`)
+      const data = await graphql<{ rack_list: RawRack[] }>(siteRacksQuery(site))
+      return data.rack_list.map((r) => ({
+        id: r.id,
+        name: r.name,
+        uHeight: r.u_height,
+        location: r.location?.name ?? null,
+        devices: r.devices.map((d) => ({
+          id: d.id,
+          name: d.name,
+          position: d.position === null ? null : Number(d.position),
+          face: d.face,
+          roleName: d.role?.name ?? 'unknown',
+          roleColor: d.role?.color ?? '888888',
+          uHeight: Number(d.device_type.u_height) || 1,
+          model: d.device_type.model,
+          manufacturer: d.device_type.manufacturer?.name ?? 'unknown',
+          isFullDepth: d.device_type.is_full_depth,
+        })),
+      }))
     },
   }
 }

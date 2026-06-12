@@ -6,6 +6,7 @@ import type { NetBoxClient } from './netbox'
 export const CACHE_TTL = {
   sites: 300_000,
   circuits: 300_000,
+  siteDetail: 120_000,
 } as const
 
 export interface AppDeps {
@@ -21,6 +22,19 @@ export function buildApp({ netbox }: AppDeps): FastifyInstance {
   app.get('/api/sites', async (_req, reply) => {
     try {
       return await cache.getOrSet('sites', CACHE_TTL.sites, () => netbox.getSites())
+    } catch (err) {
+      app.log.error(err)
+      return reply.code(502).send({ error: 'netbox_unavailable' })
+    }
+  })
+
+  app.get<{ Params: { name: string } }>('/api/sites/:name', async (req, reply) => {
+    try {
+      const { name } = req.params
+      const racks = await cache.getOrSet(`site:${name}`, CACHE_TTL.siteDetail, () =>
+        netbox.getSiteRacks(name),
+      )
+      return { racks }
     } catch (err) {
       app.log.error(err)
       return reply.code(502).send({ error: 'netbox_unavailable' })
