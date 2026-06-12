@@ -6,6 +6,7 @@ import type { Site } from '../hooks/useSites'
 import { useSitePrefetch } from '../hooks/useSitePrefetch'
 import { useAppStore } from '../store/useAppStore'
 import { CircuitPolylines } from './CircuitPolylines'
+import { SiteTooltip } from './SiteTooltip'
 
 /** Below the enter threshold (14), but close enough that entry is likely. */
 const PREFETCH_ZOOM = 11
@@ -122,8 +123,7 @@ export function MapLayer({
           }}
         >
           <Tooltip direction="top" offset={[0, -6]}>
-            <strong>{s.name}</strong>
-            {s.region ? ` — ${s.region}` : ''}
+            <SiteTooltip site={s} />
           </Tooltip>
         </CircleMarker>
       ))}
