@@ -1,48 +1,79 @@
 # net3d
 
-Interactive 3D visualization of network infrastructure documented in NetBox.
+**Zoom from the world map into a rack unit.** net3d turns any [NetBox](https://netbox.dev)
+instance into an explorable visualization: a real-tile world map of your sites, 3D
+buildings with your racks, devices at their true U-positions — connected by one
+continuous mouse-wheel journey.
 
-Three continuous zoom levels in one WebGL scene:
+## Features
 
-1. **Globe** — datacenter sites at their real coordinates, inter-DC circuits drawn as
-   great-circle arcs (brightness/lift scale with circuit count per site pair).
-2. **Site** — procedural translucent building containing the site's racks, laid out in
-   rows per NetBox location (NetBox stores no rack coordinates — the floor plan is
-   schematic). Overhead trays show inter-rack cabling density.
-3. **Rack** — devices at their true U-positions, sized by device-type height and colored
-   by NetBox role color. Intra-rack cables route down a side channel.
+- 🗺 **World map** (Leaflet + CARTO Positron) auto-fitted to your geocoded sites, with
+  inter-DC circuits drawn as geodesic lines weighted by circuit count.
+- 🔍 **Zoom-through navigation** — scroll into a site on the map and you crossfade into
+  its 3D building; keep scrolling toward a rack and you're inside it; scroll out to
+  retrace every step. Clicks work as shortcuts; hysteresis prevents level flapping.
+- 🏢 **Procedural site view** — racks laid out in rows per NetBox location inside a
+  glass building (NetBox stores no rack coordinates, so the floor plan is schematic).
+- 🗄 **Rack view** — devices at their real U-positions, sized by device-type height,
+  colored by NetBox role color; documented cables routed down the side channel.
+- 🔌 **Cabling, documented and discovered** — solid lines are NetBox cables (all
+  termination types: interfaces, front/rear ports, console, power, circuits). Entering
+  a rack auto-discovers **LLDP neighbors via the NetBox NAPALM plugin** (the app never
+  contacts devices directly); undocumented links appear as dashed cyan cables, with
+  inter-rack discoveries shown as dashed overhead trays in the site view.
+- 📟 **Live device panel** — NAPALM facts, environment sensors, interface up/down
+  states (auto-refresh), live green/red cable coloring, and an LLDP-vs-NetBox audit.
+- 🪶 **Graceful degradation** — without the NAPALM plugin, all live features hide and
+  the app runs on documented NetBox data alone.
 
-Clicking a device opens a panel with **live NAPALM data** (facts, environment sensors,
-interface states — refreshed every 10 s) and an opt-in **LLDP audit** that diffs
-LLDP-discovered neighbors against NetBox-documented cables. Live interface state also
-recolors the selected device's cables green/red in the 3D scene.
+## Requirements
+
+- Node.js ≥ 20 and [pnpm](https://pnpm.io)
+- A NetBox instance (tested against **3.7.x**) and an API token with read access
+- Optional, for live data: [netbox-napalm-plugin](https://github.com/netbox-community/netbox-napalm-plugin)
+  configured with platform → NAPALM driver mappings and device credentials
+
+No NetBox handy? Stand one up in minutes with
+[netbox-docker](https://github.com/netbox-community/netbox-docker) and load the
+[demo data](https://github.com/netbox-community/netbox-demo-data).
+
+## Quickstart
+
+```sh
+cp .env.example .env     # set NETBOX_URL + NETBOX_TOKEN (NETBOX_TLS_VERIFY=false for internal CAs)
+pnpm install
+pnpm dev                 # API proxy on :3001, app on http://localhost:5173
+pnpm test                # vitest across all packages
+```
+
+The API token never reaches the browser — a small Fastify proxy holds it, queries
+NetBox GraphQL, normalizes the data, and caches responses (topology minutes, NAPALM
+seconds-to-minutes per method).
 
 ## Architecture
 
 ```
 packages/
-├── shared/   pure, fully-tested logic: geo projection, arcs, rack layout,
-│             device transforms, cable paths, live-status & LLDP diffing
-├── server/   Fastify proxy — holds the NetBox token, queries GraphQL,
-│             normalizes polymorphic cable terminations, caches (TTL),
-│             proxies allowlisted NAPALM methods with 429 load-shedding
-└── web/      Vite + React 19 + react-three-fiber 9 + zustand + react-query
+├── shared/   pure, fully-tested logic: map bounds & geodesics, rack layout,
+│             device U-transforms, cable paths, zoom-navigation state machine,
+│             LLDP↔cable diffing
+├── server/   Fastify proxy: GraphQL queries, polymorphic cable-termination
+│             normalization, TTL caches, NAPALM method allowlist + load shedding,
+│             /api/meta capability probe
+└── web/      Vite + React 19 + react-leaflet 5 + react-three-fiber 9 + zustand
 ```
 
-The browser never sees the NetBox token; all NetBox/NAPALM traffic goes through the
-server. NAPALM calls are live SSH sessions (~25 s on first hit) — cached per
-device+method (facts 30 s, environment 15 s, interfaces 10 s, LLDP 15 s).
+### Good to know
 
-## Setup
+- **NAPALM calls are live SSH sessions** opened by NetBox (~25 s per device on real
+  hardware). net3d bounds concurrency (3 client-side, 8 server-side with 429 shedding)
+  and caches LLDP answers for 10 minutes — discovery is progressive, not blocking.
+- **NetBox 3.7 GraphQL quirks** handled here: no `limit` argument on `*_list`, `role`
+  (not `device_role`) on Device, polymorphic cable terminations needing one inline
+  fragment per type.
+- Sites without latitude/longitude don't appear on the map but stay reachable through
+  the search box.
 
-```sh
-cp .env.example .env     # set NETBOX_URL, NETBOX_TOKEN (NETBOX_TLS_VERIFY=false for internal CAs)
-pnpm install
-pnpm dev                 # server on :3001, web on :5173
-pnpm test                # vitest across all packages
-```
+## License
 
-Built against NetBox **3.7.8** with `netbox_napalm_plugin` 0.1.9. NetBox 3.7 GraphQL
-specifics this code relies on: no `limit` argument on `*_list`, `role` (not
-`device_role`) on Device, and the NAPALM endpoint at
-`/api/plugins/netbox_napalm_plugin/napalmplatformconfig/{device_id}/napalm/?method=…`.
+[MIT](LICENSE)

@@ -10,6 +10,7 @@ function fakeNetbox(overrides: Partial<NetBoxClient> = {}): NetBoxClient {
     getSiteRacks: async () => [],
     getSiteCables: async () => [],
     napalm: async (_id, method) => ({ [method]: { ok: true } }),
+    getStatus: async () => ({ netboxVersion: '3.7.8', napalmAvailable: true }),
     ...overrides,
   }
 }

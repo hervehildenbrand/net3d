@@ -3,9 +3,11 @@ import { Instance, Instances, Text } from '@react-three/drei'
 import {
   computeBuildingBounds,
   computeRackLayout,
+  type LldpCableSegment,
   type RackPlacement,
 } from '@net3d/shared'
 import type { SiteCable, SiteRack } from '../hooks/useSiteDetail'
+import { theme } from '../theme'
 import { SiteCables } from './cables'
 
 export function useSiteLayout(racks: SiteRack[] | undefined) {
@@ -42,7 +44,7 @@ function Racks({
             key={p.rackId}
             position={[p.x, p.height / 2, p.z]}
             scale={[p.width, p.height, p.depth]}
-            color={hovered === p.rackId ? '#6fa8d8' : '#3a5a78'}
+            color={hovered === p.rackId ? theme.scene.rackHover : theme.scene.rack}
             onClick={(e) => {
               e.stopPropagation()
               onRackClick(p.rackId)
@@ -64,7 +66,7 @@ function Racks({
           key={`label-${p.rackId}`}
           position={[p.x, p.height + 0.25, p.z]}
           fontSize={0.16}
-          color="#bfe3ff"
+          color={theme.text.onScene}
           anchorX="center"
           anchorY="bottom"
         >
@@ -78,12 +80,14 @@ function Racks({
 export function SiteLevel({
   racks,
   cables,
+  lldpSegments = [],
   siteName,
   onRackClick,
   visible,
 }: {
   racks: SiteRack[]
   cables: SiteCable[]
+  lldpSegments?: LldpCableSegment[]
   siteName: string
   onRackClick: (rackId: string) => void
   visible: boolean
@@ -107,19 +111,24 @@ export function SiteLevel({
       {/* floor */}
       <mesh position={[center.x, -0.01, center.z]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[size.x, size.z]} />
-        <meshStandardMaterial color="#101c28" roughness={0.9} />
+        <meshStandardMaterial color={theme.scene.floor} roughness={0.9} />
       </mesh>
-      {/* translucent building shell */}
+      {/* translucent glass building shell */}
       <mesh position={[center.x, size.y / 2, center.z]}>
         <boxGeometry args={[size.x, size.y, size.z]} />
-        <meshStandardMaterial color="#1e3c55" transparent opacity={0.12} depthWrite={false} />
+        <meshStandardMaterial
+          color={theme.scene.buildingShell}
+          transparent
+          opacity={theme.scene.buildingShellOpacity}
+          depthWrite={false}
+        />
       </mesh>
       <Racks placements={placements} onRackClick={onRackClick} />
-      <SiteCables placements={placements} cables={cables} />
+      <SiteCables placements={placements} cables={cables} lldpSegments={lldpSegments} />
       <Text
         position={[center.x, size.y + 0.6, center.z]}
         fontSize={0.5}
-        color="#e8f4ff"
+        color={theme.text.primary}
         anchorX="center"
       >
         {siteName}

@@ -13,7 +13,9 @@ export const NAPALM_METHODS = {
   get_facts: 30_000,
   get_environment: 15_000,
   get_interfaces: 10_000,
-  get_lldp_neighbors: 15_000,
+  // LLDP backs the cabling overlay — discovery is expensive (one SSH per
+  // device through NetBox), topology changes slowly: cache for 10 minutes.
+  get_lldp_neighbors: 600_000,
 } as const
 
 export interface AppDeps {
@@ -27,6 +29,16 @@ export function buildApp({ netbox, napalmMaxQueue = 8 }: AppDeps): FastifyInstan
   const cache = new TtlCache()
 
   app.get('/api/health', async () => ({ status: 'ok' }))
+
+  app.get('/api/meta', async () => {
+    try {
+      return await cache.getOrSet('meta', CACHE_TTL.sites, () => netbox.getStatus())
+    } catch (err) {
+      app.log.warn(err)
+      // showcase degrades gracefully: no capabilities ≠ broken app
+      return { netboxVersion: null, napalmAvailable: false }
+    }
+  })
 
   app.get('/api/sites', async (_req, reply) => {
     try {

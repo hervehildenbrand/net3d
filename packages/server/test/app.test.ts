@@ -7,13 +7,13 @@ import type { SiteCable } from '../src/cables'
 const SITES: NetBoxSite[] = [
   {
     id: '4',
-    name: 'als',
+    name: 'site-a',
     latitude: 52.259852,
     longitude: 4.773473,
-    region: 'Amsterdam',
+    region: 'Region A',
     status: 'ACTIVE',
   },
-  { id: '1', name: 'aac', latitude: null, longitude: null, region: null, status: 'ACTIVE' },
+  { id: '1', name: 'site-c', latitude: null, longitude: null, region: null, status: 'ACTIVE' },
 ]
 
 const CIRCUITS: SiteCircuit[] = [
@@ -30,7 +30,7 @@ const RACKS: SiteRack[] = [
     devices: [
       {
         id: '1771',
-        name: 'core-router-1',
+        name: 'edge-router-1',
         position: 20,
         face: 'FRONT',
         roleName: 'router_rtcore',
@@ -62,6 +62,7 @@ function fakeNetbox(overrides: Partial<NetBoxClient> = {}): NetBoxClient {
     getSiteRacks: async () => RACKS,
     getSiteCables: async () => CABLES,
     napalm: async (_id, method) => ({ [method]: {} }),
+    getStatus: async () => ({ netboxVersion: '3.7.8', napalmAvailable: true }),
     ...overrides,
   }
 }
@@ -112,6 +113,28 @@ describe('GET /api/sites', () => {
   })
 })
 
+describe('GET /api/meta', () => {
+  test('reports NetBox version and NAPALM availability', async () => {
+    const app = buildApp({ netbox: fakeNetbox() })
+    const res = await app.inject({ method: 'GET', url: '/api/meta' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ netboxVersion: '3.7.8', napalmAvailable: true })
+  })
+
+  test('degrades to no-capabilities instead of failing when NetBox is down', async () => {
+    const app = buildApp({
+      netbox: fakeNetbox({
+        getStatus: async () => {
+          throw new Error('down')
+        },
+      }),
+    })
+    const res = await app.inject({ method: 'GET', url: '/api/meta' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ netboxVersion: null, napalmAvailable: false })
+  })
+})
+
 describe('GET /api/sites/:name', () => {
   test('returns racks with devices for the site', async () => {
     const requested: string[] = []
@@ -123,10 +146,10 @@ describe('GET /api/sites/:name', () => {
         },
       }),
     })
-    const res = await app.inject({ method: 'GET', url: '/api/sites/als' })
+    const res = await app.inject({ method: 'GET', url: '/api/sites/site-a' })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({ racks: RACKS, cables: CABLES })
-    expect(requested).toEqual(['als'])
+    expect(requested).toEqual(['site-a'])
   })
 
   test('caches per site name', async () => {
@@ -139,9 +162,9 @@ describe('GET /api/sites/:name', () => {
         },
       }),
     })
-    await app.inject({ method: 'GET', url: '/api/sites/als' })
-    await app.inject({ method: 'GET', url: '/api/sites/als' })
-    await app.inject({ method: 'GET', url: '/api/sites/ams' })
+    await app.inject({ method: 'GET', url: '/api/sites/site-a' })
+    await app.inject({ method: 'GET', url: '/api/sites/site-a' })
+    await app.inject({ method: 'GET', url: '/api/sites/site-b' })
     expect(calls).toBe(2)
   })
 
@@ -153,7 +176,7 @@ describe('GET /api/sites/:name', () => {
         },
       }),
     })
-    const res = await app.inject({ method: 'GET', url: '/api/sites/als' })
+    const res = await app.inject({ method: 'GET', url: '/api/sites/site-a' })
     expect(res.statusCode).toBe(502)
   })
 })

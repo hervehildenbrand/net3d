@@ -1,9 +1,15 @@
 import { useMemo, useState } from 'react'
 import { Edges, Text } from '@react-three/drei'
-import { deviceTransform, mapInterfacesToCables, type RackPlacement } from '@net3d/shared'
+import {
+  deviceTransform,
+  mapInterfacesToCables,
+  type LldpCableSegment,
+  type RackPlacement,
+} from '@net3d/shared'
 import type { SiteCable, SiteDevice, SiteRack } from '../hooks/useSiteDetail'
 import { useNapalm } from '../hooks/useNapalm'
 import type { NapalmInterface } from '../components/DevicePanel'
+import { theme } from '../theme'
 import { RackCables } from './cables'
 
 interface PlacedDevice {
@@ -15,6 +21,8 @@ export function RackLevel({
   rack,
   placement,
   cables,
+  lldpSegments = [],
+  napalmAvailable = true,
   onDeviceClick,
   selectedDeviceId,
   visible,
@@ -22,6 +30,8 @@ export function RackLevel({
   rack: SiteRack
   placement: RackPlacement
   cables: SiteCable[]
+  lldpSegments?: LldpCableSegment[]
+  napalmAvailable?: boolean
   onDeviceClick: (deviceId: string) => void
   selectedDeviceId: string | null
   visible: boolean
@@ -31,7 +41,7 @@ export function RackLevel({
   // live cable coloring follows the selected device's interface states
   const selectedDevice = rack.devices.find((d) => d.id === selectedDeviceId)
   const { data: liveIfaces } = useNapalm<Record<string, NapalmInterface>>(
-    selectedDeviceId,
+    napalmAvailable ? selectedDeviceId : null,
     'get_interfaces',
   )
   const liveStatus = useMemo(
@@ -58,8 +68,13 @@ export function RackLevel({
       {/* rack shell */}
       <mesh position={[placement.x, placement.height / 2, placement.z]}>
         <boxGeometry args={[placement.width, placement.height, placement.depth]} />
-        <meshStandardMaterial color="#1c2f42" transparent opacity={0.18} depthWrite={false} />
-        <Edges color="#4a7299" />
+        <meshStandardMaterial
+          color={theme.scene.rackShell}
+          transparent
+          opacity={0.15}
+          depthWrite={false}
+        />
+        <Edges color={theme.scene.rackShellEdges} />
       </mesh>
 
       {placed.map(({ device, box }) => {
@@ -95,7 +110,7 @@ export function RackLevel({
             <Text
               position={[box.x + box.w / 2 + 0.06, box.y, box.z]}
               fontSize={0.035}
-              color={active || hover ? '#ffffff' : '#a8cbe8'}
+              color={active || hover ? theme.text.primary : theme.text.secondary}
               anchorX="left"
               anchorY="middle"
             >
@@ -105,12 +120,18 @@ export function RackLevel({
         )
       })}
 
-      <RackCables rack={rack} placement={placement} cables={cables} liveStatus={liveStatus} />
+      <RackCables
+        rack={rack}
+        placement={placement}
+        cables={cables}
+        liveStatus={liveStatus}
+        lldpSegments={lldpSegments}
+      />
 
       <Text
         position={[placement.x, placement.height + 0.18, placement.z]}
         fontSize={0.1}
-        color="#e8f4ff"
+        color={theme.text.primary}
         anchorX="center"
         anchorY="bottom"
       >
