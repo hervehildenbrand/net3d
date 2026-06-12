@@ -1,0 +1,17 @@
+{
+  "name": "net3d",
+  "private": true,
+  "version": "0.1.0",
+  "description": "3D infrastructure visualization from NetBox (globe → site → rack)",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @net3d/server --filter @net3d/web dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "pnpm -r exec tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^3.2.0"
+  },
+  "packageManager": "pnpm@11.6.0"
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@net3d/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env src/index.ts",
+    "start": "tsx --env-file=../../.env src/index.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.0",
+    "@net3d/shared": "workspace:*",
+    "fastify": "^5.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "vitest": "^3.2.0"
+  }
+}
