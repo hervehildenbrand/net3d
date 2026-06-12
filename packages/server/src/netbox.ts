@@ -315,8 +315,22 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
 
     async getSiteCables(site) {
       if (!/^[\w.-]+$/.test(site)) throw new Error(`invalid site name: ${site}`)
-      const data = await graphql<{ cable_list: RawCable[] }>(siteCablesQuery(site, await netboxMajor()))
-      return normalizeRawCables(data.cable_list)
+      const major = await netboxMajor()
+      if (major < 4) {
+        const data = await graphql<{ cable_list: RawCable[] }>(siteCablesQuery(site, major))
+        return normalizeRawCables(data.cable_list)
+      }
+      // 4.x caps list responses at 1000 rows: page until a short page
+      const limit = 1000
+      const all: RawCable[] = []
+      for (let offset = 0; ; offset += limit) {
+        const data = await graphql<{ cable_list: RawCable[] }>(
+          siteCablesQuery(site, major, { offset, limit }),
+        )
+        all.push(...data.cable_list)
+        if (data.cable_list.length < limit) break
+      }
+      return normalizeRawCables(all)
     },
 
     async napalm(deviceId, method) {

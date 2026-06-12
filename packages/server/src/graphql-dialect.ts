@@ -52,18 +52,24 @@ const TERMINATION_FRAGMENTS = `__typename
       ... on PowerFeedType { name rack { name } }
       ... on CircuitTerminationType { circuit { cid } }`
 
-// CableFilter has no direct site field in 4.x; filter via the termination's site.
-// That matches once per termination (twice for an intra-site cable) and caps at
-// 1000 rows, so DISTINCT is required to return unique, complete cables.
-function cableFilter(site: string, version: NetBoxMajor): string {
-  return version >= 4
-    ? `filters: {terminations: {site: {name: {exact: "${site}"}}}, DISTINCT: true}`
-    : `site: "${site}"`
+export interface CablePage {
+  offset: number
+  limit: number
 }
 
-export function siteCablesQuery(site: string, version: NetBoxMajor): string {
+// CableFilter has no direct site field in 4.x; filter via the termination's site.
+// That matches once per termination (twice for an intra-site cable) and caps at
+// 1000 rows, so DISTINCT is required to return unique, complete cables — and any
+// site with >1000 cables must be fetched page by page (OffsetPaginationInput).
+function cableFilter(site: string, version: NetBoxMajor, page?: CablePage): string {
+  if (version < 4) return `site: "${site}"`
+  const filters = `filters: {terminations: {site: {name: {exact: "${site}"}}}, DISTINCT: true}`
+  return page ? `${filters}, pagination: {offset: ${page.offset}, limit: ${page.limit}}` : filters
+}
+
+export function siteCablesQuery(site: string, version: NetBoxMajor, page?: CablePage): string {
   return `{
-  cable_list(${cableFilter(site, version)}) {
+  cable_list(${cableFilter(site, version, page)}) {
     id
     type
     status

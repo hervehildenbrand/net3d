@@ -66,6 +66,16 @@ describe('siteCablesQuery', () => {
     )
   })
 
+  test('v4 emits an offset pagination clause when a page is given (1000-row cap)', () => {
+    const q = siteCablesQuery('dc1', 4, { offset: 2000, limit: 1000 })
+    expect(q).toContain('pagination: {offset: 2000, limit: 1000}')
+    expect(q).toContain('DISTINCT: true')
+  })
+
+  test('v3 ignores pagination (graphene returns all rows)', () => {
+    expect(siteCablesQuery('dc1', 3, { offset: 0, limit: 1000 })).toBe(siteCablesQuery('dc1', 3))
+  })
+
   test('field selection includes both termination sides across dialects', () => {
     for (const v of [3, 4] as const) {
       const q = siteCablesQuery('dc1', v)
