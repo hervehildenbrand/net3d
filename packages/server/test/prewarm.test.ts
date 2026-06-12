@@ -5,11 +5,16 @@ import type { NetBoxClient } from '../src/netbox'
 
 const TTL = { sites: 1000, circuits: 1000, siteDetail: 1000 }
 
+const SITE_META = {
+  region: null, status: 'active', physicalAddress: null, facility: null,
+  role: null, rackCount: null, deviceCount: null,
+} as const
+
 function mockNetbox(overrides: Partial<NetBoxClient> = {}): NetBoxClient {
   return {
     getSites: async () => [
-      { id: '1', name: 'AAA1', latitude: 0, longitude: 0, region: null, status: 'active' },
-      { id: '2', name: 'BBB1', latitude: 0, longitude: 0, region: null, status: 'active' },
+      { id: '1', name: 'AAA1', latitude: 0, longitude: 0, ...SITE_META },
+      { id: '2', name: 'BBB1', latitude: 0, longitude: 0, ...SITE_META },
     ],
     getCircuits: async () => [],
     getSiteRacks: async () => [],
@@ -37,7 +42,7 @@ describe('prewarmCaches', () => {
     const netbox = mockNetbox({
       getSites: async () =>
         ['A', 'B', 'C', 'D', 'E'].map((n, i) => ({
-          id: String(i), name: n, latitude: 0, longitude: 0, region: null, status: 'active',
+          id: String(i), name: n, latitude: 0, longitude: 0, ...SITE_META,
         })),
       getSiteRacks: async () => {
         inFlight++

@@ -15,6 +15,12 @@ export interface NetBoxSite {
   longitude: number | null
   region: string | null
   status: string
+  physicalAddress: string | null
+  facility: string | null
+  /** Derived from the site's compute/pop tag; null when untagged. */
+  role: 'compute' | 'pop' | null
+  rackCount: number | null
+  deviceCount: number | null
 }
 
 export interface SiteDevice {
@@ -65,6 +71,9 @@ const SITES_QUERY = `{
     longitude
     status
     region { name }
+    physical_address
+    facility
+    tags { slug }
   }
 }`
 
@@ -131,13 +140,42 @@ function terminationSiteName(t: RawCircuit['terminations'][number]): string | un
   return t.site?.name ?? t.termination?.name
 }
 
-interface RawSite {
+export interface RawSite {
   id: string
   name: string
   latitude: string | number | null
   longitude: string | number | null
   status: string
   region: { name: string } | null
+  physical_address: string | null
+  facility: string | null
+  tags: { slug: string }[] | null
+}
+
+/** Rack/device totals from the REST site serializer (GraphQL has no counts). */
+export interface SiteCounts {
+  rackCount: number | null
+  deviceCount: number | null
+}
+
+export function normalizeRawSites(raw: RawSite[], counts: Map<string, SiteCounts>): NetBoxSite[] {
+  return raw.map((s) => {
+    const slugs = (s.tags ?? []).map((t) => t.slug)
+    return {
+      id: s.id,
+      name: s.name,
+      // NetBox returns decimals as strings
+      latitude: s.latitude === null ? null : Number(s.latitude),
+      longitude: s.longitude === null ? null : Number(s.longitude),
+      region: s.region?.name ?? null,
+      status: s.status,
+      physicalAddress: s.physical_address || null,
+      facility: s.facility || null,
+      role: slugs.includes('pop') ? 'pop' : slugs.includes('compute') ? 'compute' : null,
+      rackCount: counts.get(s.id)?.rackCount ?? null,
+      deviceCount: counts.get(s.id)?.deviceCount ?? null,
+    }
+  })
 }
 
 export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient {
@@ -162,6 +200,30 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
     return majorPromise
   }
 
+  // The GraphQL site type has no rack/device totals; the REST serializer does
+  // (both 3.7 and 4.x). Counts are cosmetic, so failures degrade to an empty map.
+  async function fetchSiteCounts(): Promise<Map<string, SiteCounts>> {
+    const counts = new Map<string, SiteCounts>()
+    try {
+      const res = await fetch(`${baseUrl}/api/dcim/sites/?limit=1000`, {
+        headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
+      })
+      if (!res.ok) return counts
+      const body = (await res.json()) as {
+        results?: { id: number; rack_count?: number; device_count?: number }[]
+      }
+      for (const s of body.results ?? []) {
+        counts.set(String(s.id), {
+          rackCount: s.rack_count ?? null,
+          deviceCount: s.device_count ?? null,
+        })
+      }
+    } catch {
+      // NetBox REST hiccup: sites render without counts
+    }
+    return counts
+  }
+
   async function graphql<T>(query: string): Promise<T> {
     const res = await fetch(`${baseUrl}/graphql/`, {
       method: 'POST',
@@ -181,16 +243,11 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
 
   return {
     async getSites() {
-      const data = await graphql<{ site_list: RawSite[] }>(SITES_QUERY)
-      return data.site_list.map((s) => ({
-        id: s.id,
-        name: s.name,
-        // NetBox returns decimals as strings
-        latitude: s.latitude === null ? null : Number(s.latitude),
-        longitude: s.longitude === null ? null : Number(s.longitude),
-        region: s.region?.name ?? null,
-        status: s.status,
-      }))
+      const [data, counts] = await Promise.all([
+        graphql<{ site_list: RawSite[] }>(SITES_QUERY),
+        fetchSiteCounts(),
+      ])
+      return normalizeRawSites(data.site_list, counts)
     },
 
     async getCircuits() {

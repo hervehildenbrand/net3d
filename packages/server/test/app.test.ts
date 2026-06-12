@@ -4,6 +4,14 @@ import { buildApp } from '../src/app'
 import type { NetBoxClient, NetBoxSite, SiteRack } from '../src/netbox'
 import type { SiteCable } from '../src/cables'
 
+const SITE_META = {
+  physicalAddress: null,
+  facility: null,
+  role: null,
+  rackCount: null,
+  deviceCount: null,
+} as const
+
 const SITES: NetBoxSite[] = [
   {
     id: '4',
@@ -12,8 +20,9 @@ const SITES: NetBoxSite[] = [
     longitude: 4.773473,
     region: 'Region A',
     status: 'ACTIVE',
+    ...SITE_META,
   },
-  { id: '1', name: 'site-c', latitude: null, longitude: null, region: null, status: 'ACTIVE' },
+  { id: '1', name: 'site-c', latitude: null, longitude: null, region: null, status: 'ACTIVE', ...SITE_META },
 ]
 
 const CIRCUITS: SiteCircuit[] = [
