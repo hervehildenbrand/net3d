@@ -37,7 +37,11 @@ export interface NetBoxClient {
   getCircuits(): Promise<SiteCircuit[]>
   getSiteRacks(site: string): Promise<SiteRack[]>
   getSiteCables(site: string): Promise<SiteCable[]>
+  napalm(deviceId: number, method: string): Promise<unknown>
 }
+
+/** The NAPALM plugin reached NetBox but NetBox could not reach the device. */
+export class NapalmUnreachableError extends Error {}
 
 // NetBox 3.7: *_list takes no pagination args and returns all rows.
 const SITES_QUERY = `{
@@ -227,6 +231,20 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
       if (!/^[\w.-]+$/.test(site)) throw new Error(`invalid site name: ${site}`)
       const data = await graphql<{ cable_list: RawCable[] }>(siteCablesQuery(site))
       return normalizeRawCables(data.cable_list)
+    },
+
+    async napalm(deviceId, method) {
+      const url = `${baseUrl}/api/plugins/netbox_napalm_plugin/napalmplatformconfig/${deviceId}/napalm/?method=${method}`
+      const res = await fetch(url, {
+        headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
+        signal: AbortSignal.timeout(45_000), // live SSH sessions take seconds
+      })
+      if (res.status === 503) {
+        const body = (await res.json().catch(() => ({}))) as { detail?: string }
+        throw new NapalmUnreachableError(body.detail ?? 'device unreachable')
+      }
+      if (!res.ok) throw new Error(`NAPALM HTTP ${res.status}`)
+      return res.json()
     },
   }
 }

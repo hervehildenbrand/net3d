@@ -25,3 +25,8 @@ export const useAppStore = create<AppState>((set) => ({
     set({ level: 'globe', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null }),
   selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
 }))
+
+// dev-only handle for driving/inspecting navigation from the console and tests
+if (import.meta.env.DEV) {
+  ;(window as unknown as Record<string, unknown>).__appStore = useAppStore
+}

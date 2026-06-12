@@ -8,6 +8,7 @@ import { useSites } from './hooks/useSites'
 import { useCircuits } from './hooks/useCircuits'
 import { useSiteDetail } from './hooks/useSiteDetail'
 import { useAppStore } from './store/useAppStore'
+import { DevicePanel } from './components/DevicePanel'
 
 const hudStyle: React.CSSProperties = {
   position: 'absolute',
@@ -35,6 +36,7 @@ export function App() {
   const { placements } = useSiteLayout(siteDetail?.racks)
   const selectedRack = siteDetail?.racks.find((r) => r.id === selectedRackId)
   const selectedPlacement = placements.find((p) => p.rackId === selectedRackId)
+  const selectedDevice = selectedRack?.devices.find((d) => d.id === selectedDeviceId)
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -86,6 +88,8 @@ export function App() {
           {level === 'rack' && selectedRack && `${selectedSiteName} / ${selectedRack.name}`}
         </div>
       </div>
+
+      {selectedDevice && <DevicePanel device={selectedDevice} onClose={() => selectDevice(null)} />}
 
       {level !== 'globe' && (
         <button

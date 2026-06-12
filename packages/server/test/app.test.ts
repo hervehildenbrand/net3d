@@ -61,6 +61,7 @@ function fakeNetbox(overrides: Partial<NetBoxClient> = {}): NetBoxClient {
     getCircuits: async () => CIRCUITS,
     getSiteRacks: async () => RACKS,
     getSiteCables: async () => CABLES,
+    napalm: async (_id, method) => ({ [method]: {} }),
     ...overrides,
   }
 }
