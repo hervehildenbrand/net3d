@@ -114,6 +114,9 @@ export function normalizeRawRacks(raw: RawRack[]): SiteRack[] {
 interface RawCircuit {
   id: string
   cid: string
+  status: string
+  commit_rate: number | string | null
+  description: string | null
   provider: { name: string } | null
   terminations: {
     term_side: string
@@ -206,6 +209,10 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
           provider: c.provider?.name ?? null,
           siteA: a,
           siteZ: z,
+          commitRate: c.commit_rate == null ? null : Number(c.commit_rate),
+          // NetBox 4.x (Strawberry) returns enums lowercase
+          status: (c.status ?? 'unknown').toLowerCase(),
+          description: c.description || null,
         })
       }
       return circuits

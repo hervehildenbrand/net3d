@@ -88,6 +88,9 @@ export function circuitsQuery(version: NetBoxMajor): string {
   circuit_list {
     id
     cid
+    status
+    commit_rate
+    description
     provider { name }
     terminations { term_side ${termSite} }
   }

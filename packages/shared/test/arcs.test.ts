@@ -48,11 +48,12 @@ describe('greatCircleArc', () => {
 })
 
 describe('groupCircuitsBySitePair', () => {
+  const detail = { commitRate: null, status: 'active', description: null }
   const circuits = [
-    { id: '1', cid: 'c1', provider: 'apo', siteA: 'pa3', siteZ: 'par1' },
-    { id: '2', cid: 'c2', provider: 'apo', siteA: 'par1', siteZ: 'pa3' }, // reversed = same pair
-    { id: '3', cid: 'c3', provider: 'x', siteA: 'ams', siteZ: 'als' },
-    { id: '4', cid: 'c4', provider: 'x', siteA: 'lon', siteZ: 'lon' }, // same-site: dropped
+    { id: '1', cid: 'c1', provider: 'apo', siteA: 'pa3', siteZ: 'par1', ...detail },
+    { id: '2', cid: 'c2', provider: 'apo', siteA: 'par1', siteZ: 'pa3', ...detail }, // reversed = same pair
+    { id: '3', cid: 'c3', provider: 'x', siteA: 'ams', siteZ: 'als', ...detail },
+    { id: '4', cid: 'c4', provider: 'x', siteA: 'lon', siteZ: 'lon', ...detail }, // same-site: dropped
   ]
 
   test('groups regardless of A/Z direction', () => {

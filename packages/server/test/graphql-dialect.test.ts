@@ -91,4 +91,13 @@ describe('circuitsQuery', () => {
       expect(circuitsQuery(v)).toContain('provider { name }')
     }
   })
+
+  test('both select the circuit detail fields (speed, status, description)', () => {
+    for (const v of [3, 4] as const) {
+      const q = circuitsQuery(v)
+      expect(q).toContain('commit_rate')
+      expect(q).toContain('status')
+      expect(q).toContain('description')
+    }
+  })
 })
