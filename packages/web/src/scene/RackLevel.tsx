@@ -1,6 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Edges, Text } from '@react-three/drei'
-import { deviceTransform, mapInterfacesToCables, type RackPlacement } from '@net3d/shared'
+import {
+  deviceTransform,
+  mapInterfacesToCables,
+  type LldpCableSegment,
+  type RackPlacement,
+} from '@net3d/shared'
 import type { SiteCable, SiteDevice, SiteRack } from '../hooks/useSiteDetail'
 import { useNapalm } from '../hooks/useNapalm'
 import type { NapalmInterface } from '../components/DevicePanel'
@@ -15,6 +20,7 @@ export function RackLevel({
   rack,
   placement,
   cables,
+  lldpSegments = [],
   onDeviceClick,
   selectedDeviceId,
   visible,
@@ -22,6 +28,7 @@ export function RackLevel({
   rack: SiteRack
   placement: RackPlacement
   cables: SiteCable[]
+  lldpSegments?: LldpCableSegment[]
   onDeviceClick: (deviceId: string) => void
   selectedDeviceId: string | null
   visible: boolean
@@ -105,7 +112,13 @@ export function RackLevel({
         )
       })}
 
-      <RackCables rack={rack} placement={placement} cables={cables} liveStatus={liveStatus} />
+      <RackCables
+        rack={rack}
+        placement={placement}
+        cables={cables}
+        liveStatus={liveStatus}
+        lldpSegments={lldpSegments}
+      />
 
       <Text
         position={[placement.x, placement.height + 0.18, placement.z]}

@@ -3,6 +3,7 @@ import { Instance, Instances, Text } from '@react-three/drei'
 import {
   computeBuildingBounds,
   computeRackLayout,
+  type LldpCableSegment,
   type RackPlacement,
 } from '@net3d/shared'
 import type { SiteCable, SiteRack } from '../hooks/useSiteDetail'
@@ -78,12 +79,14 @@ function Racks({
 export function SiteLevel({
   racks,
   cables,
+  lldpSegments = [],
   siteName,
   onRackClick,
   visible,
 }: {
   racks: SiteRack[]
   cables: SiteCable[]
+  lldpSegments?: LldpCableSegment[]
   siteName: string
   onRackClick: (rackId: string) => void
   visible: boolean
@@ -115,7 +118,7 @@ export function SiteLevel({
         <meshStandardMaterial color="#1e3c55" transparent opacity={0.12} depthWrite={false} />
       </mesh>
       <Racks placements={placements} onRackClick={onRackClick} />
-      <SiteCables placements={placements} cables={cables} />
+      <SiteCables placements={placements} cables={cables} lldpSegments={lldpSegments} />
       <Text
         position={[center.x, size.y + 0.6, center.z]}
         fontSize={0.5}

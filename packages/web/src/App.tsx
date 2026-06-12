@@ -1,5 +1,8 @@
+import { useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
+import { lldpToSegments, type RackLocation } from '@net3d/shared'
 import { MapLayer } from './map/MapLayer'
+import { useLldpDiscovery } from './hooks/useLldpDiscovery'
 import { SiteLevel, useSiteLayout } from './scene/SiteLevel'
 import { RackLevel } from './scene/RackLevel'
 import { CameraRig } from './scene/CameraRig'
@@ -40,6 +43,29 @@ export function App() {
   const selectedPlacement = placements.find((p) => p.rackId === selectedRackId)
   const selectedDevice = selectedRack?.devices.find((d) => d.id === selectedDeviceId)
 
+  // LLDP discovery: activates for the rack being viewed; results accumulate site-wide.
+  const allSiteDevices = useMemo(
+    () => siteDetail?.racks.flatMap((r) => r.devices) ?? [],
+    [siteDetail],
+  )
+  const activeLldpIds = useMemo(
+    () => new Set(level === 'rack' && selectedRack ? selectedRack.devices.map((d) => d.id) : []),
+    [level, selectedRack],
+  )
+  const lldp = useLldpDiscovery(allSiteDevices, activeLldpIds)
+  const lldpSegments = useMemo(() => {
+    if (!siteDetail) return []
+    const locations: Record<string, RackLocation> = {}
+    for (const r of siteDetail.racks)
+      for (const d of r.devices)
+        locations[d.name.split('.')[0]!.toLowerCase()] = { rackId: r.id, rackName: r.name }
+    const segments = lldpToSegments(lldp.byDevice, locations, siteDetail.cables)
+    if (import.meta.env.DEV) {
+      ;(window as unknown as Record<string, unknown>).__lldpSegments = segments
+    }
+    return segments
+  }, [lldp.byDevice, siteDetail])
+
   const inScene = level !== 'map'
 
   return (
@@ -78,6 +104,7 @@ export function App() {
               <SiteLevel
                 racks={siteDetail.racks}
                 cables={siteDetail.cables}
+                lldpSegments={lldpSegments}
                 siteName={selectedSiteName}
                 onRackClick={zoomToRack}
                 visible={level === 'site'}
@@ -88,6 +115,7 @@ export function App() {
                 rack={selectedRack}
                 placement={selectedPlacement}
                 cables={siteDetail?.cables ?? []}
+                lldpSegments={lldpSegments}
                 onDeviceClick={selectDevice}
                 selectedDeviceId={selectedDeviceId}
                 visible
@@ -110,6 +138,16 @@ export function App() {
             selectedSiteName &&
             `site: ${selectedSiteName}${siteLoading ? ' — loading racks…' : siteDetail ? ` — ${siteDetail.racks.length} racks` : ''}`}
           {level === 'rack' && selectedRack && `${selectedSiteName} / ${selectedRack.name}`}
+          {level === 'rack' && lldp.discovering && (
+            <div style={{ color: '#0891b2' }}>
+              ◐ discovering cabling {lldp.completed}/{lldp.total} devices…
+            </div>
+          )}
+          {level === 'rack' && !lldp.discovering && lldp.total > 0 && (
+            <div style={{ color: '#0891b2' }}>
+              ▣ LLDP: {lldpSegments.length} undocumented link{lldpSegments.length === 1 ? '' : 's'}
+            </div>
+          )}
         </div>
       </div>
 
