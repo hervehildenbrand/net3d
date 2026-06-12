@@ -52,9 +52,11 @@ const TERMINATION_FRAGMENTS = `__typename
       ... on CircuitTerminationType { circuit { cid } }`
 
 // CableFilter has no direct site field in 4.x; filter via the termination's site.
+// That matches once per termination (twice for an intra-site cable) and caps at
+// 1000 rows, so DISTINCT is required to return unique, complete cables.
 function cableFilter(site: string, version: NetBoxMajor): string {
   return version >= 4
-    ? `filters: {terminations: {site: {name: {exact: "${site}"}}}}`
+    ? `filters: {terminations: {site: {name: {exact: "${site}"}}}, DISTINCT: true}`
     : `site: "${site}"`
 }
 

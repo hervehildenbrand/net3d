@@ -49,9 +49,12 @@ describe('siteCablesQuery', () => {
     expect(siteCablesQuery('dc1', 3)).toContain('cable_list(site: "dc1")')
   })
 
-  test('v4 filters cables via the termination site (CableFilter has no direct site)', () => {
+  test('v4 filters cables via the termination site, with DISTINCT to dedupe', () => {
+    // CableFilter has no direct site field; matching on terminations returns a row
+    // per matching termination (two for an intra-site cable) and caps at 1000, so
+    // DISTINCT is required to get unique cables.
     expect(siteCablesQuery('dc1', 4)).toContain(
-      'cable_list(filters: {terminations: {site: {name: {exact: "dc1"}}}})',
+      'cable_list(filters: {terminations: {site: {name: {exact: "dc1"}}}, DISTINCT: true})',
     )
   })
 
