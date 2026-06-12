@@ -256,6 +256,21 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
     return counts
   }
 
+  // Total cable count for a site via REST (SQL COUNT — cheap, unlike the rows).
+  // The REST filter matches the site slug, i.e. the lowercased site code.
+  async function restCableCount(site: string): Promise<number | null> {
+    try {
+      const res = await fetch(`${baseUrl}/api/dcim/cables/?site=${encodeURIComponent(site.toLowerCase())}&limit=1`, {
+        headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
+      })
+      if (!res.ok) return null
+      const body = (await res.json()) as { count?: number }
+      return typeof body.count === 'number' ? body.count : null
+    } catch {
+      return null
+    }
+  }
+
   async function graphql<T>(query: string): Promise<T> {
     const res = await fetch(`${baseUrl}/graphql/`, {
       method: 'POST',
@@ -320,17 +335,28 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
         const data = await graphql<{ cable_list: RawCable[] }>(siteCablesQuery(site, major))
         return normalizeRawCables(data.cable_list)
       }
-      // 4.x caps list responses at 1000 rows: page until a short page
+      // 4.x caps list responses at 1000 rows, and each page is expensive to
+      // serialize (~20s for a dense site) — learn the page count from a cheap
+      // REST count and fetch all pages concurrently.
       const limit = 1000
-      const all: RawCable[] = []
-      for (let offset = 0; ; offset += limit) {
-        const data = await graphql<{ cable_list: RawCable[] }>(
-          siteCablesQuery(site, major, { offset, limit }),
-        )
-        all.push(...data.cable_list)
-        if (data.cable_list.length < limit) break
+      const fetchPage = (offset: number) =>
+        graphql<{ cable_list: RawCable[] }>(siteCablesQuery(site, major, { offset, limit }))
+      const count = await restCableCount(site)
+      if (count === null) {
+        // count unavailable: sequential paging until a short page
+        const all: RawCable[] = []
+        for (let offset = 0; ; offset += limit) {
+          const data = await fetchPage(offset)
+          all.push(...data.cable_list)
+          if (data.cable_list.length < limit) break
+        }
+        return normalizeRawCables(all)
       }
-      return normalizeRawCables(all)
+      const pages = Math.max(1, Math.ceil(count / limit))
+      const results = await Promise.all(
+        Array.from({ length: pages }, (_, i) => fetchPage(i * limit)),
+      )
+      return normalizeRawCables(results.flatMap((r) => r.cable_list))
     },
 
     async napalm(deviceId, method) {

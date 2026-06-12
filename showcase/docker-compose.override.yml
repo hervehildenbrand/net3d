@@ -17,3 +17,6 @@ services:
       # net3d's browser app reaches NetBox only via the server proxy, but allow
       # CORS broadly for convenience when poking the API directly during a demo.
       CORS_ORIGIN_ALLOW_ALL: "true"
+      # Cable list pages are CPU-bound to serialize (~20s/1000 rows) and the app
+      # fetches them concurrently — give granian enough workers to parallelize.
+      GRANIAN_WORKERS: "8"

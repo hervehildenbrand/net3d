@@ -37,11 +37,22 @@ export function buildApp({ netbox, napalmMaxQueue = 8, prewarm }: AppDeps): Fast
 
   if (prewarm) {
     const ttl = { sites: CACHE_TTL.sites, circuits: CACHE_TTL.circuits, siteDetail: CACHE_TTL.siteDetail }
-    const warm = () =>
-      prewarmCaches(cache, netbox, ttl, prewarm.concurrency).catch((err) => app.log.warn(err))
+    // a full warm can take minutes on a dense instance — never let cycles overlap
+    let warming = false
+    const warm = async () => {
+      if (warming) return
+      warming = true
+      try {
+        await prewarmCaches(cache, netbox, ttl, prewarm.concurrency)
+      } catch (err) {
+        app.log.warn(err)
+      } finally {
+        warming = false
+      }
+    }
     void warm()
     if (prewarm.intervalMs && prewarm.intervalMs > 0) {
-      const timer = setInterval(warm, prewarm.intervalMs)
+      const timer = setInterval(() => void warm(), prewarm.intervalMs)
       timer.unref()
       app.addHook('onClose', async () => clearInterval(timer))
     }
