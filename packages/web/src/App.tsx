@@ -93,14 +93,21 @@ export function App() {
         )}
       </div>
 
-      {/* 3D scene layer for site + rack levels */}
+      {/* 3D scene layer for site + rack levels.
+          visibility (not just pointer-events) must toggle: R3F sets
+          pointer-events:auto on its own elements, which defeats inheritance
+          and would swallow the map's mouse input. Hidden elements are
+          excluded from hit-testing regardless of children's styles. */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
           zIndex: 2,
           opacity: inScene ? 1 : 0,
-          transition: 'opacity 400ms ease',
+          visibility: inScene ? 'visible' : 'hidden',
+          transition: inScene
+            ? 'opacity 400ms ease, visibility 0s'
+            : 'opacity 400ms ease, visibility 0s 400ms',
           pointerEvents: inScene ? 'auto' : 'none',
         }}
       >
