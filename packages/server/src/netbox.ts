@@ -1,3 +1,5 @@
+import type { SiteCircuit } from '@net3d/shared'
+
 export interface NetBoxSite {
   id: string
   name: string
@@ -9,6 +11,7 @@ export interface NetBoxSite {
 
 export interface NetBoxClient {
   getSites(): Promise<NetBoxSite[]>
+  getCircuits(): Promise<SiteCircuit[]>
 }
 
 // NetBox 3.7: *_list takes no pagination args and returns all rows.
@@ -22,6 +25,22 @@ const SITES_QUERY = `{
     region { name }
   }
 }`
+
+const CIRCUITS_QUERY = `{
+  circuit_list {
+    id
+    cid
+    provider { name }
+    terminations { term_side site { name } }
+  }
+}`
+
+interface RawCircuit {
+  id: string
+  cid: string
+  provider: { name: string } | null
+  terminations: { term_side: string; site: { name: string } | null }[]
+}
 
 interface RawSite {
   id: string
@@ -62,6 +81,25 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
         region: s.region?.name ?? null,
         status: s.status,
       }))
+    },
+
+    async getCircuits() {
+      const data = await graphql<{ circuit_list: RawCircuit[] }>(CIRCUITS_QUERY)
+      const circuits: SiteCircuit[] = []
+      for (const c of data.circuit_list) {
+        const a = c.terminations.find((t) => t.term_side === 'A')?.site?.name
+        const z = c.terminations.find((t) => t.term_side === 'Z')?.site?.name
+        // only circuits with both ends documented can be drawn on the globe
+        if (!a || !z) continue
+        circuits.push({
+          id: c.id,
+          cid: c.cid,
+          provider: c.provider?.name ?? null,
+          siteA: a,
+          siteZ: z,
+        })
+      }
+      return circuits
     },
   }
 }
