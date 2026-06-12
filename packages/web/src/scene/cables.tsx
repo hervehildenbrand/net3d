@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import {
+  classifyCableKind,
   deviceTransform,
   interRackCablePath,
   intraRackCablePath,
@@ -9,6 +10,7 @@ import {
   type RackPlacement,
 } from '@net3d/shared'
 import type { SiteCable, SiteRack } from '../hooks/useSiteDetail'
+import { theme } from '../theme'
 
 export const CABLE_FALLBACK = '#0ea5e9'
 export const CABLE_LLDP = '#06b6d4'
@@ -28,6 +30,8 @@ export function RackCables({
   cables,
   liveStatus,
   lldpSegments = [],
+  showConnectivity = true,
+  highlightDeviceName = null,
 }: {
   rack: SiteRack
   placement: RackPlacement
@@ -35,6 +39,10 @@ export function RackCables({
   liveStatus?: Map<string, 'up' | 'down'>
   /** LLDP-discovered intra-rack links — rendered dashed. */
   lldpSegments?: LldpCableSegment[]
+  /** Render the documented intra-rack cabling (server↔leaf/OOB) at all. */
+  showConnectivity?: boolean
+  /** Device whose links get full emphasis while everything else dims. */
+  highlightDeviceName?: string | null
 }) {
   const lldpLines = useMemo(() => {
     const boxByShortName = new Map<string, DeviceBox>()
@@ -57,6 +65,7 @@ export function RackCables({
   }, [rack, placement, lldpSegments])
 
   const lines = useMemo(() => {
+    if (!showConnectivity) return []
     const boxByDevice = new Map<string, DeviceBox>()
     for (const d of rack.devices) {
       const box = deviceTransform(placement, d)
@@ -67,29 +76,41 @@ export function RackCables({
       const a = boxByDevice.get(c.a.deviceName)
       const b = boxByDevice.get(c.b.deviceName)
       if (!a || !b) return []
+      const mgmt = classifyCableKind(c.a.name) === 'mgmt' || classifyCableKind(c.b.name) === 'mgmt'
       return [
         {
           id: c.id,
-          color: cableColor(c),
+          color: mgmt ? theme.cable.mgmt : cableColor(c),
+          mgmt,
+          devices: [c.a.deviceName, c.b.deviceName],
           points: intraRackCablePath(a, b).map((p) => [p.x, p.y, p.z] as [number, number, number]),
         },
       ]
     })
-  }, [rack, placement, cables])
+  }, [rack, placement, cables, showConnectivity])
 
   return (
     <>
       {lines.map((l) => {
         const live = liveStatus?.get(l.id)
         const color = live === 'up' ? '#16a34a' : live === 'down' ? '#dc2626' : l.color
+        // hovering/selecting a device emphasizes its links and fades the rest
+        const emphasis = highlightDeviceName
+          ? l.devices.includes(highlightDeviceName)
+            ? 'hi'
+            : 'lo'
+          : 'none'
         return (
           <Line
             key={l.id}
             points={l.points}
             color={color}
-            lineWidth={live ? 2.5 : 1.5}
+            lineWidth={emphasis === 'hi' ? 3 : live ? 2.5 : 1.5}
+            dashed={l.mgmt}
+            dashSize={0.04}
+            gapSize={0.025}
             transparent
-            opacity={live ? 1 : 0.85}
+            opacity={emphasis === 'hi' ? 1 : emphasis === 'lo' ? 0.08 : live ? 1 : 0.85}
           />
         )
       })}

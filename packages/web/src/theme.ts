@@ -35,5 +35,6 @@ export const theme = {
     lldp: '#06b6d4',
     up: '#16a34a',
     down: '#dc2626',
+    mgmt: '#d97706',
   },
 } as const

@@ -36,6 +36,8 @@ export function App() {
   const selectedRackId = useAppStore((s) => s.selectedRackId)
   const selectedDeviceId = useAppStore((s) => s.selectedDeviceId)
   const selectDevice = useAppStore((s) => s.selectDevice)
+  const connectivityVisible = useAppStore((s) => s.connectivityVisible)
+  const toggleConnectivity = useAppStore((s) => s.toggleConnectivity)
   const { data: siteDetail, isLoading: siteLoading } = useSiteDetail(
     level !== 'map' ? selectedSiteName : null,
   )
@@ -197,6 +199,26 @@ export function App() {
           }}
         >
           {level === 'rack' ? '← site' : '← map'}
+        </button>
+      )}
+
+      {level === 'rack' && (
+        <button
+          onClick={toggleConnectivity}
+          title="show/hide server↔leaf and OOB cabling"
+          style={{
+            ...hudStyle,
+            top: 96,
+            background: connectivityVisible ? '#0891b2' : '#ffffff',
+            color: connectivityVisible ? '#ffffff' : '#1e293b',
+            border: '1px solid #cbd5e1',
+            borderRadius: 6,
+            padding: '6px 12px',
+            cursor: 'pointer',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+          }}
+        >
+          {connectivityVisible ? '◉ connectivity' : '○ connectivity'}
         </button>
       )}
     </div>

@@ -10,6 +10,7 @@ import type { SiteCable, SiteDevice, SiteRack } from '../hooks/useSiteDetail'
 import { useNapalm } from '../hooks/useNapalm'
 import type { NapalmInterface } from '../components/DevicePanel'
 import { theme } from '../theme'
+import { useAppStore } from '../store/useAppStore'
 import { RackCables } from './cables'
 
 interface PlacedDevice {
@@ -37,9 +38,14 @@ export function RackLevel({
   visible: boolean
 }) {
   const [hovered, setHovered] = useState<string | null>(null)
+  const connectivityVisible = useAppStore((s) => s.connectivityVisible)
+  const setHoveredDevice = useAppStore((s) => s.setHoveredDevice)
 
   // live cable coloring follows the selected device's interface states
   const selectedDevice = rack.devices.find((d) => d.id === selectedDeviceId)
+  // hover wins over selection for cable emphasis
+  const hoveredDevice = rack.devices.find((d) => d.id === hovered)
+  const highlightDeviceName = hoveredDevice?.name ?? selectedDevice?.name ?? null
   const { data: liveIfaces } = useNapalm<Record<string, NapalmInterface>>(
     napalmAvailable ? selectedDeviceId : null,
     'get_interfaces',
@@ -91,10 +97,12 @@ export function RackLevel({
               onPointerOver={(e) => {
                 e.stopPropagation()
                 setHovered(device.id)
+                setHoveredDevice(device.id)
                 document.body.style.cursor = 'pointer'
               }}
               onPointerOut={() => {
                 setHovered(null)
+                setHoveredDevice(null)
                 document.body.style.cursor = 'auto'
               }}
             >
@@ -126,6 +134,8 @@ export function RackLevel({
         cables={cables}
         liveStatus={liveStatus}
         lldpSegments={lldpSegments}
+        showConnectivity={connectivityVisible}
+        highlightDeviceName={highlightDeviceName}
       />
 
       <Text
