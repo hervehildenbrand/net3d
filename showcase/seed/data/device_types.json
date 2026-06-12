@@ -1,8 +1,13 @@
 [
-  { "role": "server", "manufacturer": "Dell",    "model": "PowerEdge R650",    "slug": "dell-poweredge-r650",   "u_height": 1, "is_full_depth": true },
-  { "role": "server", "manufacturer": "Dell",    "model": "PowerEdge R750",    "slug": "dell-poweredge-r750",   "u_height": 2, "is_full_depth": true },
-  { "role": "server", "manufacturer": "HPE",     "model": "ProLiant DL360 G11","slug": "hpe-proliant-dl360-g11","u_height": 1, "is_full_depth": true },
-  { "role": "leaf",   "manufacturer": "Arista",  "model": "7050SX3-48YC8",     "slug": "arista-7050sx3-48yc8",  "u_height": 1, "is_full_depth": false },
-  { "role": "spine",  "manufacturer": "Arista",  "model": "7280CR3-32P4",      "slug": "arista-7280cr3-32p4",   "u_height": 1, "is_full_depth": false },
-  { "role": "core",   "manufacturer": "Juniper", "model": "MX304",             "slug": "juniper-mx304",         "u_height": 4, "is_full_depth": true }
+  { "role": "server",  "manufacturer": "Dell",    "model": "PowerEdge R650",     "slug": "dell-poweredge-r650",    "u_height": 1, "is_full_depth": true,
+    "specs": { "cpu_model": "2x Intel Xeon Gold 6338 (32c)", "cpu_cores": 64, "ram_gb": 512,  "storage_tb": 7.68 } },
+  { "role": "server",  "manufacturer": "Dell",    "model": "PowerEdge R750",     "slug": "dell-poweredge-r750",    "u_height": 2, "is_full_depth": true,
+    "specs": { "cpu_model": "2x Intel Xeon Platinum 8358 (32c)", "cpu_cores": 64, "ram_gb": 1024, "storage_tb": 15.36 } },
+  { "role": "server",  "manufacturer": "HPE",     "model": "ProLiant DL360 G11", "slug": "hpe-proliant-dl360-g11", "u_height": 1, "is_full_depth": true,
+    "specs": { "cpu_model": "2x Intel Xeon Gold 6430 (32c)", "cpu_cores": 64, "ram_gb": 768,  "storage_tb": 3.84 } },
+  { "role": "leaf",    "manufacturer": "Arista",  "model": "7050SX3-48YC8",      "slug": "arista-7050sx3-48yc8",   "u_height": 1, "is_full_depth": false },
+  { "role": "spine",   "manufacturer": "Arista",  "model": "7280CR3-32P4",       "slug": "arista-7280cr3-32p4",    "u_height": 1, "is_full_depth": false },
+  { "role": "core",    "manufacturer": "Juniper", "model": "MX304",              "slug": "juniper-mx304",          "u_height": 4, "is_full_depth": true },
+  { "role": "oob",     "manufacturer": "Cisco",   "model": "Catalyst 9300-48T",  "slug": "cisco-c9300-48t",        "u_height": 1, "is_full_depth": false },
+  { "role": "oob-agg", "manufacturer": "Cisco",   "model": "Catalyst 9500-48Y4C","slug": "cisco-c9500-48y4c",      "u_height": 1, "is_full_depth": false }
 ]
