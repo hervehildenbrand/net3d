@@ -1,9 +1,11 @@
 import { Canvas } from '@react-three/fiber'
 import { Stars } from '@react-three/drei'
 import { GlobeLevel } from './scene/GlobeLevel'
+import { SiteLevel } from './scene/SiteLevel'
 import { CameraRig, HOME } from './scene/CameraRig'
 import { useSites } from './hooks/useSites'
 import { useCircuits } from './hooks/useCircuits'
+import { useSiteDetail } from './hooks/useSiteDetail'
 import { useAppStore } from './store/useAppStore'
 
 const hudStyle: React.CSSProperties = {
@@ -21,7 +23,11 @@ export function App() {
   const level = useAppStore((s) => s.level)
   const selectedSiteName = useAppStore((s) => s.selectedSiteName)
   const zoomToSite = useAppStore((s) => s.zoomToSite)
+  const zoomToRack = useAppStore((s) => s.zoomToRack)
   const zoomToGlobe = useAppStore((s) => s.zoomToGlobe)
+  const { data: siteDetail, isLoading: siteLoading } = useSiteDetail(
+    level !== 'globe' ? selectedSiteName : null,
+  )
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -34,6 +40,14 @@ export function App() {
             sites={sites}
             circuitGroups={circuitGroups ?? []}
             onSiteClick={zoomToSite}
+            visible={level === 'globe'}
+          />
+        )}
+        {level !== 'globe' && selectedSiteName && siteDetail && (
+          <SiteLevel
+            racks={siteDetail.racks}
+            siteName={selectedSiteName}
+            onRackClick={zoomToRack}
             visible
           />
         )}
@@ -48,7 +62,9 @@ export function App() {
           {sites &&
             level === 'globe' &&
             `${sites.length} sites — ${sites.filter((s) => s.latitude !== null).length} geocoded — ${circuitGroups?.length ?? 0} DC links`}
-          {level !== 'globe' && selectedSiteName && `site: ${selectedSiteName}`}
+          {level !== 'globe' &&
+            selectedSiteName &&
+            `site: ${selectedSiteName}${siteLoading ? ' — loading racks…' : siteDetail ? ` — ${siteDetail.racks.length} racks` : ''}`}
         </div>
       </div>
 
