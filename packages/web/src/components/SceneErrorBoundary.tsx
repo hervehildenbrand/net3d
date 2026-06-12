@@ -21,18 +21,18 @@ export class SceneErrorBoundary extends Component<{ children: ReactNode }, State
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#cfe8ff',
+            color: '#1e293b',
             fontFamily: 'ui-monospace, monospace',
             gap: 12,
           }}
         >
           <strong>net3d hit a rendering error</strong>
-          <code style={{ color: '#e05656', maxWidth: 600 }}>{this.state.error.message}</code>
+          <code style={{ color: '#dc2626', maxWidth: 600 }}>{this.state.error.message}</code>
           <button
             onClick={() => location.reload()}
             style={{
               background: '#13283d',
-              color: '#cfe8ff',
+              color: '#1e293b',
               border: '1px solid #2a4a6a',
               borderRadius: 6,
               padding: '8px 16px',

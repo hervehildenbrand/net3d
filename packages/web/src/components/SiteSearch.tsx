@@ -41,9 +41,9 @@ export function SiteSearch({
         style={{
           width: '100%',
           boxSizing: 'border-box',
-          background: '#0d1b2a',
-          color: '#cfe8ff',
-          border: '1px solid #2a4a6a',
+          background: '#ffffff',
+          color: '#1e293b',
+          border: '1px solid #cbd5e1',
           borderRadius: 6,
           padding: '7px 10px',
           outline: 'none',
@@ -53,8 +53,8 @@ export function SiteSearch({
         <div
           style={{
             marginTop: 4,
-            background: 'rgba(10, 20, 32, 0.97)',
-            border: '1px solid #2a4a6a',
+            background: 'rgba(255, 255, 255, 0.97)',
+            border: '1px solid #cbd5e1',
             borderRadius: 6,
             overflow: 'hidden',
           }}
@@ -72,21 +72,21 @@ export function SiteSearch({
                 cursor: 'pointer',
                 display: 'flex',
                 justifyContent: 'space-between',
-                color: '#cfe8ff',
-                borderBottom: '1px solid #16293d',
+                color: '#1e293b',
+                borderBottom: '1px solid #e2e8f0',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#16314d')}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
               onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
               <span>
                 {s.name}
-                {s.latitude === null && <span style={{ color: '#557', marginLeft: 6 }}>⌀ geo</span>}
+                {s.latitude === null && <span style={{ color: '#cbd5e1', marginLeft: 6 }}>⌀ geo</span>}
               </span>
-              <span style={{ color: '#6f93b4' }}>{s.region ?? ''}</span>
+              <span style={{ color: '#64748b' }}>{s.region ?? ''}</span>
             </div>
           ))}
           {matches.length === 0 && (
-            <div style={{ padding: '6px 10px', color: '#5d83a6' }}>no match</div>
+            <div style={{ padding: '6px 10px', color: '#94a3b8' }}>no match</div>
           )}
         </div>
       )}

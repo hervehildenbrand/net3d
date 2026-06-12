@@ -10,14 +10,14 @@ import {
 } from '@net3d/shared'
 import type { SiteCable, SiteRack } from '../hooks/useSiteDetail'
 
-export const CABLE_FALLBACK = '#58b7e8'
+export const CABLE_FALLBACK = '#0ea5e9'
 export const CABLE_LLDP = '#06b6d4'
 const TRAY_CLEARANCE_M = 0.35
 
 const shortName = (n: string) => n.split('.')[0]!.toLowerCase()
 
 export function cableColor(c: SiteCable): string {
-  if (c.status !== 'CONNECTED') return '#e05656'
+  if (c.status !== 'CONNECTED') return '#dc2626'
   return c.color ? `#${c.color}` : CABLE_FALLBACK
 }
 
@@ -81,7 +81,7 @@ export function RackCables({
     <>
       {lines.map((l) => {
         const live = liveStatus?.get(l.id)
-        const color = live === 'up' ? '#3ddc6f' : live === 'down' ? '#e03e3e' : l.color
+        const color = live === 'up' ? '#16a34a' : live === 'down' ? '#dc2626' : l.color
         return (
           <Line
             key={l.id}

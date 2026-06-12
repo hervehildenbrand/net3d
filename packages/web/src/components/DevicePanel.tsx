@@ -38,9 +38,9 @@ const panel: React.CSSProperties = {
   bottom: 0,
   width: 380,
   overflowY: 'auto',
-  background: 'rgba(10, 20, 32, 0.95)',
-  borderLeft: '1px solid #2a4a6a',
-  color: '#cfe8ff',
+  background: 'rgba(255, 255, 255, 0.96)',
+  borderLeft: '1px solid #cbd5e1',
+  color: '#334155',
   fontFamily: 'ui-monospace, monospace',
   fontSize: 12,
   padding: '16px 18px',
@@ -49,7 +49,7 @@ const panel: React.CSSProperties = {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div style={{ marginBottom: 18 }}>
-      <div style={{ color: '#7fb3d8', textTransform: 'uppercase', fontSize: 10, letterSpacing: 1, marginBottom: 6 }}>
+      <div style={{ color: '#64748b', textTransform: 'uppercase', fontSize: 10, letterSpacing: 1, marginBottom: 6 }}>
         {title}
       </div>
       {children}
@@ -60,7 +60,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function Row({ k, v }: { k: string; v: ReactNode }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '2px 0' }}>
-      <span style={{ color: '#88a8c4' }}>{k}</span>
+      <span style={{ color: '#64748b' }}>{k}</span>
       <span style={{ textAlign: 'right', wordBreak: 'break-all' }}>{v}</span>
     </div>
   )
@@ -68,10 +68,10 @@ function Row({ k, v }: { k: string; v: ReactNode }) {
 
 function Status({ query, label }: { query: { isLoading: boolean; error: unknown }; label: string }) {
   if (query.isLoading)
-    return <div style={{ color: '#5d83a6' }}>connecting to device… (live SSH, can take ~30 s)</div>
+    return <div style={{ color: '#94a3b8' }}>connecting to device… (live SSH, can take ~30 s)</div>
   if (query.error instanceof UnreachableError)
-    return <div style={{ color: '#e0a056' }}>⚠ device unreachable via NAPALM</div>
-  if (query.error) return <div style={{ color: '#e05656' }}>error loading {label}</div>
+    return <div style={{ color: '#d97706' }}>⚠ device unreachable via NAPALM</div>
+  if (query.error) return <div style={{ color: '#dc2626' }}>error loading {label}</div>
   return null
 }
 
@@ -93,9 +93,9 @@ function LldpAudit({ device, cables }: { device: SiteDevice; cables: SiteCable[]
       <button
         onClick={() => setEnabled(true)}
         style={{
-          background: '#13283d',
-          color: '#cfe8ff',
-          border: '1px solid #2a4a6a',
+          background: '#f8fafc',
+          color: '#1e293b',
+          border: '1px solid #cbd5e1',
           borderRadius: 6,
           padding: '5px 10px',
           cursor: 'pointer',
@@ -117,7 +117,7 @@ function LldpAudit({ device, cables }: { device: SiteDevice; cables: SiteCable[]
         <Row
           key={m.cableId}
           k={m.localInterface}
-          v={<span style={{ color: '#5ee08a' }}>✓ {m.neighbor.split('.')[0]}:{m.neighborPort}</span>}
+          v={<span style={{ color: '#16a34a' }}>✓ {m.neighbor.split('.')[0]}:{m.neighborPort}</span>}
         />
       ))}
       {diff.cableOnly.map((c) => (
@@ -125,7 +125,7 @@ function LldpAudit({ device, cables }: { device: SiteDevice; cables: SiteCable[]
           key={c.cableId}
           k={c.localInterface}
           v={
-            <span style={{ color: '#e0a056' }}>
+            <span style={{ color: '#d97706' }}>
               ⚠ documented {c.documentedNeighbor ?? '?'} — not seen by LLDP
             </span>
           }
@@ -136,14 +136,14 @@ function LldpAudit({ device, cables }: { device: SiteDevice; cables: SiteCable[]
           key={`${l.localInterface}-${i}`}
           k={l.localInterface}
           v={
-            <span style={{ color: '#e05656' }}>
+            <span style={{ color: '#dc2626' }}>
               ＋ LLDP sees {l.neighbor.split('.')[0]}:{l.neighborPort} — no cable in NetBox
             </span>
           }
         />
       ))}
       {diff.matches.length + diff.cableOnly.length + diff.lldpOnly.length === 0 && (
-        <div style={{ color: '#5d83a6' }}>no LLDP neighbors and no documented interface cables</div>
+        <div style={{ color: '#94a3b8' }}>no LLDP neighbors and no documented interface cables</div>
       )}
     </>
   )
@@ -165,10 +165,10 @@ export function DevicePanel({
   return (
     <div style={panel}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <strong style={{ color: '#e8f4ff', fontSize: 14 }}>{device.name}</strong>
+        <strong style={{ color: '#1e293b', fontSize: 14 }}>{device.name}</strong>
         <button
           onClick={onClose}
-          style={{ background: 'none', border: 'none', color: '#7fb3d8', cursor: 'pointer', fontSize: 16 }}
+          style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 16 }}
         >
           ✕
         </button>
@@ -226,7 +226,7 @@ export function DevicePanel({
                 key={name}
                 k={name}
                 v={
-                  <span style={{ color: i.is_up ? '#5ee08a' : i.is_enabled ? '#e05656' : '#557' }}>
+                  <span style={{ color: i.is_up ? '#16a34a' : i.is_enabled ? '#dc2626' : '#cbd5e1' }}>
                     {i.is_up ? '● up' : i.is_enabled ? '● down' : '○ disabled'}
                   </span>
                 }
