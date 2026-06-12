@@ -5,7 +5,8 @@ import {
   computeRackLayout,
   type RackPlacement,
 } from '@net3d/shared'
-import type { SiteRack } from '../hooks/useSiteDetail'
+import type { SiteCable, SiteRack } from '../hooks/useSiteDetail'
+import { SiteCables } from './cables'
 
 export function useSiteLayout(racks: SiteRack[] | undefined) {
   return useMemo(() => {
@@ -76,11 +77,13 @@ function Racks({
 
 export function SiteLevel({
   racks,
+  cables,
   siteName,
   onRackClick,
   visible,
 }: {
   racks: SiteRack[]
+  cables: SiteCable[]
   siteName: string
   onRackClick: (rackId: string) => void
   visible: boolean
@@ -112,6 +115,7 @@ export function SiteLevel({
         <meshStandardMaterial color="#1e3c55" transparent opacity={0.12} depthWrite={false} />
       </mesh>
       <Racks placements={placements} onRackClick={onRackClick} />
+      <SiteCables placements={placements} cables={cables} />
       <Text
         position={[center.x, size.y + 0.6, center.z]}
         fontSize={0.5}

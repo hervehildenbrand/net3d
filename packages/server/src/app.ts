@@ -31,10 +31,13 @@ export function buildApp({ netbox }: AppDeps): FastifyInstance {
   app.get<{ Params: { name: string } }>('/api/sites/:name', async (req, reply) => {
     try {
       const { name } = req.params
-      const racks = await cache.getOrSet(`site:${name}`, CACHE_TTL.siteDetail, () =>
-        netbox.getSiteRacks(name),
-      )
-      return { racks }
+      return await cache.getOrSet(`site:${name}`, CACHE_TTL.siteDetail, async () => {
+        const [racks, cables] = await Promise.all([
+          netbox.getSiteRacks(name),
+          netbox.getSiteCables(name),
+        ])
+        return { racks, cables }
+      })
     } catch (err) {
       app.log.error(err)
       return reply.code(502).send({ error: 'netbox_unavailable' })

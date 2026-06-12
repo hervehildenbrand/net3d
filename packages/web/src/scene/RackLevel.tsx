@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Edges, Text } from '@react-three/drei'
 import { deviceTransform, type RackPlacement } from '@net3d/shared'
-import type { SiteDevice, SiteRack } from '../hooks/useSiteDetail'
+import type { SiteCable, SiteDevice, SiteRack } from '../hooks/useSiteDetail'
+import { RackCables } from './cables'
 
 interface PlacedDevice {
   device: SiteDevice
@@ -11,12 +12,14 @@ interface PlacedDevice {
 export function RackLevel({
   rack,
   placement,
+  cables,
   onDeviceClick,
   selectedDeviceId,
   visible,
 }: {
   rack: SiteRack
   placement: RackPlacement
+  cables: SiteCable[]
   onDeviceClick: (deviceId: string) => void
   selectedDeviceId: string | null
   visible: boolean
@@ -85,6 +88,8 @@ export function RackLevel({
           </group>
         )
       })}
+
+      <RackCables rack={rack} placement={placement} cables={cables} />
 
       <Text
         position={[placement.x, placement.height + 0.18, placement.z]}

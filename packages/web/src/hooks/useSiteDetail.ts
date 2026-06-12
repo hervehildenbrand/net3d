@@ -21,8 +21,24 @@ export interface SiteRack {
   devices: SiteDevice[]
 }
 
+export interface CableEndpoint {
+  kind: 'device' | 'powerfeed' | 'circuit'
+  name: string
+  deviceName: string | null
+  rackName: string | null
+}
+
+export interface SiteCable {
+  id: string
+  type: string | null
+  status: string
+  color: string
+  a: CableEndpoint | null
+  b: CableEndpoint | null
+}
+
 export function useSiteDetail(siteName: string | null) {
-  return useQuery<{ racks: SiteRack[] }>({
+  return useQuery<{ racks: SiteRack[]; cables: SiteCable[] }>({
     queryKey: ['site', siteName],
     queryFn: async () => {
       const res = await fetch(`/api/sites/${encodeURIComponent(siteName!)}`)

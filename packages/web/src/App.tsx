@@ -53,6 +53,7 @@ export function App() {
         {level !== 'globe' && selectedSiteName && siteDetail && (
           <SiteLevel
             racks={siteDetail.racks}
+            cables={siteDetail.cables}
             siteName={selectedSiteName}
             onRackClick={zoomToRack}
             visible={level === 'site'}
@@ -62,6 +63,7 @@ export function App() {
           <RackLevel
             rack={selectedRack}
             placement={selectedPlacement}
+            cables={siteDetail?.cables ?? []}
             onDeviceClick={selectDevice}
             selectedDeviceId={selectedDeviceId}
             visible

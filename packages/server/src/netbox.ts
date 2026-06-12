@@ -1,4 +1,5 @@
 import type { SiteCircuit } from '@net3d/shared'
+import { normalizeRawCables, type RawCable, type SiteCable } from './cables'
 
 export interface NetBoxSite {
   id: string
@@ -35,6 +36,7 @@ export interface NetBoxClient {
   getSites(): Promise<NetBoxSite[]>
   getCircuits(): Promise<SiteCircuit[]>
   getSiteRacks(site: string): Promise<SiteRack[]>
+  getSiteCables(site: string): Promise<SiteCable[]>
 }
 
 // NetBox 3.7: *_list takes no pagination args and returns all rows.
@@ -87,6 +89,40 @@ interface RawRack {
     }
   }[]
 }
+
+const DEVICE_TERM = `name device { name rack { name } }`
+const siteCablesQuery = (site: string) => `{
+  cable_list(site: "${site}") {
+    id
+    type
+    status
+    color
+    a_terminations {
+      __typename
+      ... on InterfaceType { ${DEVICE_TERM} }
+      ... on FrontPortType { ${DEVICE_TERM} }
+      ... on RearPortType { ${DEVICE_TERM} }
+      ... on ConsolePortType { ${DEVICE_TERM} }
+      ... on ConsoleServerPortType { ${DEVICE_TERM} }
+      ... on PowerPortType { ${DEVICE_TERM} }
+      ... on PowerOutletType { ${DEVICE_TERM} }
+      ... on PowerFeedType { name rack { name } }
+      ... on CircuitTerminationType { circuit { cid } site { name } }
+    }
+    b_terminations {
+      __typename
+      ... on InterfaceType { ${DEVICE_TERM} }
+      ... on FrontPortType { ${DEVICE_TERM} }
+      ... on RearPortType { ${DEVICE_TERM} }
+      ... on ConsolePortType { ${DEVICE_TERM} }
+      ... on ConsoleServerPortType { ${DEVICE_TERM} }
+      ... on PowerPortType { ${DEVICE_TERM} }
+      ... on PowerOutletType { ${DEVICE_TERM} }
+      ... on PowerFeedType { name rack { name } }
+      ... on CircuitTerminationType { circuit { cid } site { name } }
+    }
+  }
+}`
 
 const CIRCUITS_QUERY = `{
   circuit_list {
@@ -185,6 +221,12 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
           isFullDepth: d.device_type.is_full_depth,
         })),
       }))
+    },
+
+    async getSiteCables(site) {
+      if (!/^[\w.-]+$/.test(site)) throw new Error(`invalid site name: ${site}`)
+      const data = await graphql<{ cable_list: RawCable[] }>(siteCablesQuery(site))
+      return normalizeRawCables(data.cable_list)
     },
   }
 }

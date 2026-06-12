@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import type { SiteCircuit } from '@net3d/shared'
 import { buildApp } from '../src/app'
 import type { NetBoxClient, NetBoxSite, SiteRack } from '../src/netbox'
+import type { SiteCable } from '../src/cables'
 
 const SITES: NetBoxSite[] = [
   {
@@ -43,11 +44,23 @@ const RACKS: SiteRack[] = [
   },
 ]
 
+const CABLES: SiteCable[] = [
+  {
+    id: '1',
+    type: 'cat6',
+    status: 'CONNECTED',
+    color: '',
+    a: { kind: 'device', name: 'eth1', deviceName: 'cn12001', rackName: 'compute_6' },
+    b: { kind: 'device', name: 'Te0/1', deviceName: 'swm1001', rackName: 'compute_6' },
+  },
+]
+
 function fakeNetbox(overrides: Partial<NetBoxClient> = {}): NetBoxClient {
   return {
     getSites: async () => SITES,
     getCircuits: async () => CIRCUITS,
     getSiteRacks: async () => RACKS,
+    getSiteCables: async () => CABLES,
     ...overrides,
   }
 }
@@ -111,7 +124,7 @@ describe('GET /api/sites/:name', () => {
     })
     const res = await app.inject({ method: 'GET', url: '/api/sites/als' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ racks: RACKS })
+    expect(res.json()).toEqual({ racks: RACKS, cables: CABLES })
     expect(requested).toEqual(['als'])
   })
 
