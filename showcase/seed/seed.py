@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -100,12 +101,25 @@ def chunked(seq, n=200):
 
 
 def bulk_create(endpoint, specs):
-    """Bulk-create in batches; return the flat list of created records."""
+    """Bulk-create in batches; return the flat list of created records.
+
+    Parallel workers contend on shared counter rows (e.g. devicetype
+    instance counts), which postgres resolves by aborting one transaction
+    with a deadlock — the batch is untouched, so retrying is safe.
+    """
     out = []
     for batch in chunked(specs):
-        if batch:
-            res = endpoint.create(batch)
-            out.extend(res if isinstance(res, list) else [res])
+        if not batch:
+            continue
+        for attempt in range(5):
+            try:
+                res = endpoint.create(batch)
+                break
+            except pynetbox.RequestError as err:
+                if "deadlock" not in str(err).lower() or attempt == 4:
+                    raise
+                time.sleep(2 * (attempt + 1))
+        out.extend(res if isinstance(res, list) else [res])
     return out
 
 
