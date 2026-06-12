@@ -1,5 +1,6 @@
 import type { SiteCircuit } from '@net3d/shared'
 import { normalizeRawCables, type RawCable, type SiteCable } from './cables'
+import { parseNetBoxMajor, siteRacksQuery, siteCablesQuery, type NetBoxMajor } from './graphql-dialect'
 
 export interface NetBoxSite {
   id: string
@@ -61,25 +62,6 @@ const SITES_QUERY = `{
   }
 }`
 
-// $site is interpolated after validation — GraphQL variables aren't supported
-// for filter args in NetBox 3.7's auto-generated schema the same way.
-const siteRacksQuery = (site: string) => `{
-  rack_list(site: "${site}") {
-    id
-    name
-    u_height
-    location { name }
-    devices {
-      id
-      name
-      position
-      face
-      role { name color }
-      device_type { u_height model is_full_depth manufacturer { name } }
-    }
-  }
-}`
-
 interface RawRack {
   id: string
   name: string
@@ -99,40 +81,6 @@ interface RawRack {
     }
   }[]
 }
-
-const DEVICE_TERM = `name device { name rack { name } }`
-const siteCablesQuery = (site: string) => `{
-  cable_list(site: "${site}") {
-    id
-    type
-    status
-    color
-    a_terminations {
-      __typename
-      ... on InterfaceType { ${DEVICE_TERM} }
-      ... on FrontPortType { ${DEVICE_TERM} }
-      ... on RearPortType { ${DEVICE_TERM} }
-      ... on ConsolePortType { ${DEVICE_TERM} }
-      ... on ConsoleServerPortType { ${DEVICE_TERM} }
-      ... on PowerPortType { ${DEVICE_TERM} }
-      ... on PowerOutletType { ${DEVICE_TERM} }
-      ... on PowerFeedType { name rack { name } }
-      ... on CircuitTerminationType { circuit { cid } site { name } }
-    }
-    b_terminations {
-      __typename
-      ... on InterfaceType { ${DEVICE_TERM} }
-      ... on FrontPortType { ${DEVICE_TERM} }
-      ... on RearPortType { ${DEVICE_TERM} }
-      ... on ConsolePortType { ${DEVICE_TERM} }
-      ... on ConsoleServerPortType { ${DEVICE_TERM} }
-      ... on PowerPortType { ${DEVICE_TERM} }
-      ... on PowerOutletType { ${DEVICE_TERM} }
-      ... on PowerFeedType { name rack { name } }
-      ... on CircuitTerminationType { circuit { cid } site { name } }
-    }
-  }
-}`
 
 const CIRCUITS_QUERY = `{
   circuit_list {
@@ -160,6 +108,27 @@ interface RawSite {
 }
 
 export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient {
+  // Detect the GraphQL dialect once (lazily, on first filtered query) and memoize.
+  // Defaults to v3 if NetBox is unreachable, so the app still boots when it's down.
+  let majorPromise: Promise<NetBoxMajor> | null = null
+  function netboxMajor(): Promise<NetBoxMajor> {
+    if (!majorPromise) {
+      majorPromise = (async () => {
+        try {
+          const res = await fetch(`${baseUrl}/api/status/`, {
+            headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
+          })
+          if (!res.ok) return 3
+          const body = (await res.json()) as { 'netbox-version'?: string }
+          return parseNetBoxMajor(body['netbox-version'])
+        } catch {
+          return 3
+        }
+      })()
+    }
+    return majorPromise
+  }
+
   async function graphql<T>(query: string): Promise<T> {
     const res = await fetch(`${baseUrl}/graphql/`, {
       method: 'POST',
@@ -212,7 +181,7 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
 
     async getSiteRacks(site) {
       if (!/^[\w.-]+$/.test(site)) throw new Error(`invalid site name: ${site}`)
-      const data = await graphql<{ rack_list: RawRack[] }>(siteRacksQuery(site))
+      const data = await graphql<{ rack_list: RawRack[] }>(siteRacksQuery(site, await netboxMajor()))
       return data.rack_list.map((r) => ({
         id: r.id,
         name: r.name,
@@ -235,7 +204,7 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
 
     async getSiteCables(site) {
       if (!/^[\w.-]+$/.test(site)) throw new Error(`invalid site name: ${site}`)
-      const data = await graphql<{ cable_list: RawCable[] }>(siteCablesQuery(site))
+      const data = await graphql<{ cable_list: RawCable[] }>(siteCablesQuery(site, await netboxMajor()))
       return normalizeRawCables(data.cable_list)
     },
 
