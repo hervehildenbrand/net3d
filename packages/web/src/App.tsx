@@ -1,7 +1,8 @@
 import { Canvas } from '@react-three/fiber'
 import { Stars } from '@react-three/drei'
 import { GlobeLevel } from './scene/GlobeLevel'
-import { SiteLevel } from './scene/SiteLevel'
+import { SiteLevel, useSiteLayout } from './scene/SiteLevel'
+import { RackLevel } from './scene/RackLevel'
 import { CameraRig, HOME } from './scene/CameraRig'
 import { useSites } from './hooks/useSites'
 import { useCircuits } from './hooks/useCircuits'
@@ -25,9 +26,15 @@ export function App() {
   const zoomToSite = useAppStore((s) => s.zoomToSite)
   const zoomToRack = useAppStore((s) => s.zoomToRack)
   const zoomToGlobe = useAppStore((s) => s.zoomToGlobe)
+  const selectedRackId = useAppStore((s) => s.selectedRackId)
+  const selectedDeviceId = useAppStore((s) => s.selectedDeviceId)
+  const selectDevice = useAppStore((s) => s.selectDevice)
   const { data: siteDetail, isLoading: siteLoading } = useSiteDetail(
     level !== 'globe' ? selectedSiteName : null,
   )
+  const { placements } = useSiteLayout(siteDetail?.racks)
+  const selectedRack = siteDetail?.racks.find((r) => r.id === selectedRackId)
+  const selectedPlacement = placements.find((p) => p.rackId === selectedRackId)
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -48,6 +55,15 @@ export function App() {
             racks={siteDetail.racks}
             siteName={selectedSiteName}
             onRackClick={zoomToRack}
+            visible={level === 'site'}
+          />
+        )}
+        {level === 'rack' && selectedRack && selectedPlacement && (
+          <RackLevel
+            rack={selectedRack}
+            placement={selectedPlacement}
+            onDeviceClick={selectDevice}
+            selectedDeviceId={selectedDeviceId}
             visible
           />
         )}
@@ -62,15 +78,18 @@ export function App() {
           {sites &&
             level === 'globe' &&
             `${sites.length} sites — ${sites.filter((s) => s.latitude !== null).length} geocoded — ${circuitGroups?.length ?? 0} DC links`}
-          {level !== 'globe' &&
+          {level === 'site' &&
             selectedSiteName &&
             `site: ${selectedSiteName}${siteLoading ? ' — loading racks…' : siteDetail ? ` — ${siteDetail.racks.length} racks` : ''}`}
+          {level === 'rack' && selectedRack && `${selectedSiteName} / ${selectedRack.name}`}
         </div>
       </div>
 
       {level !== 'globe' && (
         <button
-          onClick={zoomToGlobe}
+          onClick={() =>
+            level === 'rack' && selectedSiteName ? zoomToSite(selectedSiteName) : zoomToGlobe()
+          }
           style={{
             ...hudStyle,
             top: 56,
@@ -82,7 +101,7 @@ export function App() {
             cursor: 'pointer',
           }}
         >
-          ← globe
+          {level === 'rack' ? '← site' : '← globe'}
         </button>
       )}
     </div>

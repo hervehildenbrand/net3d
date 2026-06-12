@@ -14,8 +14,9 @@ export function CameraRig({ sites }: { sites: Site[] }) {
   const controls = useRef<CameraControls>(null)
   const level = useAppStore((s) => s.level)
   const siteName = useAppStore((s) => s.selectedSiteName)
+  const rackId = useAppStore((s) => s.selectedRackId)
   const { data: siteDetail } = useSiteDetail(level !== 'globe' ? siteName : null)
-  const { bounds } = useSiteLayout(siteDetail?.racks)
+  const { placements, bounds } = useSiteLayout(siteDetail?.racks)
 
   useEffect(() => {
     const c = controls.current
@@ -41,8 +42,24 @@ export function CameraRig({ sites }: { sites: Site[] }) {
       const cz = (bounds.max.z + bounds.min.z) / 2
       const span = Math.max(bounds.max.x - bounds.min.x, bounds.max.z - bounds.min.z, 4)
       void c.setLookAt(cx + span * 0.55, span * 0.7, cz + span * 0.95, cx, 1, cz, true)
+      return
     }
-  }, [level, siteName, sites, siteDetail, bounds])
+
+    if (level === 'rack' && rackId) {
+      const p = placements.find((pl) => pl.rackId === rackId)
+      if (!p) return
+      // face the rack front (+z), slightly right so side labels stay readable
+      void c.setLookAt(
+        p.x + 0.9,
+        p.height * 0.55,
+        p.z + p.depth / 2 + 2.1,
+        p.x,
+        p.height / 2,
+        p.z,
+        true,
+      )
+    }
+  }, [level, siteName, rackId, sites, siteDetail, bounds, placements])
 
   return <CameraControls ref={controls} minDistance={0.05} maxDistance={14} smoothTime={0.6} />
 }
