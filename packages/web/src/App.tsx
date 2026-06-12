@@ -9,6 +9,8 @@ import { useCircuits } from './hooks/useCircuits'
 import { useSiteDetail } from './hooks/useSiteDetail'
 import { useAppStore } from './store/useAppStore'
 import { DevicePanel } from './components/DevicePanel'
+import { SiteSearch } from './components/SiteSearch'
+import { SceneErrorBoundary } from './components/SceneErrorBoundary'
 
 const hudStyle: React.CSSProperties = {
   position: 'absolute',
@@ -40,7 +42,8 @@ export function App() {
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <Canvas camera={{ position: [HOME.x, HOME.y, HOME.z], fov: 50 }}>
+      <SceneErrorBoundary>
+      <Canvas frameloop="demand" camera={{ position: [HOME.x, HOME.y, HOME.z], fov: 50 }}>
         <ambientLight intensity={0.7} />
         <directionalLight position={[HOME.x, HOME.y + 3, HOME.z]} intensity={1.6} />
         <Stars radius={60} depth={30} count={3000} factor={3} fade />
@@ -73,6 +76,11 @@ export function App() {
         )}
         {sites && <CameraRig sites={sites} />}
       </Canvas>
+      </SceneErrorBoundary>
+
+      {sites && level === 'globe' && !selectedDevice && (
+        <SiteSearch sites={sites} onSelect={zoomToSite} />
+      )}
 
       <div style={{ ...hudStyle, pointerEvents: 'none' }}>
         <strong style={{ color: '#e8f4ff' }}>net3d</strong>
