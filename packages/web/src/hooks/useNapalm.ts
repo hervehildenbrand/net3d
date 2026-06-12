@@ -27,6 +27,8 @@ export function useNapalm<T = unknown>(deviceId: string | null, method: NapalmMe
     },
     enabled: !!deviceId,
     staleTime: STALE_MS[method],
+    // keep interface state fresh while a device is being watched
+    refetchInterval: method === 'get_interfaces' ? 10_000 : false,
     retry: false, // a 25s SSH round-trip is too expensive to auto-retry
   })
 }

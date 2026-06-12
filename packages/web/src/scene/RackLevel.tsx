@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Edges, Text } from '@react-three/drei'
-import { deviceTransform, type RackPlacement } from '@net3d/shared'
+import { deviceTransform, mapInterfacesToCables, type RackPlacement } from '@net3d/shared'
 import type { SiteCable, SiteDevice, SiteRack } from '../hooks/useSiteDetail'
+import { useNapalm } from '../hooks/useNapalm'
+import type { NapalmInterface } from '../components/DevicePanel'
 import { RackCables } from './cables'
 
 interface PlacedDevice {
@@ -25,6 +27,20 @@ export function RackLevel({
   visible: boolean
 }) {
   const [hovered, setHovered] = useState<string | null>(null)
+
+  // live cable coloring follows the selected device's interface states
+  const selectedDevice = rack.devices.find((d) => d.id === selectedDeviceId)
+  const { data: liveIfaces } = useNapalm<Record<string, NapalmInterface>>(
+    selectedDeviceId,
+    'get_interfaces',
+  )
+  const liveStatus = useMemo(
+    () =>
+      liveIfaces && selectedDevice
+        ? mapInterfacesToCables(liveIfaces, cables, selectedDevice.name)
+        : undefined,
+    [liveIfaces, selectedDevice, cables],
+  )
 
   const placed = useMemo<PlacedDevice[]>(
     () =>
@@ -89,7 +105,7 @@ export function RackLevel({
         )
       })}
 
-      <RackCables rack={rack} placement={placement} cables={cables} />
+      <RackCables rack={rack} placement={placement} cables={cables} liveStatus={liveStatus} />
 
       <Text
         position={[placement.x, placement.height + 0.18, placement.z]}

@@ -22,10 +22,12 @@ export function RackCables({
   rack,
   placement,
   cables,
+  liveStatus,
 }: {
   rack: SiteRack
   placement: RackPlacement
   cables: SiteCable[]
+  liveStatus?: Map<string, 'up' | 'down'>
 }) {
   const lines = useMemo(() => {
     const boxByDevice = new Map<string, DeviceBox>()
@@ -50,9 +52,20 @@ export function RackCables({
 
   return (
     <>
-      {lines.map((l) => (
-        <Line key={l.id} points={l.points} color={l.color} lineWidth={1.5} transparent opacity={0.85} />
-      ))}
+      {lines.map((l) => {
+        const live = liveStatus?.get(l.id)
+        const color = live === 'up' ? '#3ddc6f' : live === 'down' ? '#e03e3e' : l.color
+        return (
+          <Line
+            key={l.id}
+            points={l.points}
+            color={color}
+            lineWidth={live ? 2.5 : 1.5}
+            transparent
+            opacity={live ? 1 : 0.85}
+          />
+        )
+      })}
     </>
   )
 }
