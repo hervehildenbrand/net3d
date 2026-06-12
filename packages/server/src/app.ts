@@ -2,6 +2,11 @@ import Fastify, { type FastifyInstance } from 'fastify'
 import { groupCircuitsBySitePair } from '@net3d/shared'
 import { TtlCache } from './cache'
 import { NapalmUnreachableError, type NetBoxClient } from './netbox'
+import { loadSiteDetail, prewarmCaches } from './prewarm'
+
+// Stale entries are served instantly and refreshed in the background, so a
+// TTL here is "how old may data get before a refresh starts", not a hard cutoff.
+const SWR = { staleWhileRevalidate: true }
 
 export const CACHE_TTL = {
   sites: 300_000,
@@ -22,11 +27,25 @@ export interface AppDeps {
   netbox: NetBoxClient
   /** Max NAPALM calls in flight or waiting before requests are shed with 429. */
   napalmMaxQueue?: number
+  /** Pre-warm all caches at startup and refresh on an interval (0 = once only). */
+  prewarm?: { intervalMs?: number; concurrency?: number }
 }
 
-export function buildApp({ netbox, napalmMaxQueue = 8 }: AppDeps): FastifyInstance {
+export function buildApp({ netbox, napalmMaxQueue = 8, prewarm }: AppDeps): FastifyInstance {
   const app = Fastify({ logger: false })
   const cache = new TtlCache()
+
+  if (prewarm) {
+    const ttl = { sites: CACHE_TTL.sites, circuits: CACHE_TTL.circuits, siteDetail: CACHE_TTL.siteDetail }
+    const warm = () =>
+      prewarmCaches(cache, netbox, ttl, prewarm.concurrency).catch((err) => app.log.warn(err))
+    void warm()
+    if (prewarm.intervalMs && prewarm.intervalMs > 0) {
+      const timer = setInterval(warm, prewarm.intervalMs)
+      timer.unref()
+      app.addHook('onClose', async () => clearInterval(timer))
+    }
+  }
 
   app.get('/api/health', async () => ({ status: 'ok' }))
 
@@ -42,7 +61,7 @@ export function buildApp({ netbox, napalmMaxQueue = 8 }: AppDeps): FastifyInstan
 
   app.get('/api/sites', async (_req, reply) => {
     try {
-      return await cache.getOrSet('sites', CACHE_TTL.sites, () => netbox.getSites())
+      return await cache.getOrSet('sites', CACHE_TTL.sites, () => netbox.getSites(), SWR)
     } catch (err) {
       app.log.error(err)
       return reply.code(502).send({ error: 'netbox_unavailable' })
@@ -52,13 +71,12 @@ export function buildApp({ netbox, napalmMaxQueue = 8 }: AppDeps): FastifyInstan
   app.get<{ Params: { name: string } }>('/api/sites/:name', async (req, reply) => {
     try {
       const { name } = req.params
-      return await cache.getOrSet(`site:${name}`, CACHE_TTL.siteDetail, async () => {
-        const [racks, cables] = await Promise.all([
-          netbox.getSiteRacks(name),
-          netbox.getSiteCables(name),
-        ])
-        return { racks, cables }
-      })
+      return await cache.getOrSet(
+        `site:${name}`,
+        CACHE_TTL.siteDetail,
+        () => loadSiteDetail(netbox, name),
+        SWR,
+      )
     } catch (err) {
       app.log.error(err)
       return reply.code(502).send({ error: 'netbox_unavailable' })
@@ -99,8 +117,11 @@ export function buildApp({ netbox, napalmMaxQueue = 8 }: AppDeps): FastifyInstan
 
   app.get('/api/circuits', async (_req, reply) => {
     try {
-      return await cache.getOrSet('circuits', CACHE_TTL.circuits, async () =>
-        groupCircuitsBySitePair(await netbox.getCircuits()),
+      return await cache.getOrSet(
+        'circuits',
+        CACHE_TTL.circuits,
+        async () => groupCircuitsBySitePair(await netbox.getCircuits()),
+        SWR,
       )
     } catch (err) {
       app.log.error(err)
