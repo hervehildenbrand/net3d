@@ -45,6 +45,7 @@ describe('normalizeRawRacks', () => {
           model: 'ptx10001_36mr',
           manufacturer: 'Juniper',
           isFullDepth: true,
+          status: 'active',
         },
       ],
     })
@@ -58,6 +59,61 @@ describe('normalizeRawRacks', () => {
   test('keeps a null face null', () => {
     const [r] = normalizeRawRacks([rack({ devices: [device({ face: null })] })])
     expect(r!.devices[0]!.face).toBeNull()
+  })
+
+  test('normalizes device status to lowercase, defaulting to active when absent', () => {
+    const [r] = normalizeRawRacks([
+      rack({ devices: [device({ status: 'OFFLINE' }), device({ id: '2', name: 'd2' })] }),
+    ])
+    expect(r!.devices[0]!.status).toBe('offline')
+    expect(r!.devices[1]!.status).toBe('active')
+  })
+
+  test('parses hardware specs from device_type custom fields', () => {
+    const [r] = normalizeRawRacks([
+      rack({
+        devices: [
+          device({
+            device_type: {
+              u_height: 1,
+              model: 'PowerEdge R650',
+              is_full_depth: true,
+              manufacturer: { name: 'Dell' },
+              custom_fields: {
+                cpu_model: '2x Intel Xeon Gold 6338 (32c)',
+                cpu_cores: 64,
+                ram_gb: 512,
+                storage_tb: '7.68',
+              },
+            },
+          }),
+        ],
+      }),
+    ])
+    expect(r!.devices[0]!.specs).toEqual({
+      cpuModel: '2x Intel Xeon Gold 6338 (32c)',
+      cpuCores: 64,
+      ramGb: 512,
+      storageTb: 7.68,
+    })
+  })
+
+  test('specs are undefined when custom fields are absent or empty (3.7 instances)', () => {
+    const [plain] = normalizeRawRacks([rack()])
+    expect(plain!.devices[0]!.specs).toBeUndefined()
+    const [empty] = normalizeRawRacks([
+      rack({
+        devices: [
+          device({
+            device_type: {
+              u_height: 1, model: 'x', is_full_depth: true, manufacturer: null,
+              custom_fields: { cpu_model: null },
+            },
+          }),
+        ],
+      }),
+    ])
+    expect(empty!.devices[0]!.specs).toBeUndefined()
   })
 
   test('coerces string decimals and falls back for missing role/manufacturer', () => {

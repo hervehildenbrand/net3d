@@ -23,6 +23,13 @@ export interface NetBoxSite {
   deviceCount: number | null
 }
 
+export interface DeviceSpecs {
+  cpuModel?: string
+  cpuCores?: number
+  ramGb?: number
+  storageTb?: number
+}
+
 export interface SiteDevice {
   id: string
   name: string
@@ -35,6 +42,9 @@ export interface SiteDevice {
   model: string
   manufacturer: string
   isFullDepth: boolean
+  status: string
+  /** Hardware specs from device-type custom fields; undefined when not documented. */
+  specs?: DeviceSpecs
 }
 
 export interface SiteRack {
@@ -87,14 +97,34 @@ export interface RawRack {
     name: string
     position: string | number | null
     face: string | null
+    status?: string | null
     role: { name: string; color: string } | null
     device_type: {
       u_height: string | number
       model: string
       is_full_depth: boolean
       manufacturer: { name: string } | null
+      custom_fields?: Record<string, unknown> | null
     }
   }[]
+}
+
+/** Hardware specs from the device-type custom-fields blob; undefined when empty. */
+function parseSpecs(cf: Record<string, unknown> | null | undefined): DeviceSpecs | undefined {
+  if (!cf) return undefined
+  const specs: DeviceSpecs = {}
+  if (typeof cf.cpu_model === 'string' && cf.cpu_model) specs.cpuModel = cf.cpu_model
+  const num = (v: unknown): number | undefined => {
+    const n = Number(v)
+    return v == null || v === '' || Number.isNaN(n) ? undefined : n
+  }
+  const cores = num(cf.cpu_cores)
+  if (cores !== undefined) specs.cpuCores = cores
+  const ram = num(cf.ram_gb)
+  if (ram !== undefined) specs.ramGb = ram
+  const storage = num(cf.storage_tb)
+  if (storage !== undefined) specs.storageTb = storage
+  return Object.keys(specs).length ? specs : undefined
 }
 
 /** Map NetBox rack rows into the SiteRack shape, normalizing types and enum casing. */
@@ -116,6 +146,8 @@ export function normalizeRawRacks(raw: RawRack[]): SiteRack[] {
       model: d.device_type.model,
       manufacturer: d.device_type.manufacturer?.name ?? 'unknown',
       isFullDepth: d.device_type.is_full_depth,
+      status: (d.status ?? 'active').toLowerCase(),
+      specs: parseSpecs(d.device_type.custom_fields),
     })),
   }))
 }

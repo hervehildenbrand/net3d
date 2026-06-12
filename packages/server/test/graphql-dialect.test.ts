@@ -42,6 +42,14 @@ describe('siteRacksQuery', () => {
       expect(q).toContain('role { name color }')
     }
   })
+
+  test('selects device status and device_type custom_fields (hardware specs)', () => {
+    for (const v of [3, 4] as const) {
+      const q = siteRacksQuery('dc1', v)
+      expect(q).toContain('status')
+      expect(q).toContain('custom_fields')
+    }
+  })
 })
 
 describe('siteCablesQuery', () => {

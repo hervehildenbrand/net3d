@@ -50,6 +50,7 @@ const RACKS: SiteRack[] = [
         model: 'ptx10001_36mr',
         manufacturer: 'Juniper',
         isFullDepth: true,
+        status: 'active',
       },
     ],
   },

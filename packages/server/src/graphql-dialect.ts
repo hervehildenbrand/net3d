@@ -30,8 +30,9 @@ export function siteRacksQuery(site: string, version: NetBoxMajor): string {
       name
       position
       face
+      status
       role { name color }
-      device_type { u_height model is_full_depth manufacturer { name } }
+      device_type { u_height model is_full_depth manufacturer { name } custom_fields }
     }
   }
 }`
