@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from 'react'
-import { lldpDiff, type LldpNeighbor } from '@net3d/shared'
+import { useMemo, useState, type ReactNode } from 'react'
+import { getCablesForDevice, lldpDiff, type LldpNeighbor } from '@net3d/shared'
 import { UnreachableError, useNapalm } from '../hooks/useNapalm'
 import type { SiteCable, SiteDevice } from '../hooks/useSiteDetail'
+import { theme } from '../theme'
 
 interface Facts {
   vendor: string
@@ -57,7 +58,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-function Row({ k, v }: { k: string; v: ReactNode }) {
+function Row({ k, v }: { k: ReactNode; v: ReactNode }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '2px 0' }}>
       <span style={{ color: '#64748b' }}>{k}</span>
@@ -165,11 +166,27 @@ export function DevicePanel({
   const facts = useNapalm<Facts>(liveId, 'get_facts')
   const env = useNapalm<Environment>(liveId, 'get_environment')
   const ifaces = useNapalm<Record<string, NapalmInterface>>(liveId, 'get_interfaces')
+  const ports = useMemo(() => getCablesForDevice(cables, device.name), [cables, device.name])
+  const active = device.status === 'active'
 
   return (
     <div style={panel}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <strong style={{ color: '#1e293b', fontSize: 14 }}>{device.name}</strong>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <strong style={{ color: '#1e293b', fontSize: 14, overflowWrap: 'anywhere' }}>{device.name}</strong>
+          <span
+            style={{
+              fontSize: 10,
+              padding: '1px 6px',
+              borderRadius: 4,
+              whiteSpace: 'nowrap',
+              background: active ? '#dcfce7' : '#fef3c7',
+              color: active ? '#166534' : '#92400e',
+            }}
+          >
+            {device.status}
+          </span>
+        </span>
         <button
           onClick={onClose}
           style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 16 }}
@@ -182,6 +199,30 @@ export function DevicePanel({
         <Row k="role" v={device.roleName} />
         <Row k="model" v={`${device.manufacturer} ${device.model}`} />
         <Row k="position" v={device.position !== null ? `U${device.position} · ${device.face ?? ''}` : 'unpositioned'} />
+      </Section>
+
+      {device.specs && (
+        <Section title="Hardware">
+          {device.specs.cpuModel && <Row k="cpu" v={device.specs.cpuModel} />}
+          {device.specs.cpuCores !== undefined && <Row k="cores" v={device.specs.cpuCores} />}
+          {device.specs.ramGb !== undefined && <Row k="memory" v={`${device.specs.ramGb} GB`} />}
+          {device.specs.storageTb !== undefined && <Row k="storage" v={`${device.specs.storageTb} TB`} />}
+        </Section>
+      )}
+
+      <Section title={`Port allocation${ports.length ? ` (${ports.length})` : ''}`}>
+        {ports.length === 0 && <div style={{ color: '#94a3b8' }}>no documented cables</div>}
+        {ports.map((p) => (
+          <Row
+            key={p.cableId}
+            k={
+              <span style={{ color: p.kind === 'mgmt' ? theme.cable.mgmt : '#64748b' }}>
+                {p.interfaceName}
+              </span>
+            }
+            v={`→ ${p.remoteDeviceName ?? '?'} : ${p.remoteInterfaceName ?? '?'}`}
+          />
+        ))}
       </Section>
 
       {!napalmAvailable && (
