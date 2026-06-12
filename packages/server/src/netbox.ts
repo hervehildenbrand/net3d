@@ -62,7 +62,7 @@ const SITES_QUERY = `{
   }
 }`
 
-interface RawRack {
+export interface RawRack {
   id: string
   name: string
   u_height: number
@@ -80,6 +80,29 @@ interface RawRack {
       manufacturer: { name: string } | null
     }
   }[]
+}
+
+/** Map NetBox rack rows into the SiteRack shape, normalizing types and enum casing. */
+export function normalizeRawRacks(raw: RawRack[]): SiteRack[] {
+  return raw.map((r) => ({
+    id: r.id,
+    name: r.name,
+    uHeight: r.u_height,
+    location: r.location?.name ?? null,
+    devices: r.devices.map((d) => ({
+      id: d.id,
+      name: d.name,
+      position: d.position === null ? null : Number(d.position),
+      // NetBox 4.x (Strawberry) returns enums lowercase; the app compares 'REAR'
+      face: d.face ? d.face.toUpperCase() : d.face,
+      roleName: d.role?.name ?? 'unknown',
+      roleColor: d.role?.color ?? '888888',
+      uHeight: Number(d.device_type.u_height) || 1,
+      model: d.device_type.model,
+      manufacturer: d.device_type.manufacturer?.name ?? 'unknown',
+      isFullDepth: d.device_type.is_full_depth,
+    })),
+  }))
 }
 
 const CIRCUITS_QUERY = `{
@@ -182,24 +205,7 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
     async getSiteRacks(site) {
       if (!/^[\w.-]+$/.test(site)) throw new Error(`invalid site name: ${site}`)
       const data = await graphql<{ rack_list: RawRack[] }>(siteRacksQuery(site, await netboxMajor()))
-      return data.rack_list.map((r) => ({
-        id: r.id,
-        name: r.name,
-        uHeight: r.u_height,
-        location: r.location?.name ?? null,
-        devices: r.devices.map((d) => ({
-          id: d.id,
-          name: d.name,
-          position: d.position === null ? null : Number(d.position),
-          face: d.face,
-          roleName: d.role?.name ?? 'unknown',
-          roleColor: d.role?.color ?? '888888',
-          uHeight: Number(d.device_type.u_height) || 1,
-          model: d.device_type.model,
-          manufacturer: d.device_type.manufacturer?.name ?? 'unknown',
-          isFullDepth: d.device_type.is_full_depth,
-        })),
-      }))
+      return normalizeRawRacks(data.rack_list)
     },
 
     async getSiteCables(site) {
