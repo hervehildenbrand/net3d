@@ -8,8 +8,10 @@ spine-leaf fabric, and inter-DC circuits (10G/100G/400G commit rates) from a
 curated list of real transit providers. Server hardware specs live as custom
 fields on the device types; a deterministic ~4%% of servers are offline/planned.
 
-Idempotent: top-level objects are get-or-created by slug; a site whose racks
-already exist is skipped, so the script is safe to re-run / resume.
+Idempotent at object level: reference data is get-or-created by slug, and
+racks/devices/interfaces/cables are diffed against what already exists — the
+script can be killed and resumed, or run in parallel over disjoint ONLY_SITES
+slices (with SKIP_CIRCUITS=1, finishing with one full-list circuits pass).
 
 Tunable via env:
   NETBOX_URL (default http://localhost:8088)
@@ -45,6 +47,10 @@ SPINE_UPLINKS = int(os.environ.get("SPINE_UPLINKS", "4"))
 SERVER_CABLING = os.environ.get("SERVER_CABLING", "sample")  # sample|full|none
 SERVER_CABLING_SAMPLE = int(os.environ.get("SERVER_CABLING_SAMPLE", "4"))
 ONLY_SITES = {s.strip().upper() for s in os.environ.get("ONLY_SITES", "").split(",") if s.strip()}
+# Parallel workers seed disjoint ONLY_SITES slices with circuits skipped; the
+# circuit ring topology depends on the FULL dc list, so a final full-list pass
+# (without this flag) creates them once, correctly.
+SKIP_CIRCUITS = os.environ.get("SKIP_CIRCUITS", "") in ("1", "true")
 
 RACK_HEIGHT = 42
 ROLE_COLORS = {
@@ -201,13 +207,9 @@ def seed_site(dc, regions, roles, types_by_role, tags):
         },
     )
 
-    if len(list(nb.dcim.racks.filter(site_id=site.id))) >= srv_racks + NETWORK_RACKS:
-        print(f"   {code}: racks already present — skipping", flush=True)
-        return site
-
     print(f"== {code} ({dc['name']}) ==", flush=True)
 
-    # locations + racks
+    # locations + racks (diff against existing: safe to resume a killed run)
     halls = {}
     for hall in ["server-hall-1", "server-hall-2", "network-core"]:
         halls[hall] = goc(
@@ -228,7 +230,11 @@ def seed_site(dc, regions, roles, types_by_role, tags):
             {"name": f"{code}-NET-{i:02d}", "site": site.id, "location": halls["network-core"].id,
              "u_height": RACK_HEIGHT, "status": "active"}
         )
-    racks = {r.name: r for r in bulk_create(nb.dcim.racks, rack_specs)}
+    racks = {r.name: r for r in nb.dcim.racks.filter(site_id=site.id, limit=1000)}
+    racks.update(
+        (r.name, r)
+        for r in bulk_create(nb.dcim.racks, [s for s in rack_specs if s["name"] not in racks])
+    )
 
     server_types = types_by_role["server"]
     leaf_type = types_by_role["leaf"][0]
@@ -291,8 +297,10 @@ def seed_site(dc, regions, roles, types_by_role, tags):
         dev(an, oob_agg_type, "oob", racks[rname].id, 20)
         oob_agg_names.append(an)
 
-    devices = {d.name: d for d in bulk_create(nb.dcim.devices, dev_specs)}
-    print(f"   {len(devices)} devices", flush=True)
+    devices = {d.name: d for d in nb.dcim.devices.filter(site_id=site.id, limit=1000)}
+    new_devs = bulk_create(nb.dcim.devices, [s for s in dev_specs if s["name"] not in devices])
+    devices.update((d.name, d) for d in new_devs)
+    print(f"   {len(devices)} devices ({len(new_devs)} new)", flush=True)
 
     # cabling plan: collect interfaces per device, then the cables between them
     ifaces = defaultdict(dict)  # device_name -> {iface_name: type}
@@ -349,26 +357,43 @@ def seed_site(dc, regions, roles, types_by_role, tags):
         link(dn, "mgmt0", "1000base-t",
              agg, f"Mgmt-{dn.removeprefix(code + '-')}", "1000base-t", "cat6a")
 
-    # create interfaces in bulk, then resolve (device_id, name) -> id
+    # create interfaces in bulk (diffed against existing), then resolve
+    # (device_id, name) -> id
+    iface_id = {
+        (rec.device.id, rec.name): rec.id
+        for rec in nb.dcim.interfaces.filter(site_id=site.id, limit=1000)
+    }
     iface_specs = [
         {"device": devices[dn].id, "name": name, "type": t}
-        for dn, ports in ifaces.items() for name, t in ports.items()
+        for dn, ports in ifaces.items()
+        for name, t in ports.items()
+        if (devices[dn].id, name) not in iface_id
     ]
     created = bulk_create(nb.dcim.interfaces, iface_specs)
-    iface_id = {(rec.device.id, rec.name): rec.id for rec in created}
-    print(f"   {len(created)} interfaces", flush=True)
+    iface_id.update(((rec.device.id, rec.name), rec.id) for rec in created)
+    print(f"   {len(iface_id)} interfaces ({len(created)} new)", flush=True)
+
+    # existing cables keyed by their interface-id pair, so resume never duplicates
+    existing_pairs = set()
+    for c in nb.dcim.cables.filter(site_id=site.id, limit=500):
+        a = c.a_terminations[0].object_id if c.a_terminations else None
+        b = c.b_terminations[0].object_id if c.b_terminations else None
+        if a and b:
+            existing_pairs.add(frozenset((a, b)))
 
     cable_specs = []
     for a_dev, a_if, b_dev, b_if, ctype in plan:
         aid = iface_id[(devices[a_dev].id, a_if)]
         bid = iface_id[(devices[b_dev].id, b_if)]
+        if frozenset((aid, bid)) in existing_pairs:
+            continue
         cable_specs.append({
             "a_terminations": [{"object_type": "dcim.interface", "object_id": aid}],
             "b_terminations": [{"object_type": "dcim.interface", "object_id": bid}],
             "status": "connected", "type": ctype,
         })
     cables = bulk_create(nb.dcim.cables, cable_specs)
-    print(f"   {len(cables)} cables", flush=True)
+    print(f"   {len(existing_pairs) + len(cables)} cables ({len(cables)} new)", flush=True)
     return site
 
 
@@ -438,7 +463,10 @@ def main():
     sites = {}
     for dc in dcs:
         sites[dc["code"]] = seed_site(dc, regions, roles, types_by_role, tags)
-    seed_circuits(dcs, sites, providers, ctype)
+    if SKIP_CIRCUITS:
+        print("(circuits skipped)", flush=True)
+    else:
+        seed_circuits(dcs, sites, providers, ctype)
     print("Done.", flush=True)
 
 
