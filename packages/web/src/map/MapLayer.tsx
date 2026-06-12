@@ -3,8 +3,12 @@ import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap, useMapEvents } 
 import 'leaflet/dist/leaflet.css'
 import { computeMapBounds, type CircuitGroup } from '@net3d/shared'
 import type { Site } from '../hooks/useSites'
+import { useSitePrefetch } from '../hooks/useSitePrefetch'
 import { useAppStore } from '../store/useAppStore'
 import { CircuitPolylines } from './CircuitPolylines'
+
+/** Below the enter threshold (14), but close enough that entry is likely. */
+const PREFETCH_ZOOM = 11
 
 
 const TILE_URL = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
@@ -14,6 +18,7 @@ const TILE_ATTRIBUTION =
 /** Feeds zoom/center signals into the navigation machine (map → site threshold). */
 function MapNavWatcher({ sites }: { sites: Site[] }) {
   const handleMapSignals = useAppStore((s) => s.handleMapSignals)
+  const prefetchSite = useSitePrefetch()
 
   // Leaflet zooms toward the cursor, not the center — so the criterion is
   // "a site marker is visible in the (small, high-zoom) viewport",
@@ -34,6 +39,7 @@ function MapNavWatcher({ sites }: { sites: Site[] }) {
         best = { name: s.name, lat: s.latitude, lng: s.longitude }
       }
     }
+    if (best && zoom >= PREFETCH_ZOOM) prefetchSite(best.name)
     handleMapSignals(zoom, best)
   }
 
@@ -85,6 +91,7 @@ export function MapLayer({
   onSiteSelect: (name: string) => void
 }) {
   const setMapView = useAppStore((s) => s.setMapView)
+  const prefetchSite = useSitePrefetch()
   const geocoded = sites.filter((s) => s.latitude !== null && s.longitude !== null)
 
   return (
@@ -107,6 +114,7 @@ export function MapLayer({
           radius={7}
           pathOptions={{ color: '#0284c7', weight: 2, fillColor: '#38bdf8', fillOpacity: 0.85 }}
           eventHandlers={{
+            mouseover: () => prefetchSite(s.name),
             click: () => {
               setMapView({ center: [s.latitude!, s.longitude!], zoom: 13 })
               onSiteSelect(s.name)

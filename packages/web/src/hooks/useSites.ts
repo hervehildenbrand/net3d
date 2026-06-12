@@ -7,6 +7,11 @@ export interface Site {
   longitude: number | null
   region: string | null
   status: string
+  physicalAddress: string | null
+  facility: string | null
+  role: 'compute' | 'pop' | null
+  rackCount: number | null
+  deviceCount: number | null
 }
 
 export function useSites() {
