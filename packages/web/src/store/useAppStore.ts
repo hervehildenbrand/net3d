@@ -3,6 +3,7 @@ import {
   DEFAULT_THRESHOLDS,
   initialNavMachine,
   stepNavigation,
+  thresholdsForSpan,
 } from '@net3d/shared'
 
 export type ViewLevel = 'map' | 'site' | 'rack'
@@ -27,13 +28,20 @@ interface AppState {
   zoomToMap: () => void
   selectDevice: (deviceId: string | null) => void
   setMapView: (view: MapView) => void
+  /** Rack view: render server↔leaf/OOB connectivity lines. */
+  connectivityVisible: boolean
+  toggleConnectivity: () => void
+  /** Device under the pointer in the rack view (drives cable highlighting). */
+  hoveredDeviceId: string | null
+  setHoveredDevice: (deviceId: string | null) => void
   /** Leaflet zoomend/moveend feed: candidate site near the view center, if any. */
   handleMapSignals: (zoom: number, site: { name: string; lat: number; lng: number } | null) => void
-  /** CameraControls feed at site/rack level. */
+  /** CameraControls feed at site/rack level; span sizes the exit thresholds. */
   handleCameraSignals: (
     distToSite: number | null,
     distToRack: number | null,
     nearestRackId: string | null,
+    siteSpan?: number | null,
   ) => void
 }
 
@@ -53,6 +61,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null }),
   selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
   setMapView: (view) => set({ mapView: view }),
+  connectivityVisible: true,
+  toggleConnectivity: () => set({ connectivityVisible: !get().connectivityVisible }),
+  hoveredDeviceId: null,
+  setHoveredDevice: (deviceId) => set({ hoveredDeviceId: deviceId }),
 
   handleMapSignals: (zoom, site) => {
     const { level, zoomToSite, setMapView } = get()
@@ -69,7 +81,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  handleCameraSignals: (distToSite, distToRack, nearestRackId) => {
+  handleCameraSignals: (distToSite, distToRack, nearestRackId, siteSpan = null) => {
     const { level, selectedSiteName, zoomToSite, zoomToRack, zoomToMap } = get()
     if (level === 'map') return
     const r = stepNavigation(
@@ -80,7 +92,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         cameraDistToRack: distToRack,
         nearestRackId,
       },
-      DEFAULT_THRESHOLDS,
+      thresholdsForSpan(siteSpan),
     )
     navMachine = r.machine
     if (!r.action) return

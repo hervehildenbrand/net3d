@@ -1,0 +1,5 @@
+# Cloned third-party stack (retrieved by setup.sh) — not vendored.
+netbox/
+# Python virtualenv for the seed script
+seed/.venv/
+seed/__pycache__/

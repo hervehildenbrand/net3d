@@ -66,6 +66,11 @@ describe('normalizeRawCables', () => {
     expect(c!.b).toEqual({ kind: 'circuit', name: 'CID-7', deviceName: null, rackName: null })
   })
 
+  test('normalizes NetBox 4.x lowercase status to uppercase (app compares CONNECTED)', () => {
+    const [c] = normalizeRawCables([cable({ status: 'connected' })])
+    expect(c!.status).toBe('CONNECTED')
+  })
+
   test('empty termination side becomes null endpoint', () => {
     const [c] = normalizeRawCables([cable({ a_terminations: [] })])
     expect(c!.a).toBeNull()

@@ -3,6 +3,7 @@ import { Instance, Instances, Text } from '@react-three/drei'
 import {
   computeBuildingBounds,
   computeRackLayout,
+  computeRoomStats,
   type LldpCableSegment,
   type RackPlacement,
 } from '@net3d/shared'
@@ -77,6 +78,53 @@ function Racks({
   )
 }
 
+/** Floating per-room stats — name, racks, active/total devices — above each rack row group. */
+function RoomLabels({ racks, placements }: { racks: SiteRack[]; placements: RackPlacement[] }) {
+  const labels = useMemo(() => {
+    const stats = new Map(computeRoomStats(racks).map((s) => [s.location, s]))
+    const byLocation = new Map<string, RackPlacement[]>()
+    for (const p of placements) {
+      const key = p.location ?? ''
+      const group = byLocation.get(key)
+      if (group) group.push(p)
+      else byLocation.set(key, [p])
+    }
+    return [...byLocation.entries()].flatMap(([location, group]) => {
+      const s = stats.get(location)
+      if (!s || group.length === 0) return []
+      const cx = group.reduce((sum, p) => sum + p.x, 0) / group.length
+      const cz = group.reduce((sum, p) => sum + p.z, 0) / group.length
+      const top = Math.max(...group.map((p) => p.height))
+      return [
+        {
+          location,
+          x: cx,
+          y: top + 0.9,
+          z: cz,
+          text: `${location || 'unassigned'} — ${s.rackCount} racks · ${s.activeDeviceCount}/${s.deviceCount} devices active`,
+        },
+      ]
+    })
+  }, [racks, placements])
+
+  return (
+    <>
+      {labels.map((l) => (
+        <Text
+          key={`room-${l.location}`}
+          position={[l.x, l.y, l.z]}
+          fontSize={0.22}
+          color={theme.text.secondary}
+          anchorX="center"
+          anchorY="bottom"
+        >
+          {l.text}
+        </Text>
+      ))}
+    </>
+  )
+}
+
 export function SiteLevel({
   racks,
   cables,
@@ -124,6 +172,7 @@ export function SiteLevel({
         />
       </mesh>
       <Racks placements={placements} onRackClick={onRackClick} />
+      <RoomLabels racks={racks} placements={placements} />
       <SiteCables placements={placements} cables={cables} lldpSegments={lldpSegments} />
       <Text
         position={[center.x, size.y + 0.6, center.z]}

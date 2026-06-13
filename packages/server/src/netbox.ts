@@ -1,5 +1,12 @@
 import type { SiteCircuit } from '@net3d/shared'
 import { normalizeRawCables, type RawCable, type SiteCable } from './cables'
+import {
+  parseNetBoxMajor,
+  siteRacksQuery,
+  siteCablesQuery,
+  circuitsQuery,
+  type NetBoxMajor,
+} from './graphql-dialect'
 
 export interface NetBoxSite {
   id: string
@@ -8,6 +15,19 @@ export interface NetBoxSite {
   longitude: number | null
   region: string | null
   status: string
+  physicalAddress: string | null
+  facility: string | null
+  /** Derived from the site's compute/pop tag; null when untagged. */
+  role: 'compute' | 'pop' | null
+  rackCount: number | null
+  deviceCount: number | null
+}
+
+export interface DeviceSpecs {
+  cpuModel?: string
+  cpuCores?: number
+  ramGb?: number
+  storageTb?: number
 }
 
 export interface SiteDevice {
@@ -22,6 +42,9 @@ export interface SiteDevice {
   model: string
   manufacturer: string
   isFullDepth: boolean
+  status: string
+  /** Hardware specs from device-type custom fields; undefined when not documented. */
+  specs?: DeviceSpecs
 }
 
 export interface SiteRack {
@@ -58,29 +81,13 @@ const SITES_QUERY = `{
     longitude
     status
     region { name }
+    physical_address
+    facility
+    tags { slug }
   }
 }`
 
-// $site is interpolated after validation — GraphQL variables aren't supported
-// for filter args in NetBox 3.7's auto-generated schema the same way.
-const siteRacksQuery = (site: string) => `{
-  rack_list(site: "${site}") {
-    id
-    name
-    u_height
-    location { name }
-    devices {
-      id
-      name
-      position
-      face
-      role { name color }
-      device_type { u_height model is_full_depth manufacturer { name } }
-    }
-  }
-}`
-
-interface RawRack {
+export interface RawRack {
   id: string
   name: string
   u_height: number
@@ -90,76 +97,180 @@ interface RawRack {
     name: string
     position: string | number | null
     face: string | null
+    status?: string | null
     role: { name: string; color: string } | null
     device_type: {
       u_height: string | number
       model: string
       is_full_depth: boolean
       manufacturer: { name: string } | null
+      custom_fields?: Record<string, unknown> | null
     }
   }[]
 }
 
-const DEVICE_TERM = `name device { name rack { name } }`
-const siteCablesQuery = (site: string) => `{
-  cable_list(site: "${site}") {
-    id
-    type
-    status
-    color
-    a_terminations {
-      __typename
-      ... on InterfaceType { ${DEVICE_TERM} }
-      ... on FrontPortType { ${DEVICE_TERM} }
-      ... on RearPortType { ${DEVICE_TERM} }
-      ... on ConsolePortType { ${DEVICE_TERM} }
-      ... on ConsoleServerPortType { ${DEVICE_TERM} }
-      ... on PowerPortType { ${DEVICE_TERM} }
-      ... on PowerOutletType { ${DEVICE_TERM} }
-      ... on PowerFeedType { name rack { name } }
-      ... on CircuitTerminationType { circuit { cid } site { name } }
-    }
-    b_terminations {
-      __typename
-      ... on InterfaceType { ${DEVICE_TERM} }
-      ... on FrontPortType { ${DEVICE_TERM} }
-      ... on RearPortType { ${DEVICE_TERM} }
-      ... on ConsolePortType { ${DEVICE_TERM} }
-      ... on ConsoleServerPortType { ${DEVICE_TERM} }
-      ... on PowerPortType { ${DEVICE_TERM} }
-      ... on PowerOutletType { ${DEVICE_TERM} }
-      ... on PowerFeedType { name rack { name } }
-      ... on CircuitTerminationType { circuit { cid } site { name } }
-    }
+/** Hardware specs from the device-type custom-fields blob; undefined when empty. */
+function parseSpecs(cf: Record<string, unknown> | null | undefined): DeviceSpecs | undefined {
+  if (!cf) return undefined
+  const specs: DeviceSpecs = {}
+  if (typeof cf.cpu_model === 'string' && cf.cpu_model) specs.cpuModel = cf.cpu_model
+  const num = (v: unknown): number | undefined => {
+    const n = Number(v)
+    return v == null || v === '' || Number.isNaN(n) ? undefined : n
   }
-}`
+  const cores = num(cf.cpu_cores)
+  if (cores !== undefined) specs.cpuCores = cores
+  const ram = num(cf.ram_gb)
+  if (ram !== undefined) specs.ramGb = ram
+  const storage = num(cf.storage_tb)
+  if (storage !== undefined) specs.storageTb = storage
+  return Object.keys(specs).length ? specs : undefined
+}
 
-const CIRCUITS_QUERY = `{
-  circuit_list {
-    id
-    cid
-    provider { name }
-    terminations { term_side site { name } }
-  }
-}`
+/** Map NetBox rack rows into the SiteRack shape, normalizing types and enum casing. */
+export function normalizeRawRacks(raw: RawRack[]): SiteRack[] {
+  return raw.map((r) => ({
+    id: r.id,
+    name: r.name,
+    uHeight: r.u_height,
+    location: r.location?.name ?? null,
+    devices: r.devices.map((d) => ({
+      id: d.id,
+      name: d.name,
+      position: d.position === null ? null : Number(d.position),
+      // NetBox 4.x (Strawberry) returns enums lowercase; the app compares 'REAR'
+      face: d.face ? d.face.toUpperCase() : d.face,
+      roleName: d.role?.name ?? 'unknown',
+      roleColor: d.role?.color ?? '888888',
+      uHeight: Number(d.device_type.u_height) || 1,
+      model: d.device_type.model,
+      manufacturer: d.device_type.manufacturer?.name ?? 'unknown',
+      isFullDepth: d.device_type.is_full_depth,
+      status: (d.status ?? 'active').toLowerCase(),
+      specs: parseSpecs(d.device_type.custom_fields),
+    })),
+  }))
+}
 
 interface RawCircuit {
   id: string
   cid: string
+  status: string
+  commit_rate: number | string | null
+  description: string | null
   provider: { name: string } | null
-  terminations: { term_side: string; site: { name: string } | null }[]
+  terminations: {
+    term_side: string
+    // 3.7 exposes the site directly; 4.x exposes it via the termination scope union
+    site?: { name: string } | null
+    termination?: { __typename?: string; name?: string } | null
+  }[]
 }
 
-interface RawSite {
+/** Site name of a circuit termination, across the 3.7 (`site`) and 4.x (`termination`) shapes. */
+function terminationSiteName(t: RawCircuit['terminations'][number]): string | undefined {
+  return t.site?.name ?? t.termination?.name
+}
+
+export interface RawSite {
   id: string
   name: string
   latitude: string | number | null
   longitude: string | number | null
   status: string
   region: { name: string } | null
+  physical_address: string | null
+  facility: string | null
+  tags: { slug: string }[] | null
+}
+
+/** Rack/device totals from the REST site serializer (GraphQL has no counts). */
+export interface SiteCounts {
+  rackCount: number | null
+  deviceCount: number | null
+}
+
+export function normalizeRawSites(raw: RawSite[], counts: Map<string, SiteCounts>): NetBoxSite[] {
+  return raw.map((s) => {
+    const slugs = (s.tags ?? []).map((t) => t.slug)
+    return {
+      id: s.id,
+      name: s.name,
+      // NetBox returns decimals as strings
+      latitude: s.latitude === null ? null : Number(s.latitude),
+      longitude: s.longitude === null ? null : Number(s.longitude),
+      region: s.region?.name ?? null,
+      status: s.status,
+      physicalAddress: s.physical_address || null,
+      facility: s.facility || null,
+      role: slugs.includes('pop') ? 'pop' : slugs.includes('compute') ? 'compute' : null,
+      rackCount: counts.get(s.id)?.rackCount ?? null,
+      deviceCount: counts.get(s.id)?.deviceCount ?? null,
+    }
+  })
 }
 
 export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient {
+  // Detect the GraphQL dialect once (lazily, on first filtered query) and memoize.
+  // Defaults to v3 if NetBox is unreachable, so the app still boots when it's down.
+  let majorPromise: Promise<NetBoxMajor> | null = null
+  function netboxMajor(): Promise<NetBoxMajor> {
+    if (!majorPromise) {
+      majorPromise = (async () => {
+        try {
+          const res = await fetch(`${baseUrl}/api/status/`, {
+            headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
+          })
+          if (!res.ok) return 3
+          const body = (await res.json()) as { 'netbox-version'?: string }
+          return parseNetBoxMajor(body['netbox-version'])
+        } catch {
+          return 3
+        }
+      })()
+    }
+    return majorPromise
+  }
+
+  // The GraphQL site type has no rack/device totals; the REST serializer does
+  // (both 3.7 and 4.x). Counts are cosmetic, so failures degrade to an empty map.
+  async function fetchSiteCounts(): Promise<Map<string, SiteCounts>> {
+    const counts = new Map<string, SiteCounts>()
+    try {
+      const res = await fetch(`${baseUrl}/api/dcim/sites/?limit=1000`, {
+        headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
+      })
+      if (!res.ok) return counts
+      const body = (await res.json()) as {
+        results?: { id: number; rack_count?: number; device_count?: number }[]
+      }
+      for (const s of body.results ?? []) {
+        counts.set(String(s.id), {
+          rackCount: s.rack_count ?? null,
+          deviceCount: s.device_count ?? null,
+        })
+      }
+    } catch {
+      // NetBox REST hiccup: sites render without counts
+    }
+    return counts
+  }
+
+  // Total cable count for a site via REST (SQL COUNT — cheap, unlike the rows).
+  // The REST filter matches the site slug, i.e. the lowercased site code.
+  async function restCableCount(site: string): Promise<number | null> {
+    try {
+      const res = await fetch(`${baseUrl}/api/dcim/cables/?site=${encodeURIComponent(site.toLowerCase())}&limit=1`, {
+        headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
+      })
+      if (!res.ok) return null
+      const body = (await res.json()) as { count?: number }
+      return typeof body.count === 'number' ? body.count : null
+    } catch {
+      return null
+    }
+  }
+
   async function graphql<T>(query: string): Promise<T> {
     const res = await fetch(`${baseUrl}/graphql/`, {
       method: 'POST',
@@ -179,24 +290,21 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
 
   return {
     async getSites() {
-      const data = await graphql<{ site_list: RawSite[] }>(SITES_QUERY)
-      return data.site_list.map((s) => ({
-        id: s.id,
-        name: s.name,
-        // NetBox returns decimals as strings
-        latitude: s.latitude === null ? null : Number(s.latitude),
-        longitude: s.longitude === null ? null : Number(s.longitude),
-        region: s.region?.name ?? null,
-        status: s.status,
-      }))
+      const [data, counts] = await Promise.all([
+        graphql<{ site_list: RawSite[] }>(SITES_QUERY),
+        fetchSiteCounts(),
+      ])
+      return normalizeRawSites(data.site_list, counts)
     },
 
     async getCircuits() {
-      const data = await graphql<{ circuit_list: RawCircuit[] }>(CIRCUITS_QUERY)
+      const data = await graphql<{ circuit_list: RawCircuit[] }>(circuitsQuery(await netboxMajor()))
       const circuits: SiteCircuit[] = []
       for (const c of data.circuit_list) {
-        const a = c.terminations.find((t) => t.term_side === 'A')?.site?.name
-        const z = c.terminations.find((t) => t.term_side === 'Z')?.site?.name
+        const aTerm = c.terminations.find((t) => t.term_side === 'A')
+        const zTerm = c.terminations.find((t) => t.term_side === 'Z')
+        const a = aTerm && terminationSiteName(aTerm)
+        const z = zTerm && terminationSiteName(zTerm)
         // only circuits with both ends documented can be drawn on the globe
         if (!a || !z) continue
         circuits.push({
@@ -205,6 +313,10 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
           provider: c.provider?.name ?? null,
           siteA: a,
           siteZ: z,
+          commitRate: c.commit_rate == null ? null : Number(c.commit_rate),
+          // NetBox 4.x (Strawberry) returns enums lowercase
+          status: (c.status ?? 'unknown').toLowerCase(),
+          description: c.description || null,
         })
       }
       return circuits
@@ -212,31 +324,39 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
 
     async getSiteRacks(site) {
       if (!/^[\w.-]+$/.test(site)) throw new Error(`invalid site name: ${site}`)
-      const data = await graphql<{ rack_list: RawRack[] }>(siteRacksQuery(site))
-      return data.rack_list.map((r) => ({
-        id: r.id,
-        name: r.name,
-        uHeight: r.u_height,
-        location: r.location?.name ?? null,
-        devices: r.devices.map((d) => ({
-          id: d.id,
-          name: d.name,
-          position: d.position === null ? null : Number(d.position),
-          face: d.face,
-          roleName: d.role?.name ?? 'unknown',
-          roleColor: d.role?.color ?? '888888',
-          uHeight: Number(d.device_type.u_height) || 1,
-          model: d.device_type.model,
-          manufacturer: d.device_type.manufacturer?.name ?? 'unknown',
-          isFullDepth: d.device_type.is_full_depth,
-        })),
-      }))
+      const data = await graphql<{ rack_list: RawRack[] }>(siteRacksQuery(site, await netboxMajor()))
+      return normalizeRawRacks(data.rack_list)
     },
 
     async getSiteCables(site) {
       if (!/^[\w.-]+$/.test(site)) throw new Error(`invalid site name: ${site}`)
-      const data = await graphql<{ cable_list: RawCable[] }>(siteCablesQuery(site))
-      return normalizeRawCables(data.cable_list)
+      const major = await netboxMajor()
+      if (major < 4) {
+        const data = await graphql<{ cable_list: RawCable[] }>(siteCablesQuery(site, major))
+        return normalizeRawCables(data.cable_list)
+      }
+      // 4.x caps list responses at 1000 rows, and each page is expensive to
+      // serialize (~20s for a dense site) — learn the page count from a cheap
+      // REST count and fetch all pages concurrently.
+      const limit = 1000
+      const fetchPage = (offset: number) =>
+        graphql<{ cable_list: RawCable[] }>(siteCablesQuery(site, major, { offset, limit }))
+      const count = await restCableCount(site)
+      if (count === null) {
+        // count unavailable: sequential paging until a short page
+        const all: RawCable[] = []
+        for (let offset = 0; ; offset += limit) {
+          const data = await fetchPage(offset)
+          all.push(...data.cable_list)
+          if (data.cable_list.length < limit) break
+        }
+        return normalizeRawCables(all)
+      }
+      const pages = Math.max(1, Math.ceil(count / limit))
+      const results = await Promise.all(
+        Array.from({ length: pages }, (_, i) => fetchPage(i * limit)),
+      )
+      return normalizeRawCables(results.flatMap((r) => r.cable_list))
     },
 
     async napalm(deviceId, method) {

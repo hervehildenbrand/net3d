@@ -1,5 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 
+export interface DeviceSpecs {
+  cpuModel?: string
+  cpuCores?: number
+  ramGb?: number
+  storageTb?: number
+}
+
 export interface SiteDevice {
   id: string
   name: string
@@ -11,6 +18,9 @@ export interface SiteDevice {
   model: string
   manufacturer: string
   isFullDepth: boolean
+  status: string
+  /** Hardware specs from device-type custom fields; absent on plain instances. */
+  specs?: DeviceSpecs
 }
 
 export interface SiteRack {
@@ -46,6 +56,7 @@ export function useSiteDetail(siteName: string | null) {
       return res.json()
     },
     enabled: !!siteName,
-    staleTime: 120_000,
+    // the server pre-warms and serves stale-while-revalidate: trust it longer
+    staleTime: 300_000,
   })
 }

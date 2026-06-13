@@ -4,6 +4,14 @@ import { buildApp } from '../src/app'
 import type { NetBoxClient, NetBoxSite, SiteRack } from '../src/netbox'
 import type { SiteCable } from '../src/cables'
 
+const SITE_META = {
+  physicalAddress: null,
+  facility: null,
+  role: null,
+  rackCount: null,
+  deviceCount: null,
+} as const
+
 const SITES: NetBoxSite[] = [
   {
     id: '4',
@@ -12,13 +20,16 @@ const SITES: NetBoxSite[] = [
     longitude: 4.773473,
     region: 'Region A',
     status: 'ACTIVE',
+    ...SITE_META,
   },
-  { id: '1', name: 'site-c', latitude: null, longitude: null, region: null, status: 'ACTIVE' },
+  { id: '1', name: 'site-c', latitude: null, longitude: null, region: null, status: 'ACTIVE', ...SITE_META },
 ]
 
 const CIRCUITS: SiteCircuit[] = [
-  { id: '315', cid: 'PA3-PAR1-pos1', provider: 'apo', siteA: 'pa3', siteZ: 'par1' },
-  { id: '9', cid: 'PA3-PAR1-pos10', provider: 'apo', siteA: 'par1', siteZ: 'pa3' },
+  { id: '315', cid: 'PA3-PAR1-pos1', provider: 'apo', siteA: 'pa3', siteZ: 'par1',
+    commitRate: 100_000_000, status: 'active', description: null },
+  { id: '9', cid: 'PA3-PAR1-pos10', provider: 'apo', siteA: 'par1', siteZ: 'pa3',
+    commitRate: 10_000_000, status: 'active', description: null },
 ]
 
 const RACKS: SiteRack[] = [
@@ -39,6 +50,7 @@ const RACKS: SiteRack[] = [
         model: 'ptx10001_36mr',
         manufacturer: 'Juniper',
         isFullDepth: true,
+        status: 'active',
       },
     ],
   },
@@ -187,7 +199,14 @@ describe('GET /api/circuits', () => {
     const res = await app.inject({ method: 'GET', url: '/api/circuits' })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual([
-      { siteA: 'pa3', siteZ: 'par1', count: 2, circuitIds: ['315', '9'] },
+      {
+        siteA: 'pa3',
+        siteZ: 'par1',
+        count: 2,
+        circuitIds: ['315', '9'],
+        circuits: CIRCUITS,
+        maxCommitRate: 100_000_000,
+      },
     ])
   })
 

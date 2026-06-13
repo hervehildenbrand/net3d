@@ -71,7 +71,8 @@ export function normalizeRawCables(raw: RawCable[]): SiteCable[] {
   return raw.map((c) => ({
     id: c.id,
     type: c.type,
-    status: c.status,
+    // NetBox 4.x (Strawberry) returns enums lowercase; the app compares 'CONNECTED'
+    status: c.status?.toUpperCase() ?? c.status,
     color: c.color,
     // NetBox 3.7 allows multi-termination sides; the first carries the rack/device we draw to
     a: normalizeTermination(c.a_terminations[0]),

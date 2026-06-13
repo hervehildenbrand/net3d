@@ -28,6 +28,8 @@ export function CameraRig() {
     const cx = (bounds.max.x + bounds.min.x) / 2
     const cz = (bounds.max.z + bounds.min.z) / 2
     const distToSite = Math.hypot(cam.x - cx, cam.y - 1, cam.z - cz)
+    // same span the fly-in uses — sizes the exit thresholds for big buildings
+    const span = Math.max(bounds.max.x - bounds.min.x, bounds.max.z - bounds.min.z, 4)
 
     const current = useAppStore.getState()
     let distToRack: number | null = null
@@ -44,7 +46,7 @@ export function CameraRig() {
         }
       }
     }
-    handleCameraSignals(distToSite, distToRack, nearestRackId)
+    handleCameraSignals(distToSite, distToRack, nearestRackId, span)
   }, [placements, bounds, handleCameraSignals])
 
   useEffect(() => {

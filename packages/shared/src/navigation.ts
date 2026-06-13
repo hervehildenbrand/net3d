@@ -28,6 +28,31 @@ export const DEFAULT_THRESHOLDS: NavThresholds = {
   rackExitRearm: 3.3,
 }
 
+/**
+ * Distance (in spans) at which the site fly-in camera rests from the building
+ * center — |(0.55, 0.7, 0.95)|, the setLookAt offset used by the camera rig.
+ */
+export const CAMERA_REST_FACTOR = Math.hypot(0.55, 0.7, 0.95)
+
+/**
+ * Exit thresholds scaled to the building size. A large site's camera rests
+ * beyond the fixed default exit distance, which used to bounce the view back
+ * to the map right after the fly-in; the exit band must sit safely outside
+ * the resting distance.
+ */
+export function thresholdsForSpan(
+  span: number | null,
+  base: NavThresholds = DEFAULT_THRESHOLDS,
+): NavThresholds {
+  if (span == null) return base
+  const rest = span * CAMERA_REST_FACTOR
+  return {
+    ...base,
+    siteExitDistance: Math.max(base.siteExitDistance, rest * 1.35),
+    siteExitRearm: Math.max(base.siteExitRearm, rest * 1.15),
+  }
+}
+
 export interface NavSignals {
   level: 'map' | 'site' | 'rack'
   mapZoom?: number | null
