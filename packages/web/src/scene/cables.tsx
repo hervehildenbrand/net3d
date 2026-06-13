@@ -1,19 +1,23 @@
 import { useMemo } from 'react'
-import { Line } from '@react-three/drei'
+import { Billboard, Line, Text } from '@react-three/drei'
 import {
+  belongsToRack,
   cableMedium,
+  classifyCableForRack,
   classifyCableKind,
   deviceTransform,
+  formatOutgoingLabel,
   getCablesForDevice,
   interRackCablePath,
   intraRackCablePath,
   LANE_PITCH_M,
+  outgoingStubPath,
   type DeviceBox,
   type LldpCableSegment,
   type RackPlacement,
   type Vec3,
 } from '@net3d/shared'
-import type { SiteCable, SiteRack } from '../hooks/useSiteDetail'
+import type { CableEndpoint, SiteCable, SiteRack } from '../hooks/useSiteDetail'
 import { theme } from '../theme'
 
 export const CABLE_FALLBACK = '#0ea5e9'
@@ -82,26 +86,42 @@ export function RackCables({
     })
   }, [rack, placement, lldpSegments, rearZ])
 
-  const lines = useMemo(() => {
-    if (!showConnectivity) return []
+  const { intraLines, outgoingStubs } = useMemo(() => {
+    if (!showConnectivity) return { intraLines: [], outgoingStubs: [] }
     const boxByDevice = new Map<string, DeviceBox>()
     for (const d of rack.devices) {
       const box = deviceTransform(placement, d)
       if (box) boxByDevice.set(d.name, box)
     }
-    // only cables whose both ends are devices in this rack are drawn here
-    const drawable = cables.filter(
-      (c) =>
-        c.a?.deviceName &&
-        c.b?.deviceName &&
-        boxByDevice.has(c.a.deviceName) &&
-        boxByDevice.has(c.b.deviceName),
-    )
-    // fan each device's cables to distinct attach points across its face height,
-    // so you can read how many links a device has and where they land
+    const deviceNamesInRack = new Set(rack.devices.map((d) => d.name))
+
+    // Partition this rack's cables. Intra = both ends here AND both boxed (a cable
+    // to an unpositioned same-rack device can't be drawn). Outgoing = exactly one
+    // end here; we draw a stub from the local (boxed) device toward the back.
+    const intra: SiteCable[] = []
+    const outgoing: { cable: SiteCable; localName: string; localPort: string; remote: CableEndpoint | null }[] = []
+    for (const c of cables) {
+      const cls = classifyCableForRack(c, placement.name, deviceNamesInRack)
+      if (cls === 'intra') {
+        if (c.a?.deviceName && c.b?.deviceName && boxByDevice.has(c.a.deviceName) && boxByDevice.has(c.b.deviceName)) {
+          intra.push(c)
+        }
+      } else if (cls === 'outgoing') {
+        const aBelongs = belongsToRack(c.a, placement.name, deviceNamesInRack)
+        const local = aBelongs ? c.a : c.b
+        const remote = aBelongs ? c.b : c.a
+        if (local?.deviceName && boxByDevice.has(local.deviceName)) {
+          outgoing.push({ cable: c, localName: local.deviceName, localPort: local.name, remote })
+        }
+      }
+    }
+
+    // Fan each device's cables (intra + outgoing) to distinct attach points across
+    // its face height, so you can read how many links a device has and where they land.
+    const union = [...intra, ...outgoing.map((o) => o.cable)]
     const attach = new Map<string, Vec3>() // key: `${cableId}:${deviceName}`
     for (const [deviceName, box] of boxByDevice) {
-      const links = getCablesForDevice(drawable, deviceName)
+      const links = getCablesForDevice(union, deviceName)
       const n = links.length
       links.forEach((link, i) => {
         const y = box.y - box.h / 2 + ((i + 1) / (n + 1)) * box.h
@@ -109,7 +129,8 @@ export function RackCables({
         attach.set(`${link.cableId}:${deviceName}`, { x: box.x + box.w / 2, y, z: box.z - box.d / 2 })
       })
     }
-    return drawable.map((c, idx) => {
+
+    const intraLines = intra.map((c, idx) => {
       const a = boxByDevice.get(c.a!.deviceName!)!
       const b = boxByDevice.get(c.b!.deviceName!)!
       const mgmt = classifyCableKind(c.a!.name) === 'mgmt' || classifyCableKind(c.b!.name) === 'mgmt'
@@ -127,11 +148,34 @@ export function RackCables({
         }).map((p) => [p.x, p.y, p.z] as [number, number, number]),
       }
     })
-  }, [rack, placement, cables, showConnectivity, rearZ])
+
+    const outgoingStubs = outgoing.map((o, idx) => {
+      const localAttach = attach.get(`${o.cable.id}:${o.localName}`)!
+      const mgmt = classifyCableKind(o.localPort) === 'mgmt'
+      // outgoing stubs sit on a separate lane band so they don't overlap intra runs
+      const path = outgoingStubPath(localAttach, {
+        channelX: channelBaseX - (MAX_LANES + (idx % MAX_LANES)) * LANE_PITCH_M,
+        channelZ: rearZ,
+      })
+      const exit = path[path.length - 1]!
+      return {
+        id: o.cable.id,
+        color: mgmt ? theme.cable.mgmt : cableColor(o.cable),
+        mgmt,
+        device: o.localName,
+        label: formatOutgoingLabel(o.remote),
+        exit: [exit.x, exit.y, exit.z] as [number, number, number],
+        labelPos: [exit.x, exit.y, exit.z - 0.04] as [number, number, number],
+        points: path.map((p) => [p.x, p.y, p.z] as [number, number, number]),
+      }
+    })
+
+    return { intraLines, outgoingStubs }
+  }, [rack, placement, cables, showConnectivity, rearZ, channelBaseX])
 
   return (
     <>
-      {lines.map((l) => {
+      {intraLines.map((l) => {
         const live = liveStatus?.get(l.id)
         // hovering/selecting a device emphasizes its links and fades the rest
         const emphasis = highlightDeviceName
@@ -160,6 +204,47 @@ export function RackCables({
             transparent
             opacity={emphasis === 'hi' ? 1 : emphasis === 'lo' ? 0.08 : live ? 1 : 0.85}
           />
+        )
+      })}
+      {outgoingStubs.map((l) => {
+        // emphasis follows the LOCAL device (the one in this rack)
+        const emphasis = highlightDeviceName
+          ? l.device === highlightDeviceName
+            ? 'hi'
+            : 'lo'
+          : 'none'
+        const color = emphasis === 'hi' ? theme.cable.highlight : l.color
+        const lineOpacity = emphasis === 'hi' ? 1 : emphasis === 'lo' ? 0.08 : 0.75
+        const labelOpacity = emphasis === 'hi' ? 1 : emphasis === 'lo' ? 0.08 : 0.9
+        return (
+          <group key={`out-${l.id}`}>
+            <Line
+              points={l.points}
+              color={color}
+              lineWidth={emphasis === 'hi' ? 3 : 1.5}
+              dashed
+              dashSize={0.03}
+              gapSize={0.02}
+              transparent
+              opacity={lineOpacity}
+            />
+            {/* arrow head marking the cable leaving the rack (points out the back, -z) */}
+            <mesh position={l.exit} rotation={[-Math.PI / 2, 0, 0]}>
+              <coneGeometry args={[0.012, 0.03, 8]} />
+              <meshStandardMaterial color={color} transparent opacity={lineOpacity} />
+            </mesh>
+            <Billboard position={l.labelPos}>
+              <Text
+                fontSize={0.028}
+                color={emphasis === 'hi' ? theme.text.primary : theme.text.secondary}
+                anchorX="left"
+                anchorY="middle"
+                fillOpacity={labelOpacity}
+              >
+                {l.label}
+              </Text>
+            </Billboard>
+          </group>
         )
       })}
       {lldpLines.map((l) => (
