@@ -46,9 +46,39 @@ describe('normalizeRawRacks', () => {
           manufacturer: 'Juniper',
           isFullDepth: true,
           status: 'active',
+          serial: null,
+          assetTag: null,
+          description: null,
+          platform: null,
+          primaryIp: null,
+          oobIp: null,
         },
       ],
     })
+  })
+
+  test('maps inventory fields (serial, asset tag, platform, mgmt + oob IP, description)', () => {
+    const [r] = normalizeRawRacks([
+      rack({
+        devices: [
+          device({
+            serial: 'JN123ABC',
+            asset_tag: 'ASSET-42',
+            description: 'spine in pod 1',
+            platform: { name: 'Juniper Junos' },
+            primary_ip4: { address: '10.0.0.5/24' },
+            oob_ip: { address: '192.168.99.5/24' },
+          }),
+        ],
+      }),
+    ])
+    const d = r!.devices[0]!
+    expect(d.serial).toBe('JN123ABC')
+    expect(d.assetTag).toBe('ASSET-42')
+    expect(d.description).toBe('spine in pod 1')
+    expect(d.platform).toBe('Juniper Junos')
+    expect(d.primaryIp).toBe('10.0.0.5/24')
+    expect(d.oobIp).toBe('192.168.99.5/24')
   })
 
   test('normalizes NetBox 4.x lowercase face to uppercase (app compares REAR)', () => {

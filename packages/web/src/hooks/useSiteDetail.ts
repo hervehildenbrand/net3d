@@ -21,6 +21,13 @@ export interface SiteDevice {
   status: string
   /** Hardware specs from device-type custom fields; absent on plain instances. */
   specs?: DeviceSpecs
+  /** NetBox inventory fields; null when not set. */
+  serial?: string | null
+  assetTag?: string | null
+  description?: string | null
+  platform?: string | null
+  primaryIp?: string | null
+  oobIp?: string | null
 }
 
 export interface SiteRack {

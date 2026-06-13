@@ -36,5 +36,15 @@ export const theme = {
     up: '#16a34a',
     down: '#dc2626',
     mgmt: '#d97706',
+    // selected/hovered device's whole bundle, so it reads as one set
+    highlight: '#f59e0b',
+    // grouping by physical medium when NetBox gives no explicit color
+    medium: {
+      fiber: '#7c3aed', // violet
+      copper: '#0ea5e9', // sky
+      dac: '#0d9488', // teal
+      power: '#b45309', // dark amber
+      other: '#64748b', // slate
+    },
   },
 } as const

@@ -171,7 +171,11 @@ export function SiteLevel({
           depthWrite={false}
         />
       </mesh>
-      <Racks placements={placements} onRackClick={onRackClick} />
+      {/* Only mount the interactive rack instances while this level is shown.
+          A hidden <group visible={false}> still leaves its instance meshes
+          individually visible, so R3F's pointer raycaster keeps hitting them
+          and they occlude the rack-level device meshes behind them. */}
+      {visible && <Racks placements={placements} onRackClick={onRackClick} />}
       <RoomLabels racks={racks} placements={placements} />
       <SiteCables placements={placements} cables={cables} lldpSegments={lldpSegments} />
       <Text

@@ -76,6 +76,11 @@ function Status({ query, label }: { query: { isLoading: boolean; error: unknown 
   return null
 }
 
+/** Drop the CIDR mask for display: "10.0.0.5/24" → "10.0.0.5". */
+function stripMask(addr: string): string {
+  return addr.split('/')[0]!
+}
+
 function formatUptime(seconds: number): string {
   const d = Math.floor(seconds / 86_400)
   const h = Math.floor((seconds % 86_400) / 3_600)
@@ -198,7 +203,13 @@ export function DevicePanel({
       <Section title="NetBox">
         <Row k="role" v={device.roleName} />
         <Row k="model" v={`${device.manufacturer} ${device.model}`} />
+        {device.platform && <Row k="platform" v={device.platform} />}
         <Row k="position" v={device.position !== null ? `U${device.position} · ${device.face ?? ''}` : 'unpositioned'} />
+        {device.primaryIp && <Row k="mgmt ip" v={stripMask(device.primaryIp)} />}
+        {device.oobIp && <Row k="oob ip" v={stripMask(device.oobIp)} />}
+        {device.serial && <Row k="serial" v={device.serial} />}
+        {device.assetTag && <Row k="asset tag" v={device.assetTag} />}
+        {device.description && <Row k="notes" v={device.description} />}
       </Section>
 
       {device.specs && (

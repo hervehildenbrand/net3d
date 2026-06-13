@@ -31,6 +31,9 @@ interface AppState {
   /** Rack view: render server↔leaf/OOB connectivity lines. */
   connectivityVisible: boolean
   toggleConnectivity: () => void
+  /** Rack view camera side: 'rear' frames the cabling, 'front' the device faces. */
+  rackView: 'front' | 'rear'
+  toggleRackView: () => void
   /** Device under the pointer in the rack view (drives cable highlighting). */
   hoveredDeviceId: string | null
   setHoveredDevice: (deviceId: string | null) => void
@@ -55,14 +58,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedDeviceId: null,
   mapView: null,
   zoomToSite: (siteName) =>
-    set({ level: 'site', selectedSiteName: siteName, selectedRackId: null, selectedDeviceId: null }),
-  zoomToRack: (rackId) => set({ level: 'rack', selectedRackId: rackId }),
+    set({ level: 'site', selectedSiteName: siteName, selectedRackId: null, selectedDeviceId: null, rackView: 'front' }),
+  zoomToRack: (rackId) => set({ level: 'rack', selectedRackId: rackId, rackView: 'front' }),
   zoomToMap: () =>
     set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null }),
   selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
   setMapView: (view) => set({ mapView: view }),
   connectivityVisible: true,
   toggleConnectivity: () => set({ connectivityVisible: !get().connectivityVisible }),
+  rackView: 'front',
+  toggleRackView: () => set({ rackView: get().rackView === 'front' ? 'rear' : 'front' }),
   hoveredDeviceId: null,
   setHoveredDevice: (deviceId) => set({ hoveredDeviceId: deviceId }),
 

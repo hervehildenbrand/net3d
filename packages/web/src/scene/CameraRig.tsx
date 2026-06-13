@@ -11,6 +11,7 @@ export function CameraRig() {
   const level = useAppStore((s) => s.level)
   const siteName = useAppStore((s) => s.selectedSiteName)
   const rackId = useAppStore((s) => s.selectedRackId)
+  const rackView = useAppStore((s) => s.rackView)
   const { data: siteDetail } = useSiteDetail(level !== 'map' ? siteName : null)
   const { placements, bounds } = useSiteLayout(siteDetail?.racks)
   const handleCameraSignals = useAppStore((s) => s.handleCameraSignals)
@@ -64,18 +65,19 @@ export function CameraRig() {
     if (level === 'rack' && rackId) {
       const p = placements.find((pl) => pl.rackId === rackId)
       if (!p) return
-      // face the rack front (+z), slightly right so side labels stay readable
+      // front: face +z (device faces); rear: face -z (the cabling, as in reality)
+      const dir = rackView === 'rear' ? -1 : 1
       void c.setLookAt(
-        p.x + 0.9,
+        p.x + 0.9 * dir,
         p.height * 0.55,
-        p.z + p.depth / 2 + 2.1,
+        p.z + dir * (p.depth / 2 + 2.1),
         p.x,
         p.height / 2,
         p.z,
         true,
       )
     }
-  }, [level, siteName, rackId, siteDetail, bounds, placements])
+  }, [level, siteName, rackId, rackView, siteDetail, bounds, placements])
 
   return (
     <CameraControls

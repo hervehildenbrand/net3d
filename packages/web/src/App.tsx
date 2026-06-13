@@ -38,6 +38,8 @@ export function App() {
   const selectDevice = useAppStore((s) => s.selectDevice)
   const connectivityVisible = useAppStore((s) => s.connectivityVisible)
   const toggleConnectivity = useAppStore((s) => s.toggleConnectivity)
+  const rackView = useAppStore((s) => s.rackView)
+  const toggleRackView = useAppStore((s) => s.toggleRackView)
   const { data: siteDetail, isLoading: siteLoading } = useSiteDetail(
     level !== 'map' ? selectedSiteName : null,
   )
@@ -219,6 +221,26 @@ export function App() {
           }}
         >
           {connectivityVisible ? '◉ connectivity' : '○ connectivity'}
+        </button>
+      )}
+
+      {level === 'rack' && (
+        <button
+          onClick={toggleRackView}
+          title="flip the rack camera between the device faces (front) and the cabling (rear)"
+          style={{
+            ...hudStyle,
+            top: 136,
+            background: rackView === 'rear' ? '#0891b2' : '#ffffff',
+            color: rackView === 'rear' ? '#ffffff' : '#1e293b',
+            border: '1px solid #cbd5e1',
+            borderRadius: 6,
+            padding: '6px 12px',
+            cursor: 'pointer',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+          }}
+        >
+          {rackView === 'rear' ? '⟲ rear view' : '⟳ front view'}
         </button>
       )}
     </div>

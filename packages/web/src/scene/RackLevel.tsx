@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Edges, Text } from '@react-three/drei'
+import { Billboard, Edges, Html, Text } from '@react-three/drei'
 import {
   deviceTransform,
   mapInterfacesToCables,
@@ -16,6 +16,20 @@ import { RackCables } from './cables'
 interface PlacedDevice {
   device: SiteDevice
   box: { x: number; y: number; z: number; w: number; h: number; d: number }
+}
+
+const tooltipStyle: React.CSSProperties = {
+  pointerEvents: 'none',
+  whiteSpace: 'nowrap',
+  transform: 'translateY(-100%)',
+  background: 'rgba(255,255,255,0.96)',
+  border: '1px solid #cbd5e1',
+  borderRadius: 6,
+  boxShadow: '0 1px 3px rgba(15,23,42,0.12)',
+  padding: '6px 9px',
+  fontFamily: 'ui-monospace, monospace',
+  fontSize: 11,
+  lineHeight: 1.5,
 }
 
 export function RackLevel({
@@ -115,18 +129,43 @@ export function RackLevel({
                 metalness={0.3}
               />
             </mesh>
-            <Text
-              position={[box.x + box.w / 2 + 0.06, box.y, box.z]}
-              fontSize={0.035}
-              color={active || hover ? theme.text.primary : theme.text.secondary}
-              anchorX="left"
-              anchorY="middle"
-            >
-              {`${device.name} · U${device.position}`}
-            </Text>
+            {/* billboard so names stay readable from the rear view too */}
+            <Billboard position={[box.x + box.w / 2 + 0.06, box.y, box.z]}>
+              <Text
+                fontSize={0.035}
+                color={active || hover ? theme.text.primary : theme.text.secondary}
+                anchorX="left"
+                anchorY="middle"
+              >
+                {`${device.name} · U${device.position}`}
+              </Text>
+            </Billboard>
           </group>
         )
       })}
+
+      {(() => {
+        const hp = placed.find((p) => p.device.id === hovered)
+        if (!hp) return null
+        const d = hp.device
+        return (
+          <Html
+            position={[hp.box.x, hp.box.y + hp.box.h / 2 + 0.03, hp.box.z]}
+            center
+            zIndexRange={[100, 0]}
+            style={{ pointerEvents: 'none' }}
+          >
+            <div style={tooltipStyle}>
+              <div style={{ fontWeight: 600, color: theme.text.primary }}>{d.name}</div>
+              <div style={{ color: theme.text.secondary }}>
+                {d.roleName} · {d.manufacturer} {d.model}
+              </div>
+              {d.primaryIp && <div style={{ color: theme.text.secondary }}>{d.primaryIp.split('/')[0]}</div>}
+              <div style={{ color: d.status === 'active' ? '#166534' : '#92400e' }}>{d.status}</div>
+            </div>
+          </Html>
+        )
+      })()}
 
       <RackCables
         rack={rack}
@@ -138,15 +177,11 @@ export function RackLevel({
         highlightDeviceName={highlightDeviceName}
       />
 
-      <Text
-        position={[placement.x, placement.height + 0.18, placement.z]}
-        fontSize={0.1}
-        color={theme.text.primary}
-        anchorX="center"
-        anchorY="bottom"
-      >
-        {`${rack.name} — ${placed.length}/${rack.devices.length} devices`}
-      </Text>
+      <Billboard position={[placement.x, placement.height + 0.18, placement.z]}>
+        <Text fontSize={0.1} color={theme.text.primary} anchorX="center" anchorY="bottom">
+          {`${rack.name} — ${placed.length}/${rack.devices.length} devices`}
+        </Text>
+      </Billboard>
     </group>
   )
 }

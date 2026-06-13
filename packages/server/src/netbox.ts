@@ -45,6 +45,15 @@ export interface SiteDevice {
   status: string
   /** Hardware specs from device-type custom fields; undefined when not documented. */
   specs?: DeviceSpecs
+  /** NetBox inventory fields; null when not set. */
+  serial: string | null
+  assetTag: string | null
+  description: string | null
+  platform: string | null
+  /** primary_ip4 address, with mask (e.g. "10.0.0.5/24"). */
+  primaryIp: string | null
+  /** out-of-band mgmt address, with mask. */
+  oobIp: string | null
 }
 
 export interface SiteRack {
@@ -98,6 +107,12 @@ export interface RawRack {
     position: string | number | null
     face: string | null
     status?: string | null
+    serial?: string | null
+    asset_tag?: string | null
+    description?: string | null
+    platform?: { name: string } | null
+    primary_ip4?: { address: string } | null
+    oob_ip?: { address: string } | null
     role: { name: string; color: string } | null
     device_type: {
       u_height: string | number
@@ -148,6 +163,12 @@ export function normalizeRawRacks(raw: RawRack[]): SiteRack[] {
       isFullDepth: d.device_type.is_full_depth,
       status: (d.status ?? 'active').toLowerCase(),
       specs: parseSpecs(d.device_type.custom_fields),
+      serial: d.serial ?? null,
+      assetTag: d.asset_tag ?? null,
+      description: d.description ?? null,
+      platform: d.platform?.name ?? null,
+      primaryIp: d.primary_ip4?.address ?? null,
+      oobIp: d.oob_ip?.address ?? null,
     })),
   }))
 }

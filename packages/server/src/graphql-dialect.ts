@@ -31,6 +31,12 @@ export function siteRacksQuery(site: string, version: NetBoxMajor): string {
       position
       face
       status
+      serial
+      asset_tag
+      description
+      platform { name }
+      primary_ip4 { address }
+      oob_ip { address }
       role { name color }
       device_type { u_height model is_full_depth manufacturer { name } custom_fields }
     }

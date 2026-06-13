@@ -1,13 +1,17 @@
 import { useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import {
+  cableMedium,
   classifyCableKind,
   deviceTransform,
+  getCablesForDevice,
   interRackCablePath,
   intraRackCablePath,
+  LANE_PITCH_M,
   type DeviceBox,
   type LldpCableSegment,
   type RackPlacement,
+  type Vec3,
 } from '@net3d/shared'
 import type { SiteCable, SiteRack } from '../hooks/useSiteDetail'
 import { theme } from '../theme'
@@ -15,12 +19,16 @@ import { theme } from '../theme'
 export const CABLE_FALLBACK = '#0ea5e9'
 export const CABLE_LLDP = '#06b6d4'
 const TRAY_CLEARANCE_M = 0.35
+/** Cables cycle through this many vertical lanes so parallel runs stay distinct. */
+const MAX_LANES = 8
 
 const shortName = (n: string) => n.split('.')[0]!.toLowerCase()
 
 export function cableColor(c: SiteCable): string {
   if (c.status !== 'CONNECTED') return '#dc2626'
-  return c.color ? `#${c.color}` : CABLE_FALLBACK
+  // honor an explicit NetBox color, else group by physical medium
+  if (c.color) return `#${c.color}`
+  return theme.cable.medium[cableMedium(c.type)]
 }
 
 /** Cables between devices inside one rack, routed down the side channel. */
@@ -44,6 +52,11 @@ export function RackCables({
   /** Device whose links get full emphasis while everything else dims. */
   highlightDeviceName?: string | null
 }) {
+  // cabling runs along the rear of the rack, as in reality (front faces +z),
+  // and just inside the right rail so the device boxes occlude it from the front
+  const rearZ = placement.z - placement.depth / 2 + 0.06
+  const channelBaseX = placement.x + placement.width / 2 - 0.04
+
   const lldpLines = useMemo(() => {
     const boxByShortName = new Map<string, DeviceBox>()
     for (const d of rack.devices) {
@@ -58,11 +71,16 @@ export function RackCables({
       return [
         {
           id: s.id,
-          points: intraRackCablePath(a, b).map((p) => [p.x, p.y, p.z] as [number, number, number]),
+          points: intraRackCablePath(a, b, {
+            channelX: channelBaseX,
+            channelZ: rearZ,
+            aAttach: { z: a.z - a.d / 2 },
+            bAttach: { z: b.z - b.d / 2 },
+          }).map((p) => [p.x, p.y, p.z] as [number, number, number]),
         },
       ]
     })
-  }, [rack, placement, lldpSegments])
+  }, [rack, placement, lldpSegments, rearZ])
 
   const lines = useMemo(() => {
     if (!showConnectivity) return []
@@ -71,35 +89,65 @@ export function RackCables({
       const box = deviceTransform(placement, d)
       if (box) boxByDevice.set(d.name, box)
     }
-    return cables.flatMap((c) => {
-      if (!c.a?.deviceName || !c.b?.deviceName) return []
-      const a = boxByDevice.get(c.a.deviceName)
-      const b = boxByDevice.get(c.b.deviceName)
-      if (!a || !b) return []
-      const mgmt = classifyCableKind(c.a.name) === 'mgmt' || classifyCableKind(c.b.name) === 'mgmt'
-      return [
-        {
-          id: c.id,
-          color: mgmt ? theme.cable.mgmt : cableColor(c),
-          mgmt,
-          devices: [c.a.deviceName, c.b.deviceName],
-          points: intraRackCablePath(a, b).map((p) => [p.x, p.y, p.z] as [number, number, number]),
-        },
-      ]
+    // only cables whose both ends are devices in this rack are drawn here
+    const drawable = cables.filter(
+      (c) =>
+        c.a?.deviceName &&
+        c.b?.deviceName &&
+        boxByDevice.has(c.a.deviceName) &&
+        boxByDevice.has(c.b.deviceName),
+    )
+    // fan each device's cables to distinct attach points across its face height,
+    // so you can read how many links a device has and where they land
+    const attach = new Map<string, Vec3>() // key: `${cableId}:${deviceName}`
+    for (const [deviceName, box] of boxByDevice) {
+      const links = getCablesForDevice(drawable, deviceName)
+      const n = links.length
+      links.forEach((link, i) => {
+        const y = box.y - box.h / 2 + ((i + 1) / (n + 1)) * box.h
+        // leave the device at its rear face so cabling exits toward the back
+        attach.set(`${link.cableId}:${deviceName}`, { x: box.x + box.w / 2, y, z: box.z - box.d / 2 })
+      })
+    }
+    return drawable.map((c, idx) => {
+      const a = boxByDevice.get(c.a!.deviceName!)!
+      const b = boxByDevice.get(c.b!.deviceName!)!
+      const mgmt = classifyCableKind(c.a!.name) === 'mgmt' || classifyCableKind(c.b!.name) === 'mgmt'
+      return {
+        id: c.id,
+        color: mgmt ? theme.cable.mgmt : cableColor(c),
+        mgmt,
+        devices: [c.a!.deviceName!, c.b!.deviceName!],
+        points: intraRackCablePath(a, b, {
+          // lanes march inward (left) so they stay inside the rack footprint
+          channelX: channelBaseX - (idx % MAX_LANES) * LANE_PITCH_M,
+          channelZ: rearZ,
+          aAttach: attach.get(`${c.id}:${c.a!.deviceName}`),
+          bAttach: attach.get(`${c.id}:${c.b!.deviceName}`),
+        }).map((p) => [p.x, p.y, p.z] as [number, number, number]),
+      }
     })
-  }, [rack, placement, cables, showConnectivity])
+  }, [rack, placement, cables, showConnectivity, rearZ])
 
   return (
     <>
       {lines.map((l) => {
         const live = liveStatus?.get(l.id)
-        const color = live === 'up' ? '#16a34a' : live === 'down' ? '#dc2626' : l.color
         // hovering/selecting a device emphasizes its links and fades the rest
         const emphasis = highlightDeviceName
           ? l.devices.includes(highlightDeviceName)
             ? 'hi'
             : 'lo'
           : 'none'
+        // live up/down wins; else the focused bundle reads as one accent colour
+        const color =
+          live === 'up'
+            ? '#16a34a'
+            : live === 'down'
+              ? '#dc2626'
+              : emphasis === 'hi'
+                ? theme.cable.highlight
+                : l.color
         return (
           <Line
             key={l.id}
