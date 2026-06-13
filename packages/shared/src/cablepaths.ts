@@ -1,9 +1,12 @@
 import type { Vec3 } from './types'
 import type { DeviceBox } from './devices'
+import type { DeviceCableEnd } from './devicecables'
 
 const SIDE_CHANNEL_M = 0.06
 /** Lateral spacing between adjacent vertical cable lanes in the side channel. */
 export const LANE_PITCH_M = 0.014
+/** How far an outgoing cable stub extends past the rack rear (meters). */
+export const STUB_LENGTH_M = 0.25
 
 export interface IntraRackOpts {
   /** Lane index; shifts the vertical run outward by lane*LANE_PITCH_M so parallel cables don't coincide. */
@@ -42,4 +45,64 @@ export function interRackCablePath(from: Vec3, to: Vec3, trayHeight: number): Ve
     { x: to.x, y: trayHeight, z: to.z },
     to,
   ]
+}
+
+/**
+ * Whether a cable termination sits in the given rack. Device ends match by
+ * rack name OR by membership in the rack's device-name set (so a device with a
+ * stale endpoint rackName, or one we know by name, still counts). Powerfeeds
+ * match by rack name; circuits (rackName null) never belong.
+ */
+export function belongsToRack(
+  end: DeviceCableEnd | null,
+  rackName: string,
+  deviceNamesInRack: Set<string>,
+): boolean {
+  if (!end) return false
+  if (end.kind === 'device') {
+    return end.rackName === rackName || (end.deviceName != null && deviceNamesInRack.has(end.deviceName))
+  }
+  return end.rackName === rackName
+}
+
+/**
+ * Classify a cable relative to one rack: 'intra' (both ends in the rack),
+ * 'outgoing' (exactly one end in the rack — it leaves toward elsewhere),
+ * or 'external' (neither end here — not shown in this rack's view).
+ */
+export function classifyCableForRack(
+  cable: { a: DeviceCableEnd | null; b: DeviceCableEnd | null },
+  rackName: string,
+  deviceNamesInRack: Set<string>,
+): 'intra' | 'outgoing' | 'external' {
+  const a = belongsToRack(cable.a, rackName, deviceNamesInRack)
+  const b = belongsToRack(cable.b, rackName, deviceNamesInRack)
+  if (a && b) return 'intra'
+  if (a || b) return 'outgoing'
+  return 'external'
+}
+
+/**
+ * Geometry for a cable that leaves the rack: from the local device's attach
+ * point, into the rear channel, then straight out the back by stubLength.
+ * The run holds the attach point's y so it reads as a level exit.
+ */
+export function outgoingStubPath(
+  localAttach: Vec3,
+  opts: { channelX: number; channelZ: number; stubLength?: number },
+): Vec3[] {
+  const stub = opts.stubLength ?? STUB_LENGTH_M
+  return [
+    localAttach,
+    { x: opts.channelX, y: localAttach.y, z: opts.channelZ },
+    { x: opts.channelX, y: localAttach.y, z: opts.channelZ - stub },
+  ]
+}
+
+/** Destination label for an outgoing cable's far (remote) end. */
+export function formatOutgoingLabel(remoteEnd: DeviceCableEnd | null): string {
+  if (!remoteEnd) return '→ (dangling)'
+  if (remoteEnd.kind === 'circuit') return `→ circuit / ${remoteEnd.name}`
+  if (remoteEnd.kind === 'powerfeed') return `→ ${remoteEnd.rackName ?? 'power'} / ${remoteEnd.name}`
+  return `→ ${remoteEnd.rackName ?? '?'} / ${remoteEnd.deviceName ?? '?'} / ${remoteEnd.name}`
 }
