@@ -34,6 +34,9 @@ interface AppState {
   /** Rack view camera side: 'rear' frames the cabling, 'front' the device faces. */
   rackView: 'front' | 'rear'
   toggleRackView: () => void
+  /** Camera distance from the site center (m) while at site level; null otherwise. Drives rack-label LOD. */
+  siteViewDistance: number | null
+  setSiteViewDistance: (distance: number | null) => void
   /** Device under the pointer in the rack view (drives cable highlighting). */
   hoveredDeviceId: string | null
   setHoveredDevice: (deviceId: string | null) => void
@@ -58,16 +61,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedDeviceId: null,
   mapView: null,
   zoomToSite: (siteName) =>
-    set({ level: 'site', selectedSiteName: siteName, selectedRackId: null, selectedDeviceId: null, rackView: 'front' }),
+    set({ level: 'site', selectedSiteName: siteName, selectedRackId: null, selectedDeviceId: null, rackView: 'front', siteViewDistance: null }),
   zoomToRack: (rackId) => set({ level: 'rack', selectedRackId: rackId, rackView: 'front' }),
   zoomToMap: () =>
-    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null }),
+    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, siteViewDistance: null }),
   selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
   setMapView: (view) => set({ mapView: view }),
   connectivityVisible: true,
   toggleConnectivity: () => set({ connectivityVisible: !get().connectivityVisible }),
   rackView: 'front',
   toggleRackView: () => set({ rackView: get().rackView === 'front' ? 'rear' : 'front' }),
+  siteViewDistance: null,
+  setSiteViewDistance: (distance) => set({ siteViewDistance: distance }),
   hoveredDeviceId: null,
   setHoveredDevice: (deviceId) => set({ hoveredDeviceId: deviceId }),
 
@@ -89,6 +94,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   handleCameraSignals: (distToSite, distToRack, nearestRackId, siteSpan = null) => {
     const { level, selectedSiteName, zoomToSite, zoomToRack, zoomToMap } = get()
     if (level === 'map') return
+    // record camera distance only at site level — drives rack-label LOD
+    if (level === 'site') set({ siteViewDistance: distToSite })
     const r = stepNavigation(
       navMachine,
       {
@@ -108,6 +115,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 }))
 
 // dev-only handle for driving/inspecting navigation from the console and tests
-if (import.meta.env.DEV) {
+if (import.meta.env.DEV && typeof window !== 'undefined') {
   ;(window as unknown as Record<string, unknown>).__appStore = useAppStore
 }

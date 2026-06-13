@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Instance, Instances, Text } from '@react-three/drei'
+import { Billboard, Instance, Instances, Text } from '@react-three/drei'
 import {
   computeBuildingBounds,
   computeRackLayout,
@@ -9,7 +9,11 @@ import {
 } from '@net3d/shared'
 import type { SiteCable, SiteRack } from '../hooks/useSiteDetail'
 import { theme } from '../theme'
+import { useAppStore } from '../store/useAppStore'
 import { SiteCables } from './cables'
+
+/** Hide individual rack labels once the camera is farther than span * this. */
+const RACK_LABEL_THRESHOLD = 0.9
 
 export function useSiteLayout(racks: SiteRack[] | undefined) {
   return useMemo(() => {
@@ -28,11 +32,19 @@ export function useSiteLayout(racks: SiteRack[] | undefined) {
 function Racks({
   placements,
   onRackClick,
+  span,
 }: {
   placements: RackPlacement[]
   onRackClick: (rackId: string) => void
+  /** Site footprint size, used to scale the label-visibility threshold. */
+  span: number
 }) {
   const [hovered, setHovered] = useState<string | null>(null)
+  const siteViewDistance = useAppStore((s) => s.siteViewDistance)
+  // Show per-rack names only when zoomed in; far out they overlap into noise,
+  // so the room labels carry orientation instead. Null = no signal yet → show.
+  const showRackLabels =
+    siteViewDistance === null || siteViewDistance < span * RACK_LABEL_THRESHOLD
 
   return (
     <>
@@ -62,18 +74,14 @@ function Racks({
           />
         ))}
       </Instances>
-      {placements.map((p) => (
-        <Text
-          key={`label-${p.rackId}`}
-          position={[p.x, p.height + 0.25, p.z]}
-          fontSize={0.16}
-          color={theme.text.onScene}
-          anchorX="center"
-          anchorY="bottom"
-        >
-          {p.name}
-        </Text>
-      ))}
+      {showRackLabels &&
+        placements.map((p) => (
+          <Billboard key={`label-${p.rackId}`} position={[p.x, p.height + 0.25, p.z]}>
+            <Text fontSize={0.16} color={theme.text.onScene} anchorX="center" anchorY="bottom">
+              {p.name}
+            </Text>
+          </Billboard>
+        ))}
     </>
   )
 }
@@ -110,16 +118,11 @@ function RoomLabels({ racks, placements }: { racks: SiteRack[]; placements: Rack
   return (
     <>
       {labels.map((l) => (
-        <Text
-          key={`room-${l.location}`}
-          position={[l.x, l.y, l.z]}
-          fontSize={0.22}
-          color={theme.text.secondary}
-          anchorX="center"
-          anchorY="bottom"
-        >
-          {l.text}
-        </Text>
+        <Billboard key={`room-${l.location}`} position={[l.x, l.y, l.z]}>
+          <Text fontSize={0.22} color={theme.text.secondary} anchorX="center" anchorY="bottom">
+            {l.text}
+          </Text>
+        </Billboard>
       ))}
     </>
   )
@@ -175,17 +178,20 @@ export function SiteLevel({
           A hidden <group visible={false}> still leaves its instance meshes
           individually visible, so R3F's pointer raycaster keeps hitting them
           and they occlude the rack-level device meshes behind them. */}
-      {visible && <Racks placements={placements} onRackClick={onRackClick} />}
+      {visible && (
+        <Racks
+          placements={placements}
+          onRackClick={onRackClick}
+          span={Math.max(size.x, size.z, 4)}
+        />
+      )}
       <RoomLabels racks={racks} placements={placements} />
       <SiteCables placements={placements} cables={cables} lldpSegments={lldpSegments} />
-      <Text
-        position={[center.x, size.y + 0.6, center.z]}
-        fontSize={0.5}
-        color={theme.text.primary}
-        anchorX="center"
-      >
-        {siteName}
-      </Text>
+      <Billboard position={[center.x, size.y + 0.6, center.z]}>
+        <Text fontSize={0.5} color={theme.text.primary} anchorX="center">
+          {siteName}
+        </Text>
+      </Billboard>
     </group>
   )
 }
