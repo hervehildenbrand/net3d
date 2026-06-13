@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { getCablesForDevice, lldpDiff, type LldpNeighbor } from '@net3d/shared'
+import { faceLabel, getCablesForDevice, lldpDiff, type LldpNeighbor } from '@net3d/shared'
 import { UnreachableError, useNapalm } from '../hooks/useNapalm'
 import type { SiteCable, SiteDevice } from '../hooks/useSiteDetail'
 import { theme } from '../theme'
@@ -204,7 +204,7 @@ export function DevicePanel({
         <Row k="role" v={device.roleName} />
         <Row k="model" v={`${device.manufacturer} ${device.model}`} />
         {device.platform && <Row k="platform" v={device.platform} />}
-        <Row k="position" v={device.position !== null ? `U${device.position} · ${device.face ?? ''}` : 'unpositioned'} />
+        <Row k="position" v={device.position !== null ? `U${device.position} · ${faceLabel(device.face, device.isFullDepth)}` : 'unpositioned'} />
         {device.primaryIp && <Row k="mgmt ip" v={stripMask(device.primaryIp)} />}
         {device.oobIp && <Row k="oob ip" v={stripMask(device.oobIp)} />}
         {device.serial && <Row k="serial" v={device.serial} />}
