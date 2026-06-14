@@ -5,9 +5,9 @@ get a development environment running and land a change.
 
 ## Prerequisites
 
-- **Node.js ≥ 20**
+- **Node.js ≥ 22** (required by pnpm 11)
 - **[pnpm](https://pnpm.io) 11** (the repo pins `pnpm@11.6.0` via `packageManager`)
-- A NetBox instance (tested against **3.7.x**) and a read-access API token — or use the
+- A NetBox instance (tested against **3.7.x and 4.x**) and a read-access API token — or use the
   bundled showcase (see below) if you just want to run the app against demo data.
 
 ## Getting started
