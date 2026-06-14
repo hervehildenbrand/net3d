@@ -33,6 +33,8 @@ from pathlib import Path
 import pynetbox
 import urllib3
 
+from server_roles import SERVER_ROLE_DEFS, server_role
+
 urllib3.disable_warnings()
 
 URL = os.environ.get("NETBOX_URL", "http://localhost:8088")
@@ -149,6 +151,14 @@ def seed_reference():
             nb.dcim.device_roles,
             "slug",
             {"name": slug.upper() if slug == "oob" else slug.capitalize(), "slug": slug, "color": color},
+        )
+    # functional server roles (db/esx/baremetal/storage/k8s/cache/gpu) — servers are
+    # split across these instead of one generic "Server" so the fleet reads diverse.
+    for d in SERVER_ROLE_DEFS:
+        roles[d["slug"]] = goc(
+            nb.dcim.device_roles,
+            "slug",
+            {"name": d["name"], "slug": d["slug"], "color": d["color"]},
         )
 
     tags = {}
@@ -291,7 +301,7 @@ def seed_site(dc, regions, roles, types_by_role, tags):
                 break
             sn = f"{code}-SRV-{i:02d}-srv-{s + 1:02d}"
             server_seq += 1
-            dev(sn, dt, "server", rid, u, status=server_status(server_seq))
+            dev(sn, dt, server_role(i - 1, s), rid, u, status=server_status(server_seq))
             server_names_by_rack[rname].append(sn)
             u += dt._u_height
 
