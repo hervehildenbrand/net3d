@@ -231,7 +231,7 @@ export function DevicePanel({
                 {p.interfaceName}
               </span>
             }
-            v={`→ ${p.remoteDeviceName ?? '?'} : ${p.remoteInterfaceName ?? '?'}`}
+            v={`→ ${p.remoteRackName ? `${p.remoteRackName} / ` : ''}${p.remoteDeviceName ?? '?'} : ${p.remoteInterfaceName ?? '?'}`}
           />
         ))}
       </Section>

@@ -2,16 +2,18 @@ import { useMemo } from 'react'
 import { Billboard, Line, Text } from '@react-three/drei'
 import {
   belongsToRack,
+  bundleConvergencePath,
   cableMedium,
   classifyCableForRack,
   classifyCableKind,
   deviceTransform,
-  formatOutgoingLabel,
   getCablesForDevice,
   interRackCablePath,
   intraRackCablePath,
   LANE_PITCH_M,
-  outgoingStubPath,
+  STUB_LENGTH_M,
+  summarizeDestinations,
+  type CableMedium,
   type DeviceBox,
   type LldpCableSegment,
   type RackPlacement,
@@ -24,7 +26,9 @@ export const CABLE_FALLBACK = '#0ea5e9'
 export const CABLE_LLDP = '#06b6d4'
 const TRAY_CLEARANCE_M = 0.35
 /** Cables cycle through this many vertical lanes so parallel runs stay distinct. */
-const MAX_LANES = 8
+const MAX_LANES = 12
+/** Outgoing bundles sit this far left of the intra lane band so the two never overlap. */
+const BUNDLE_LANE_OFFSET = 0.1
 
 const shortName = (n: string) => n.split('.')[0]!.toLowerCase()
 
@@ -86,8 +90,8 @@ export function RackCables({
     })
   }, [rack, placement, lldpSegments, rearZ])
 
-  const { intraLines, outgoingStubs } = useMemo(() => {
-    if (!showConnectivity) return { intraLines: [], outgoingStubs: [] }
+  const { intraLines, outgoingBundles } = useMemo(() => {
+    if (!showConnectivity) return { intraLines: [], outgoingBundles: [] }
     const boxByDevice = new Map<string, DeviceBox>()
     for (const d of rack.devices) {
       const box = deviceTransform(placement, d)
@@ -149,28 +153,56 @@ export function RackCables({
       }
     })
 
-    const outgoingStubs = outgoing.map((o, idx) => {
-      const localAttach = attach.get(`${o.cable.id}:${o.localName}`)!
-      const mgmt = classifyCableKind(o.localPort) === 'mgmt'
-      // outgoing stubs sit on a separate lane band so they don't overlap intra runs
-      const path = outgoingStubPath(localAttach, {
-        channelX: channelBaseX - (MAX_LANES + (idx % MAX_LANES)) * LANE_PITCH_M,
-        channelZ: rearZ,
+    // Collapse each device's outgoing cables into ONE bundle: many cables → one
+    // exit node + one "↗count" badge, so a spine with 49 uplinks reads as a single
+    // labelled exit instead of 49 overprinted labels. Full detail lives in the panel.
+    const byDevice = new Map<string, typeof outgoing>()
+    for (const o of outgoing) {
+      const arr = byDevice.get(o.localName)
+      if (arr) arr.push(o)
+      else byDevice.set(o.localName, [o])
+    }
+    const bundleX = channelBaseX - BUNDLE_LANE_OFFSET
+    const exitZ = rearZ - STUB_LENGTH_M
+    const outgoingBundles = [...byDevice.entries()].map(([deviceName, items]) => {
+      const box = boxByDevice.get(deviceName)!
+      const exitY = box.y
+      const medTally = new Map<CableMedium, number>()
+      let mgmtCount = 0
+      const lines = items.map((o) => {
+        const localAttach = attach.get(`${o.cable.id}:${deviceName}`)!
+        const isMgmt = classifyCableKind(o.localPort) === 'mgmt'
+        if (isMgmt) mgmtCount++
+        const med = cableMedium(o.cable.type)
+        medTally.set(med, (medTally.get(med) ?? 0) + 1)
+        return {
+          color: isMgmt ? theme.cable.mgmt : cableColor(o.cable),
+          points: bundleConvergencePath(localAttach, { bundleX, rearZ, exitY, exitZ }).map(
+            (p) => [p.x, p.y, p.z] as [number, number, number],
+          ),
+        }
       })
-      const exit = path[path.length - 1]!
+      const dominant = [...medTally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'other'
+      const nodeColor = mgmtCount === items.length ? theme.cable.mgmt : theme.cable.medium[dominant]
+      const summary = summarizeDestinations(items.map((o) => o.remote?.rackName ?? null), 2)
+      const hint =
+        summary.top.length > 0
+          ? `${summary.top.join(', ')}${summary.moreRacks > 0 ? `  +${summary.moreRacks}` : ''}`
+          : ''
       return {
-        id: o.cable.id,
-        color: mgmt ? theme.cable.mgmt : cableColor(o.cable),
-        mgmt,
-        device: o.localName,
-        label: formatOutgoingLabel(o.remote),
-        exit: [exit.x, exit.y, exit.z] as [number, number, number],
-        labelPos: [exit.x, exit.y, exit.z - 0.04] as [number, number, number],
-        points: path.map((p) => [p.x, p.y, p.z] as [number, number, number]),
+        device: deviceName,
+        lines,
+        nodeColor,
+        exit: [bundleX, exitY, exitZ] as [number, number, number],
+        // badge + hint sit just outward (left) of the exit cone in open space
+        badgePos: [bundleX - 0.03, exitY, exitZ] as [number, number, number],
+        hintPos: [bundleX - 0.03, exitY - 0.05, exitZ] as [number, number, number],
+        count: summary.count,
+        hint,
       }
     })
 
-    return { intraLines, outgoingStubs }
+    return { intraLines, outgoingBundles }
   }, [rack, placement, cables, showConnectivity, rearZ, channelBaseX])
 
   return (
@@ -202,48 +234,59 @@ export function RackCables({
             dashSize={0.04}
             gapSize={0.025}
             transparent
-            opacity={emphasis === 'hi' ? 1 : emphasis === 'lo' ? 0.08 : live ? 1 : 0.85}
+            opacity={emphasis === 'hi' ? 1 : emphasis === 'lo' ? 0.08 : live ? 1 : 0.5}
           />
         )
       })}
-      {outgoingStubs.map((l) => {
+      {outgoingBundles.map((b) => {
         // emphasis follows the LOCAL device (the one in this rack)
         const emphasis = highlightDeviceName
-          ? l.device === highlightDeviceName
+          ? b.device === highlightDeviceName
             ? 'hi'
             : 'lo'
           : 'none'
-        const color = emphasis === 'hi' ? theme.cable.highlight : l.color
-        const lineOpacity = emphasis === 'hi' ? 1 : emphasis === 'lo' ? 0.08 : 0.75
-        const labelOpacity = emphasis === 'hi' ? 1 : emphasis === 'lo' ? 0.08 : 0.9
+        const lineOpacity = emphasis === 'hi' ? 1 : emphasis === 'lo' ? 0.06 : 0.3
+        const nodeColor = emphasis === 'hi' ? theme.cable.highlight : b.nodeColor
+        const badgeOpacity = emphasis === 'hi' ? 1 : emphasis === 'lo' ? 0.06 : 0.7
         return (
-          <group key={`out-${l.id}`}>
-            <Line
-              points={l.points}
-              color={color}
-              lineWidth={emphasis === 'hi' ? 3 : 1.5}
-              dashed
-              dashSize={0.03}
-              gapSize={0.02}
-              transparent
-              opacity={lineOpacity}
-            />
-            {/* arrow head marking the cable leaving the rack (points out the back, -z) */}
-            <mesh position={l.exit} rotation={[-Math.PI / 2, 0, 0]}>
-              <coneGeometry args={[0.012, 0.03, 8]} />
-              <meshStandardMaterial color={color} transparent opacity={lineOpacity} />
+          <group key={`out-${b.device}`}>
+            {b.lines.map((ln, i) => (
+              <Line
+                key={i}
+                points={ln.points}
+                color={emphasis === 'hi' ? theme.cable.highlight : ln.color}
+                lineWidth={emphasis === 'hi' ? 2.5 : 1}
+                dashed
+                dashSize={0.03}
+                gapSize={0.02}
+                transparent
+                opacity={lineOpacity}
+              />
+            ))}
+            {/* one exit node + count badge per device (points out the back, -z) */}
+            <mesh position={b.exit} rotation={[-Math.PI / 2, 0, 0]}>
+              <coneGeometry args={[emphasis === 'hi' ? 0.018 : 0.014, 0.035, 10]} />
+              <meshStandardMaterial color={nodeColor} transparent opacity={emphasis === 'lo' ? 0.06 : 0.9} />
             </mesh>
-            <Billboard position={l.labelPos}>
+            <Billboard position={b.badgePos}>
               <Text
-                fontSize={0.028}
+                fontSize={0.034}
                 color={emphasis === 'hi' ? theme.text.primary : theme.text.secondary}
-                anchorX="left"
+                anchorX="right"
                 anchorY="middle"
-                fillOpacity={labelOpacity}
+                fillOpacity={badgeOpacity}
               >
-                {l.label}
+                {`${b.count} out`}
               </Text>
             </Billboard>
+            {/* on focus, reveal where this device's cables go (top racks + remainder) */}
+            {emphasis === 'hi' && b.hint && (
+              <Billboard position={b.hintPos}>
+                <Text fontSize={0.022} color={theme.text.secondary} anchorX="right" anchorY="middle">
+                  {b.hint}
+                </Text>
+              </Billboard>
+            )}
           </group>
         )
       })}
