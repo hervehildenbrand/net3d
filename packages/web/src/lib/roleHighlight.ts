@@ -1,12 +1,8 @@
 import { deviceTransform, type RackPlacement } from '@net3d/shared'
 import type { SiteDevice, SiteRack } from '../hooks/useSiteDetail'
 
-/** Marker slab thickness (m); thin so it reads as a band on the rack face. */
-const MARKER_DEPTH = 0.012
-/** Widen the band beyond the rack so it pops at the rack edges (m). */
-const MARKER_WIDTH_INFLATE = 0.02
-/** Push the slab just clear of the opaque rack front face to avoid z-fighting (m). */
-const MARKER_Z_EPS = 0.002
+/** How far the belt extends past each rack face (m) so it stays visible on every side. */
+const MARKER_INFLATE = 0.05
 
 export interface SiteRoleSummary {
   name: string
@@ -71,10 +67,10 @@ export function racksWithRole(racks: SiteRack[], highlighted: Set<string>): Set<
 }
 
 /**
- * One marker per highlighted, placeable device, placed on the rack's front (+z)
- * face at the device's real U-position. Reuses deviceTransform for the U-math
- * (y center + height) so markers track the same U_METERS source as the rack view;
- * the marker protrudes just outside the opaque rack face so it stays visible.
+ * One marker per highlighted, placeable device: a thin belt wrapping the whole
+ * rack at the device's real U-position, inflated past every face so it reads from
+ * any orbit angle (not just the front). Reuses deviceTransform for the U-math
+ * (y center + height) so markers track the same U_METERS source as the rack view.
  */
 export function buildRoleMarkers(
   racks: SiteRack[],
@@ -91,10 +87,11 @@ export function buildRoleMarkers(
       if (!highlighted.has(d.roleName)) continue
       const box = deviceTransform(p, d) // null when position is null -> unplaceable
       if (!box) continue
-      const faceZ = p.z + p.depth / 2
       markers.push({
-        position: [box.x, box.y, faceZ + MARKER_DEPTH / 2 + MARKER_Z_EPS],
-        scale: [p.width + MARKER_WIDTH_INFLATE, box.h, MARKER_DEPTH],
+        // belt centered on the rack at the device's U-height, inflated past every
+        // face so the band is visible from any side, not only the front.
+        position: [box.x, box.y, p.z],
+        scale: [p.width + MARKER_INFLATE, box.h, p.depth + MARKER_INFLATE],
         color: `#${d.roleColor}`,
       })
     }

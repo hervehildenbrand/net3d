@@ -131,15 +131,15 @@ describe('buildRoleMarkers', () => {
     expect(buildRoleMarkers([rack('r1', [dev()])], [placement()], new Set())).toEqual([])
   })
 
-  test('builds a marker at the device U-position protruding from the rack front face', () => {
+  test('wraps the rack at the device U-position so it is visible from every side', () => {
     const racks = [rack('r1', [dev({ roleName: 'leaf', position: 1, uHeight: 1, roleColor: '00ff88' })])]
     const markers = buildRoleMarkers(racks, [placement({ rackId: 'r1' })], new Set(['leaf']))
     expect(markers).toHaveLength(1)
     const m = markers[0]!
     // deviceTransform: y = (1-1+0.5)*0.0445 = 0.02225, h = 1*0.0445 - 0.004 = 0.0405
-    // front face z = 2 + 1.2/2 = 2.6; +MARKER_DEPTH/2 (0.006) +EPS (0.002) = 2.608
-    expectClose(m.position, [1, 0.02225, 2.608])
-    expectClose(m.scale, [0.62, 0.0405, 0.012])
+    // belt centered on the rack (x=1, z=2), inflated past all four faces (0.6/1.2 + 0.05)
+    expectClose(m.position, [1, 0.02225, 2])
+    expectClose(m.scale, [0.65, 0.0405, 1.25])
     expect(m.color).toBe('#00ff88')
   })
 
