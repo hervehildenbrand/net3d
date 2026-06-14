@@ -9,5 +9,6 @@
   { "role": "spine",   "manufacturer": "Arista",  "model": "7280CR3-32P4",       "slug": "arista-7280cr3-32p4",    "u_height": 1, "is_full_depth": false },
   { "role": "core",    "manufacturer": "Juniper", "model": "MX304",              "slug": "juniper-mx304",          "u_height": 4, "is_full_depth": true },
   { "role": "oob",     "manufacturer": "Cisco",   "model": "Catalyst 9300-48T",  "slug": "cisco-c9300-48t",        "u_height": 1, "is_full_depth": false },
-  { "role": "oob-agg", "manufacturer": "Cisco",   "model": "Catalyst 9500-48Y4C","slug": "cisco-c9500-48y4c",      "u_height": 1, "is_full_depth": false }
+  { "role": "oob-agg", "manufacturer": "Cisco",   "model": "Catalyst 9500-48Y4C","slug": "cisco-c9500-48y4c",      "u_height": 1, "is_full_depth": false },
+  { "role": "pdu",     "manufacturer": "APC",     "model": "Rack PDU AP8853",    "slug": "apc-ap8853",            "u_height": 0, "is_full_depth": false }
 ]

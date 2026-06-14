@@ -33,6 +33,7 @@ from pathlib import Path
 import pynetbox
 import urllib3
 
+from add_power import apply_power
 from server_roles import SERVER_ROLE_DEFS, server_role
 
 urllib3.disable_warnings()
@@ -491,6 +492,9 @@ def main():
         print("(circuits skipped)", flush=True)
     else:
         seed_circuits(dcs, sites, providers, ctype)
+    # A/B power chain (panels -> feeds -> PDUs -> device PSUs) over the seeded
+    # fabric. Same idempotent applier the standalone migration uses.
+    apply_power(URL, TOKEN, ONLY_SITES)
     print("Done.", flush=True)
 
 
