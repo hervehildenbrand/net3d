@@ -33,6 +33,19 @@ pnpm test                # vitest across every package
 pnpm typecheck           # tsc --noEmit across every package
 ```
 
+## Local dev notes
+
+`pnpm dev` runs two watchers: Vite (web) on **5173** and the API server on **3001**.
+A few things that save head-scratching:
+
+- Open **`http://localhost:5173`** (Vite binds IPv6 — `127.0.0.1` may not resolve).
+- The server holds an in-memory NetBox cache and a prewarm loop, so a **clean restart
+  wipes the cache** and the first site load re-warms (slower until it does).
+- HMR handles ordinary edits. **Restart `pnpm dev`** after switching branches, or after
+  adding/removing files or changing `packages/shared` exports (it's consumed as raw
+  source, so the module graph shifts). If the app 404s, hangs, or shows stale code,
+  a restart usually fixes it — killing anything stuck on ports 5173/3001 first.
+
 ## Project layout
 
 ```

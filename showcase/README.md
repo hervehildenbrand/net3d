@@ -1,7 +1,7 @@
 # net3d showcase NetBox
 
-A self-contained, anonymous NetBox **4.x** instance for demoing net3d without the
-private production NetBox. It models a fictional hyperscale operator:
+A self-contained, anonymous NetBox **4.x** instance for demoing net3d without needing
+your own NetBox. It models a fictional hyperscale operator:
 
 - **20 real datacenters** worldwide (real coordinates → accurate Leaflet maps)
 - **50 racks per site**: server racks packed with servers + ToR (leaf) switches,
@@ -11,6 +11,12 @@ private production NetBox. It models a fictional hyperscale operator:
   Lumen, Colt, GTT, Telia, Cogent, Zayo, NTT, …) with fictional circuit IDs
 
 Everything here is fake; no production data is used.
+
+## Prerequisites
+
+- **Docker Engine + Compose v2** (the stack runs in containers)
+- **Python 3** with `venv` (the seed script uses [pynetbox](https://github.com/netbox-community/pynetbox))
+- the net3d repo's usual toolchain (Node ≥ 22, pnpm 11) to run the app afterward
 
 ## 1. Bring up NetBox
 
@@ -72,7 +78,8 @@ Full seed of all 20 sites takes ~10–20 min (bulk REST creates).
 pnpm dev:showcase   # server reads ../../.env.showcase (NETBOX_URL=:8088)
 ```
 
-The default `pnpm dev` still targets the private 3.7.8 instance via `.env`.
+(`pnpm dev` targets whatever NetBox you configure in `.env`; `pnpm dev:showcase` targets
+this local demo via `.env.showcase`.)
 
 ## Teardown
 

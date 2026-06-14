@@ -5,6 +5,13 @@ instance into an explorable visualization: a real-tile world map of your sites, 
 buildings with your racks, devices at their true U-positions — connected by one
 continuous mouse-wheel journey.
 
+<p align="center">
+  <img src="docs/images/world.png" alt="World map of sites with inter-DC circuit arcs" width="32%" />
+  <img src="docs/images/building.png" alt="3D site building with rows of racks" width="32%" />
+  <img src="docs/images/rack.png" alt="Rack view: devices at true U-positions with cabling and power overlay" width="32%" />
+</p>
+<p align="center"><sub>World map → site building → rack — one continuous zoom (shown on the bundled <a href="showcase/">showcase</a> data).</sub></p>
+
 ## Features
 
 - 🗺 **World map** (Leaflet + CARTO Positron) auto-fitted to your geocoded sites, with
@@ -51,6 +58,20 @@ pnpm test                # vitest across all packages
 The API token never reaches the browser: a small Fastify proxy holds it, queries
 NetBox GraphQL, normalizes the data, and caches responses.
 
+### Try the demo (no NetBox needed)
+
+The bundled [`showcase/`](showcase/) stack stands up a local NetBox 4.x seeded with a
+fictional 20-site fabric. **Requires Docker (Compose v2) and Python 3.** Full details in
+[`showcase/README.md`](showcase/README.md); the short path:
+
+```sh
+cd showcase && ./setup.sh        # clones netbox-docker, boots local NetBox on :8088 (~2–4 min first run)
+# then create the demo API token — copy the command from showcase/README.md ("API token")
+cd seed && python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
+./.venv/bin/python seed.py        # seeds the fabric (~10–20 min)
+cd ../.. && pnpm install && pnpm dev:showcase   # app on http://localhost:5173
+```
+
 ## Connecting your NetBox
 
 1. **Mint a token.** In NetBox, open your profile → **API Tokens** → **Add a token**.
@@ -96,6 +117,22 @@ WEB_DIST="$PWD/packages/web/dist" \
 
 `pnpm start` runs the Fastify server; with `WEB_DIST` set it also serves the built UI.
 Put it behind your own TLS / reverse proxy.
+
+### Security
+
+net3d is a **read-only** visualizer and its API is **unauthenticated by default** — it
+binds to `127.0.0.1` and is meant to sit **behind a TLS reverse proxy that handles
+authentication** in production. Exposed without one, anyone who can reach it can read
+all NetBox data the server fetches (devices, IPs, topology, power, live NAPALM).
+
+- Set `HOST=0.0.0.0` only when a proxy is in front of it.
+- Optional `NET3D_API_TOKEN`: when set, every `/api/*` route (except `/api/health`)
+  requires `Authorization: Bearer <token>`. A browser can't hold a secret, so use it
+  for API clients or have the proxy inject the header after authenticating the user;
+  leave it unset for the open read-only demo.
+- `NETBOX_TLS_VERIFY=false` relaxes certificate checks **only** for NetBox calls.
+
+See [SECURITY.md](SECURITY.md) for the full model and how to report vulnerabilities.
 
 ## Optional enrichments
 
