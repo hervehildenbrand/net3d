@@ -47,7 +47,7 @@ describe('GET /api/devices/:id/napalm/:method', () => {
     expect(calls).toBe(3)
   })
 
-  test('maps device-unreachable to 503 with error body', async () => {
+  test('maps device-unreachable to 503 with a sanitized body (no device IP)', async () => {
     const app = buildApp({
       netbox: fakeNetbox({
         napalm: async () => {
@@ -57,7 +57,8 @@ describe('GET /api/devices/:id/napalm/:method', () => {
     })
     const res = await app.inject({ method: 'GET', url: '/api/devices/1/napalm/get_facts' })
     expect(res.statusCode).toBe(503)
-    expect(res.json()).toEqual({ error: 'unreachable', detail: 'cannot connect to 172.21.210.144' })
+    // the upstream detail carries the device IP — it must not leak to clients
+    expect(res.json()).toEqual({ error: 'unreachable', detail: 'device unreachable' })
   })
 
   test('other upstream failures map to 502', async () => {

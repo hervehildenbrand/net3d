@@ -52,6 +52,10 @@ async function main() {
     netbox: createNetBoxClient(netboxUrl, netboxToken),
     // when set (production/Docker), serve the built UI from this process too
     webDist: WEB_DIST ? resolve(WEB_DIST) : undefined,
+    // optional shared-secret guard; unset = open (showcase / public demo)
+    apiToken: process.env.NET3D_API_TOKEN || undefined,
+    // structured logs in real runs; buildApp defaults to silent for tests
+    logger: { level: process.env.LOG_LEVEL ?? 'info' },
     // opt-in: live NetBox instances can be slow (~25s/site); the showcase enables it
     prewarm:
       PREWARM === '1' || PREWARM === 'true'

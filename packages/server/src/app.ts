@@ -1,5 +1,8 @@
-import Fastify, { type FastifyInstance } from 'fastify'
+import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify'
 import fastifyStatic from '@fastify/static'
+import helmet from '@fastify/helmet'
+import rateLimit from '@fastify/rate-limit'
+import { timingSafeEqual } from 'node:crypto'
 import { groupCircuitsBySitePair } from '@net3d/shared'
 import { TtlCache } from './cache'
 import { NapalmUnreachableError, type NetBoxClient } from './netbox'
@@ -32,11 +35,56 @@ export interface AppDeps {
   prewarm?: { intervalMs?: number; concurrency?: number }
   /** Absolute path to the built web UI; when set, serve it with an SPA fallback. */
   webDist?: string
+  /** When set, /api/* (except /api/health) requires `Authorization: Bearer <token>`. */
+  apiToken?: string
+  /** Fastify logger config; default false keeps tests quiet. */
+  logger?: FastifyServerOptions['logger']
 }
 
-export function buildApp({ netbox, napalmMaxQueue = 8, prewarm, webDist }: AppDeps): FastifyInstance {
-  const app = Fastify({ logger: false })
+export function buildApp({
+  netbox,
+  napalmMaxQueue = 8,
+  prewarm,
+  webDist,
+  apiToken,
+  logger = false,
+}: AppDeps): FastifyInstance {
+  const app = Fastify({ logger })
   const cache = new TtlCache()
+
+  // Defense-in-depth headers. The CSP is permissive enough for the WebGL/map UI
+  // (raster tiles, GL textures, inline styles from R3F/drei); tune in the browser
+  // if violations appear. crossOriginEmbedderPolicy is off so cross-origin map
+  // tiles/textures load without requiring CORP headers on every tile server.
+  app.register(helmet, {
+    crossOriginEmbedderPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+        connectSrc: ["'self'", 'https:'],
+        workerSrc: ["'self'", 'blob:'],
+        fontSrc: ["'self'", 'data:'],
+      },
+    },
+  })
+  app.register(rateLimit, { max: 300, timeWindow: '1 minute' })
+
+  // Optional shared-secret guard for the read-only API. Unset = open (showcase /
+  // public demo). When set, programmatic clients (or an auth-terminating reverse
+  // proxy that injects the header) must present the bearer token.
+  if (apiToken) {
+    const expected = Buffer.from(`Bearer ${apiToken}`)
+    app.addHook('onRequest', async (req, reply) => {
+      if (!req.url.startsWith('/api/') || req.url === '/api/health') return
+      const got = Buffer.from(req.headers.authorization ?? '')
+      if (got.length !== expected.length || !timingSafeEqual(got, expected)) {
+        return reply.code(401).send({ error: 'unauthorized' })
+      }
+    })
+  }
 
   if (prewarm) {
     const ttl = { sites: CACHE_TTL.sites, circuits: CACHE_TTL.circuits, siteDetail: CACHE_TTL.siteDetail }
@@ -119,7 +167,10 @@ export function buildApp({ netbox, napalmMaxQueue = 8, prewarm, webDist }: AppDe
         return data
       } catch (err) {
         if (err instanceof NapalmUnreachableError) {
-          return reply.code(503).send({ error: 'unreachable', detail: err.message })
+          // err.message carries the device IP ("cannot connect to <ip>") — keep
+          // it server-side only; clients get a generic, non-leaking detail.
+          app.log.warn(err)
+          return reply.code(503).send({ error: 'unreachable', detail: 'device unreachable' })
         }
         app.log.error(err)
         return reply.code(502).send({ error: 'netbox_unavailable' })

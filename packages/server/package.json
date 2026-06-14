@@ -10,6 +10,8 @@
     "start:prod": "tsx src/index.ts"
   },
   "dependencies": {
+    "@fastify/helmet": "^13.0.2",
+    "@fastify/rate-limit": "^11.0.0",
     "@fastify/static": "^9.1.3",
     "@net3d/shared": "workspace:*",
     "fastify": "^5.0.0"
