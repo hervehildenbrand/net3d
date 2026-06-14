@@ -39,8 +39,8 @@ function placement(overrides: Partial<RackPlacement> = {}): RackPlacement {
 }
 
 function expectClose(actual: number[], expected: number[], digits = 5) {
-  expect(actual.length).toBe(expected.length)
-  for (let i = 0; i < expected.length; i++) expect(actual[i]).toBeCloseTo(expected[i], digits)
+  expect(actual).toHaveLength(expected.length)
+  expected.forEach((e, i) => expect(actual[i]).toBeCloseTo(e, digits))
 }
 
 describe('collectSiteRoles', () => {
@@ -135,19 +135,21 @@ describe('buildRoleMarkers', () => {
     const racks = [rack('r1', [dev({ roleName: 'leaf', position: 1, uHeight: 1, roleColor: '00ff88' })])]
     const markers = buildRoleMarkers(racks, [placement({ rackId: 'r1' })], new Set(['leaf']))
     expect(markers).toHaveLength(1)
+    const m = markers[0]!
     // deviceTransform: y = (1-1+0.5)*0.0445 = 0.02225, h = 1*0.0445 - 0.004 = 0.0405
     // front face z = 2 + 1.2/2 = 2.6; +MARKER_DEPTH/2 (0.006) +EPS (0.002) = 2.608
-    expectClose(markers[0].position, [1, 0.02225, 2.608])
-    expectClose(markers[0].scale, [0.62, 0.0405, 0.012])
-    expect(markers[0].color).toBe('#00ff88')
+    expectClose(m.position, [1, 0.02225, 2.608])
+    expectClose(m.scale, [0.62, 0.0405, 0.012])
+    expect(m.color).toBe('#00ff88')
   })
 
   test('places the marker Y/height from deviceTransform for a higher, taller device', () => {
     const racks = [rack('r1', [dev({ roleName: 'leaf', position: 10, uHeight: 2 })])]
     const markers = buildRoleMarkers(racks, [placement({ rackId: 'r1' })], new Set(['leaf']))
+    const m = markers[0]!
     // y = (10-1+1)*0.0445 = 0.445 ; h = 2*0.0445 - 0.004 = 0.085
-    expect(markers[0].position[1]).toBeCloseTo(0.445, 5)
-    expect(markers[0].scale[1]).toBeCloseTo(0.085, 5)
+    expect(m.position[1]).toBeCloseTo(0.445, 5)
+    expect(m.scale[1]).toBeCloseTo(0.085, 5)
   })
 
   test('skips devices without a U-position', () => {
@@ -161,7 +163,7 @@ describe('buildRoleMarkers', () => {
     ]
     const markers = buildRoleMarkers(racks, [placement({ rackId: 'r1' })], new Set(['leaf']))
     expect(markers).toHaveLength(1)
-    expect(markers[0].color).toBe('#00ff88')
+    expect(markers[0]!.color).toBe('#00ff88')
   })
 
   test('skips placements with no matching rack without throwing', () => {
