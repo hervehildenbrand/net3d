@@ -1,7 +1,7 @@
 import { resolve } from 'node:path'
 import { buildApp } from './app'
 import { ConnectionCheckError, verifyConnection } from './connection-check'
-import { createNetBoxClient } from './netbox'
+import { createNetBoxClient, netboxFetch } from './netbox'
 
 const {
   NETBOX_URL,
@@ -23,9 +23,9 @@ if (!NETBOX_URL || !NETBOX_TOKEN) {
 const netboxUrl = NETBOX_URL
 const netboxToken = NETBOX_TOKEN
 
-if (NETBOX_TLS_VERIFY === 'false') {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
-}
+// TLS verification is on unless explicitly disabled; the relaxation is scoped
+// to NetBox calls (via an undici dispatcher), not the whole process.
+const tlsVerify = NETBOX_TLS_VERIFY !== 'false'
 
 async function main() {
   // Fail fast on a misconfigured NetBox: a wrong URL or rejected token should
@@ -33,7 +33,7 @@ async function main() {
   // Set SKIP_NETBOX_CHECK=1 to boot offline (e.g. CI, or a NetBox not up yet).
   if (SKIP_NETBOX_CHECK !== '1') {
     try {
-      const info = await verifyConnection(netboxUrl, netboxToken)
+      const info = await verifyConnection(netboxUrl, netboxToken, netboxFetch(tlsVerify))
       console.log(
         `✓ Connected to NetBox ${info.version ?? '(unknown version)'} at ${netboxUrl} — ` +
           `NAPALM ${info.napalmAvailable ? 'available' : 'not installed'}`,
@@ -49,7 +49,7 @@ async function main() {
   }
 
   const app = buildApp({
-    netbox: createNetBoxClient(netboxUrl, netboxToken),
+    netbox: createNetBoxClient(netboxUrl, netboxToken, { tlsVerify }),
     // when set (production/Docker), serve the built UI from this process too
     webDist: WEB_DIST ? resolve(WEB_DIST) : undefined,
     // optional shared-secret guard; unset = open (showcase / public demo)

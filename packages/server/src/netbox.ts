@@ -1,3 +1,4 @@
+import { Agent, fetch as undiciFetch } from 'undici'
 import type { SiteCircuit } from '@net3d/shared'
 import { normalizeRawCables, type RawCable, type SiteCable } from './cables'
 import {
@@ -234,7 +235,32 @@ export function normalizeRawSites(raw: RawSite[], counts: Map<string, SiteCounts
   })
 }
 
-export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient {
+/**
+ * A `fetch` for NetBox calls. When TLS verification is disabled (for an
+ * internal/self-signed CA), the relaxation is scoped to NetBox via an undici
+ * dispatcher rather than the process-wide NODE_TLS_REJECT_UNAUTHORIZED kill
+ * switch, so any other outbound HTTPS still verifies certificates normally.
+ */
+export function netboxFetch(tlsVerify: boolean): typeof fetch {
+  if (tlsVerify) return fetch
+  // The dispatcher and the fetch must come from the SAME undici, or undici
+  // rejects the request (UND_ERR_INVALID_ARG) — Node's global fetch is backed by
+  // its own bundled undici, which won't accept this package's Agent. So use
+  // undici's fetch here too.
+  const dispatcher = new Agent({ connect: { rejectUnauthorized: false } })
+  // `any` bridges undici's types and the global fetch types at this thin shim;
+  // the public signature stays `typeof fetch` so callers keep global Response.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return ((input, init) => (undiciFetch as any)(input, { ...init, dispatcher })) as typeof fetch
+}
+
+export function createNetBoxClient(
+  baseUrl: string,
+  token: string,
+  opts: { tlsVerify?: boolean } = {},
+): NetBoxClient {
+  // verification on by default; only an explicit tlsVerify:false relaxes it
+  const doFetch = netboxFetch(opts.tlsVerify !== false)
   // Detect the GraphQL dialect once (lazily, on first filtered query) and memoize.
   // Defaults to v3 if NetBox is unreachable, so the app still boots when it's down.
   let majorPromise: Promise<NetBoxMajor> | null = null
@@ -242,7 +268,7 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
     if (!majorPromise) {
       majorPromise = (async () => {
         try {
-          const res = await fetch(`${baseUrl}/api/status/`, {
+          const res = await doFetch(`${baseUrl}/api/status/`, {
             headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
           })
           if (!res.ok) return 3
@@ -261,7 +287,7 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
   async function fetchSiteCounts(): Promise<Map<string, SiteCounts>> {
     const counts = new Map<string, SiteCounts>()
     try {
-      const res = await fetch(`${baseUrl}/api/dcim/sites/?limit=1000`, {
+      const res = await doFetch(`${baseUrl}/api/dcim/sites/?limit=1000`, {
         headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
       })
       if (!res.ok) return counts
@@ -284,7 +310,7 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
   // The REST filter matches the site slug, i.e. the lowercased site code.
   async function restCableCount(site: string): Promise<number | null> {
     try {
-      const res = await fetch(`${baseUrl}/api/dcim/cables/?site=${encodeURIComponent(site.toLowerCase())}&limit=1`, {
+      const res = await doFetch(`${baseUrl}/api/dcim/cables/?site=${encodeURIComponent(site.toLowerCase())}&limit=1`, {
         headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
       })
       if (!res.ok) return null
@@ -296,7 +322,7 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
   }
 
   async function graphql<T>(query: string): Promise<T> {
-    const res = await fetch(`${baseUrl}/graphql/`, {
+    const res = await doFetch(`${baseUrl}/graphql/`, {
       method: 'POST',
       headers: {
         Authorization: `Token ${token}`,
@@ -391,7 +417,7 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
 
     async napalm(deviceId, method) {
       const url = `${baseUrl}/api/plugins/netbox_napalm_plugin/napalmplatformconfig/${deviceId}/napalm/?method=${method}`
-      const res = await fetch(url, {
+      const res = await doFetch(url, {
         headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
         signal: AbortSignal.timeout(45_000), // live SSH sessions take seconds
       })
@@ -404,7 +430,7 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
     },
 
     async getStatus() {
-      const res = await fetch(`${baseUrl}/api/status/`, {
+      const res = await doFetch(`${baseUrl}/api/status/`, {
         headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
       })
       if (!res.ok) throw new Error(`NetBox status HTTP ${res.status}`)
