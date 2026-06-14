@@ -21,3 +21,8 @@ tmp/
 
 # internal planning notes — kept local, not published
 specs/
+
+# local-only operator tooling & dev ergonomics (kept out of the public repo)
+/CLAUDE.md
+/scripts/dev-restart.sh
+/deploy/
