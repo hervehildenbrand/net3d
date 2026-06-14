@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "3D infrastructure visualization from NetBox (globe → site → rack)",
+  "license": "MIT",
   "scripts": {
     "dev": "pnpm --parallel --filter @net3d/server --filter @net3d/web dev",
     "dev:showcase": "pnpm --parallel --filter @net3d/server --filter @net3d/web dev:showcase",
