@@ -12,6 +12,8 @@ export interface DeviceLink {
   interfaceName: string
   remoteDeviceName: string | null
   remoteInterfaceName: string | null
+  /** Rack of the remote end (null for circuits / dangling cables). */
+  remoteRackName: string | null
   kind: 'data' | 'mgmt'
   cableId: string
 }
@@ -39,6 +41,7 @@ export function getCablesForDevice(
       interfaceName: local.name,
       remoteDeviceName: remote?.deviceName ?? null,
       remoteInterfaceName: remote?.name ?? null,
+      remoteRackName: remote?.rackName ?? null,
       kind: classifyCableKind(local.name),
       cableId: c.id,
     })

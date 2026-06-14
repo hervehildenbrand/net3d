@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   belongsToRack,
+  bundleConvergencePath,
   classifyCableForRack,
   formatOutgoingLabel,
   interRackCablePath,
@@ -8,6 +9,7 @@ import {
   LANE_PITCH_M,
   outgoingStubPath,
   STUB_LENGTH_M,
+  summarizeDestinations,
 } from '../src/cablepaths'
 
 const dev = (deviceName: string, rackName: string | null, name = 'et-0/0/0') => ({
@@ -210,5 +212,59 @@ describe('formatOutgoingLabel', () => {
 
   test('null endpoint reads as dangling', () => {
     expect(formatOutgoingLabel(null)).toBe('→ (dangling)')
+  })
+})
+
+describe('bundleConvergencePath', () => {
+  const localAttach = { x: 0.26, y: 0.85, z: -0.54 }
+  const opts = { bundleX: 0.16, rearZ: -0.54, exitY: 0.7, exitZ: -0.79 }
+
+  test('returns a 4-point funnel: attach → channel jog → converge → exit', () => {
+    expect(bundleConvergencePath(localAttach, opts)).toHaveLength(4)
+  })
+
+  test('starts at the device attach point', () => {
+    expect(bundleConvergencePath(localAttach, opts)[0]).toEqual(localAttach)
+  })
+
+  test('jogs out to the bundle lane at the attach height', () => {
+    const p = bundleConvergencePath(localAttach, opts)[1]!
+    expect(p).toEqual({ x: opts.bundleX, y: localAttach.y, z: opts.rearZ })
+  })
+
+  test('converges vertically to the device exit height in the rear plane', () => {
+    const p = bundleConvergencePath(localAttach, opts)[2]!
+    expect(p).toEqual({ x: opts.bundleX, y: opts.exitY, z: opts.rearZ })
+  })
+
+  test('exits straight out the back at the exit node', () => {
+    const p = bundleConvergencePath(localAttach, opts)[3]!
+    expect(p).toEqual({ x: opts.bundleX, y: opts.exitY, z: opts.exitZ })
+  })
+})
+
+describe('summarizeDestinations', () => {
+  test('count is the total number of outgoing cables (incl. circuits/null)', () => {
+    expect(summarizeDestinations(['R2', 'R2', 'R3', null]).count).toBe(4)
+  })
+
+  test('top lists the most frequent destination racks (freq desc, name asc)', () => {
+    const s = summarizeDestinations(['R2', 'R2', 'R3', 'R4', null], 2)
+    expect(s.top).toEqual(['R2', 'R3'])
+    expect(s.moreRacks).toBe(1) // distinct {R2,R3,R4}=3, minus 2 shown
+  })
+
+  test('frequency wins over order', () => {
+    expect(summarizeDestinations(['R2', 'R3', 'R3', 'R3'], 2).top).toEqual(['R3', 'R2'])
+  })
+
+  test('fewer distinct racks than topN → no remainder', () => {
+    const s = summarizeDestinations(['R2', 'R2'], 2)
+    expect(s.top).toEqual(['R2'])
+    expect(s.moreRacks).toBe(0)
+  })
+
+  test('all-null (circuits only) → count kept, no racks', () => {
+    expect(summarizeDestinations([null, null])).toEqual({ count: 2, top: [], moreRacks: 0 })
   })
 })

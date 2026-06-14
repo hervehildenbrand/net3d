@@ -57,3 +57,36 @@ describe('getCablesForDevice', () => {
     expect(getCablesForDevice(CABLES, 'nope')).toEqual([])
   })
 })
+
+describe('getCablesForDevice — remoteRackName', () => {
+  const dev = (name: string, deviceName: string, rackName: string | null): DeviceCableEnd => ({
+    kind: 'device',
+    name,
+    deviceName,
+    rackName,
+  })
+
+  test('carries the remote device rack for an inter-rack link', () => {
+    const cables = [{ id: 'c1', a: dev('et-0/0/1', 'leaf-1', 'R1'), b: dev('et-0/0/49', 'spine-1', 'R2') }]
+    expect(getCablesForDevice(cables, 'leaf-1')[0]!.remoteRackName).toBe('R2')
+  })
+
+  test('reads the rack from a powerfeed end', () => {
+    const cables = [
+      { id: 'c2', a: dev('PSU1', 'leaf-1', 'R1'), b: { kind: 'powerfeed', name: 'feed-A', deviceName: null, rackName: 'R9' } as DeviceCableEnd },
+    ]
+    expect(getCablesForDevice(cables, 'leaf-1')[0]!.remoteRackName).toBe('R9')
+  })
+
+  test('is null for a circuit end (no rack)', () => {
+    const cables = [
+      { id: 'c3', a: dev('et-0/0/47', 'leaf-1', 'R1'), b: { kind: 'circuit', name: 'CID-7', deviceName: null, rackName: null } as DeviceCableEnd },
+    ]
+    expect(getCablesForDevice(cables, 'leaf-1')[0]!.remoteRackName).toBe(null)
+  })
+
+  test('is null for a dangling cable (no remote end)', () => {
+    const cables = [{ id: 'c4', a: dev('et-0/0/0', 'leaf-1', 'R1'), b: null }]
+    expect(getCablesForDevice(cables, 'leaf-1')[0]!.remoteRackName).toBe(null)
+  })
+})

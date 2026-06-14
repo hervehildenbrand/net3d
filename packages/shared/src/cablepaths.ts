@@ -106,3 +106,41 @@ export function formatOutgoingLabel(remoteEnd: DeviceCableEnd | null): string {
   if (remoteEnd.kind === 'powerfeed') return `→ ${remoteEnd.rackName ?? 'power'} / ${remoteEnd.name}`
   return `→ ${remoteEnd.rackName ?? '?'} / ${remoteEnd.deviceName ?? '?'} / ${remoteEnd.name}`
 }
+
+/**
+ * Funnel one of a device's outgoing cables from its fanned rear attach point into
+ * the device's single bundle exit node: jog out to the bundle lane at the attach
+ * height, converge vertically to the device's exit height, then exit out the back.
+ */
+export function bundleConvergencePath(
+  localAttach: Vec3,
+  opts: { bundleX: number; rearZ: number; exitY: number; exitZ: number },
+): Vec3[] {
+  return [
+    localAttach,
+    { x: opts.bundleX, y: localAttach.y, z: opts.rearZ },
+    { x: opts.bundleX, y: opts.exitY, z: opts.rearZ },
+    { x: opts.bundleX, y: opts.exitY, z: opts.exitZ },
+  ]
+}
+
+/**
+ * Summarize a device's outgoing destinations for the count badge + on-focus hint.
+ * `count` is every outgoing cable (circuits/dangling included); `top` is the most
+ * frequent destination racks (frequency desc, then name asc); `moreRacks` is the
+ * remaining distinct racks not shown.
+ */
+export function summarizeDestinations(
+  remoteRackNames: (string | null)[],
+  topN = 2,
+): { count: number; top: string[]; moreRacks: number } {
+  const freq = new Map<string, number>()
+  for (const r of remoteRackNames) {
+    if (r == null) continue
+    freq.set(r, (freq.get(r) ?? 0) + 1)
+  }
+  const ranked = [...freq.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([r]) => r)
+  return { count: remoteRackNames.length, top: ranked.slice(0, topN), moreRacks: Math.max(0, ranked.length - topN) }
+}
