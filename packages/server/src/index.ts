@@ -35,7 +35,7 @@ async function main() {
     try {
       const info = await verifyConnection(netboxUrl, netboxToken, netboxFetch(tlsVerify))
       console.log(
-        `✓ Connected to NetBox ${info.version ?? '(unknown version)'} at ${netboxUrl} — ` +
+        `✓ Connected to NetBox ${info.version ?? '(unknown version)'} at ${netboxUrl}, ` +
           `NAPALM ${info.napalmAvailable ? 'available' : 'not installed'}`,
       )
     } catch (err) {
