@@ -42,3 +42,66 @@ describe('siteViewDistance', () => {
     expect(useAppStore.getState().siteViewDistance).toBe(99)
   })
 })
+
+describe('highlightedRoles', () => {
+  beforeEach(() => {
+    // map baseline clears level, selectedSiteName, and highlightedRoles
+    useAppStore.getState().zoomToMap()
+  })
+
+  test('initializes to an empty set', () => {
+    expect(useAppStore.getState().highlightedRoles.size).toBe(0)
+  })
+
+  test('toggleHighlightedRole adds a role not yet present', () => {
+    useAppStore.getState().toggleHighlightedRole('leaf')
+    expect([...useAppStore.getState().highlightedRoles]).toEqual(['leaf'])
+  })
+
+  test('toggleHighlightedRole removes a role already present', () => {
+    useAppStore.getState().toggleHighlightedRole('leaf')
+    useAppStore.getState().toggleHighlightedRole('leaf')
+    expect(useAppStore.getState().highlightedRoles.size).toBe(0)
+  })
+
+  test('toggleHighlightedRole leaves other roles intact', () => {
+    useAppStore.getState().toggleHighlightedRole('leaf')
+    useAppStore.getState().toggleHighlightedRole('spine')
+    useAppStore.getState().toggleHighlightedRole('leaf') // remove leaf only
+    expect([...useAppStore.getState().highlightedRoles]).toEqual(['spine'])
+  })
+
+  test('toggleHighlightedRole replaces the Set instance (immutable update)', () => {
+    const before = useAppStore.getState().highlightedRoles
+    useAppStore.getState().toggleHighlightedRole('leaf')
+    expect(useAppStore.getState().highlightedRoles).not.toBe(before)
+  })
+
+  test('clearHighlightedRoles empties the set', () => {
+    useAppStore.getState().toggleHighlightedRole('leaf')
+    useAppStore.getState().toggleHighlightedRole('spine')
+    useAppStore.getState().clearHighlightedRoles()
+    expect(useAppStore.getState().highlightedRoles.size).toBe(0)
+  })
+
+  test('zoomToMap resets the set to empty', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().toggleHighlightedRole('leaf')
+    useAppStore.getState().zoomToMap()
+    expect(useAppStore.getState().highlightedRoles.size).toBe(0)
+  })
+
+  test('zoomToSite to a different site resets the set', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().toggleHighlightedRole('leaf')
+    useAppStore.getState().zoomToSite('lon1')
+    expect(useAppStore.getState().highlightedRoles.size).toBe(0)
+  })
+
+  test('zoomToSite to the same site preserves the set (rack<->site bounce)', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().toggleHighlightedRole('leaf')
+    useAppStore.getState().zoomToSite('ams1') // e.g. exitToSite returning from a rack
+    expect([...useAppStore.getState().highlightedRoles]).toEqual(['leaf'])
+  })
+})

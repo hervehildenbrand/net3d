@@ -40,6 +40,10 @@ interface AppState {
   /** Device under the pointer in the rack view (drives cable highlighting). */
   hoveredDeviceId: string | null
   setHoveredDevice: (deviceId: string | null) => void
+  /** Room view: NetBox role names to highlight (per-device markers + rack dimming). Empty = off. */
+  highlightedRoles: Set<string>
+  toggleHighlightedRole: (name: string) => void
+  clearHighlightedRoles: () => void
   /** Leaflet zoomend/moveend feed: candidate site near the view center, if any. */
   handleMapSignals: (zoom: number, site: { name: string; lat: number; lng: number } | null) => void
   /** CameraControls feed at site/rack level; span sizes the exit thresholds. */
@@ -61,10 +65,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedDeviceId: null,
   mapView: null,
   zoomToSite: (siteName) =>
-    set({ level: 'site', selectedSiteName: siteName, selectedRackId: null, selectedDeviceId: null, rackView: 'front', siteViewDistance: null }),
+    set((s) => ({
+      level: 'site',
+      selectedSiteName: siteName,
+      selectedRackId: null,
+      selectedDeviceId: null,
+      rackView: 'front',
+      siteViewDistance: null,
+      // Keep the legend selection when bouncing back to the same room (rack->site
+      // exit reuses this action); clear it when entering a different site, since
+      // roles are per-site.
+      highlightedRoles: siteName === s.selectedSiteName ? s.highlightedRoles : new Set<string>(),
+    })),
   zoomToRack: (rackId) => set({ level: 'rack', selectedRackId: rackId, rackView: 'front' }),
   zoomToMap: () =>
-    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, siteViewDistance: null }),
+    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, siteViewDistance: null, highlightedRoles: new Set<string>() }),
   selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
   setMapView: (view) => set({ mapView: view }),
   connectivityVisible: true,
@@ -75,6 +90,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSiteViewDistance: (distance) => set({ siteViewDistance: distance }),
   hoveredDeviceId: null,
   setHoveredDevice: (deviceId) => set({ hoveredDeviceId: deviceId }),
+  highlightedRoles: new Set<string>(),
+  toggleHighlightedRole: (name) =>
+    set((s) => {
+      const next = new Set(s.highlightedRoles)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return { highlightedRoles: next }
+    }),
+  clearHighlightedRoles: () => set({ highlightedRoles: new Set<string>() }),
 
   handleMapSignals: (zoom, site) => {
     const { level, zoomToSite, setMapView } = get()
