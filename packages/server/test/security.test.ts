@@ -23,6 +23,25 @@ describe('security headers (helmet)', () => {
     expect(res.headers['content-security-policy']).toBeDefined()
     expect(res.headers['x-content-type-options']).toBe('nosniff')
   })
+
+  // Regression: the 3D UI renders labels via @react-three/drei <Text>, which uses
+  // troika-worker-utils. Troika spawns a Web Worker from a blob and then calls
+  // importScripts(blob:) INSIDE it — and importScripts is governed by `script-src`,
+  // not `worker-src`. If script-src omits blob:, that import is blocked, the worker
+  // dies ("failed to rehydrate"), the R3F room subtree crashes, and no racks render.
+  // (Only bites in the production/self-host build, where this server sends the CSP;
+  // the Vite dev server doesn't, which is why it passed locally.)
+  test("script-src allows 'blob:' so drei/troika text workers can importScripts blob URLs", async () => {
+    const app = buildApp({ netbox: fakeNetbox() })
+    const res = await app.inject({ method: 'GET', url: '/api/health' })
+    const csp = String(res.headers['content-security-policy'])
+    const scriptSrc = csp
+      .split(';')
+      .map((d) => d.trim())
+      .find((d) => d === 'script-src' || d.startsWith('script-src '))
+    expect(scriptSrc, `script-src directive missing in CSP: ${csp}`).toBeDefined()
+    expect(scriptSrc).toContain('blob:')
+  })
 })
 
 describe('rate limiting', () => {

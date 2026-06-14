@@ -61,7 +61,11 @@ export function buildApp({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
+        // 'blob:' is required by @react-three/drei <Text> → troika-worker-utils,
+        // which spawns a worker from a blob and importScripts(blob:) inside it.
+        // importScripts is governed by script-src (not worker-src), so without this
+        // the 3D room's text worker is CSP-blocked and racks fail to render.
+        scriptSrc: ["'self'", 'blob:'],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
         connectSrc: ["'self'", 'https:'],
