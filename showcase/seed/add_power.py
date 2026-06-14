@@ -85,9 +85,26 @@ def _create_many(path, specs):
                 res = _req("POST", path, batch)
                 break
             except RuntimeError as err:
-                if "deadlock" not in str(err).lower() or attempt == 4:
-                    raise
-                time.sleep(2 * (attempt + 1))
+                msg = str(err).lower()
+                if "deadlock" in msg and attempt < 4:
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                # A stale occupancy snapshot (e.g. resuming a site a killed worker
+                # had partly cabled) makes us re-POST an already-connected port.
+                # Fall back to per-item creation, skipping the conflicts.
+                if "duplicate termination" in msg or "already has a cable" in msg:
+                    res = []
+                    for spec in batch:
+                        try:
+                            r = _req("POST", path, [spec])
+                            res.extend(r if isinstance(r, list) else [r])
+                        except RuntimeError as e2:
+                            m2 = str(e2).lower()
+                            if "duplicate termination" in m2 or "already has a cable" in m2:
+                                continue  # port already cabled — skip
+                            raise
+                    break
+                raise
         out.extend(res if isinstance(res, list) else [res])
     return out
 
