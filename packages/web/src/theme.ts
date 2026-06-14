@@ -32,6 +32,13 @@ export const theme = {
     shadow: '0 1px 3px rgba(15, 23, 42, 0.1)',
     accent: '#0891b2',
   },
+  // A/B redundant power: feed A = amber (the power-cable hue), feed B = blue for
+  // a clear two-side contrast; PDU rails share their feed's color.
+  power: {
+    feedA: '#b45309',
+    feedB: '#2563eb',
+    panel: '#334155',
+  },
   cable: {
     fallback: '#0ea5e9',
     lldp: '#06b6d4',

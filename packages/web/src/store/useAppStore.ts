@@ -31,6 +31,9 @@ interface AppState {
   /** Rack view: render server↔leaf/OOB connectivity lines. */
   connectivityVisible: boolean
   toggleConnectivity: () => void
+  /** Power overlay: PDU rails + A/B power cords (rack) and per-rack PDU strips (room). */
+  powerVisible: boolean
+  togglePower: () => void
   /** Rack view camera side: 'rear' frames the cabling, 'front' the device faces. */
   rackView: 'front' | 'rear'
   toggleRackView: () => void
@@ -79,11 +82,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
   zoomToRack: (rackId) => set({ level: 'rack', selectedRackId: rackId, rackView: 'front' }),
   zoomToMap: () =>
-    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, siteViewDistance: null, highlightedRoles: new Set<string>() }),
+    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false }),
   selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
   setMapView: (view) => set({ mapView: view }),
   connectivityVisible: true,
   toggleConnectivity: () => set({ connectivityVisible: !get().connectivityVisible }),
+  powerVisible: false,
+  togglePower: () => set({ powerVisible: !get().powerVisible }),
   rackView: 'front',
   toggleRackView: () => set({ rackView: get().rackView === 'front' ? 'rear' : 'front' }),
   siteViewDistance: null,

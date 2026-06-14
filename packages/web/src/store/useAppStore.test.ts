@@ -105,3 +105,36 @@ describe('highlightedRoles', () => {
     expect([...useAppStore.getState().highlightedRoles]).toEqual(['leaf'])
   })
 })
+
+describe('powerVisible', () => {
+  beforeEach(() => {
+    useAppStore.getState().zoomToMap()
+  })
+
+  test('initializes to false', () => {
+    expect(useAppStore.getState().powerVisible).toBe(false)
+  })
+
+  test('togglePower flips the flag', () => {
+    useAppStore.getState().togglePower()
+    expect(useAppStore.getState().powerVisible).toBe(true)
+    useAppStore.getState().togglePower()
+    expect(useAppStore.getState().powerVisible).toBe(false)
+  })
+
+  test('persists across site<->rack navigation', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().togglePower()
+    useAppStore.getState().zoomToRack('rack-1')
+    expect(useAppStore.getState().powerVisible).toBe(true)
+    useAppStore.getState().zoomToSite('ams1')
+    expect(useAppStore.getState().powerVisible).toBe(true)
+  })
+
+  test('zoomToMap resets it to false', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().togglePower()
+    useAppStore.getState().zoomToMap()
+    expect(useAppStore.getState().powerVisible).toBe(false)
+  })
+})
