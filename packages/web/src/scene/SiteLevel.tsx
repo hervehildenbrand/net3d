@@ -11,6 +11,7 @@ import type { SiteCable, SiteRack } from '../hooks/useSiteDetail'
 import { theme } from '../theme'
 import { useAppStore } from '../store/useAppStore'
 import { SiteCables } from './cables'
+import { buildRoleMarkers, racksWithRole, type RoleMarker } from '../lib/roleHighlight'
 
 /** Hide individual rack labels once the camera is farther than span * this. */
 const RACK_LABEL_THRESHOLD = 0.9
@@ -33,11 +34,16 @@ function Racks({
   placements,
   onRackClick,
   span,
+  highlightActive,
+  matchedRackIds,
 }: {
   placements: RackPlacement[]
   onRackClick: (rackId: string) => void
   /** Site footprint size, used to scale the label-visibility threshold. */
   span: number
+  /** A role highlight is active — dim racks that hold no matching device. */
+  highlightActive: boolean
+  matchedRackIds: Set<string>
 }) {
   const [hovered, setHovered] = useState<string | null>(null)
   const siteViewDistance = useAppStore((s) => s.siteViewDistance)
@@ -57,7 +63,13 @@ function Racks({
             key={p.rackId}
             position={[p.x, p.height / 2, p.z]}
             scale={[p.width, p.height, p.depth]}
-            color={hovered === p.rackId ? theme.scene.rackHover : theme.scene.rack}
+            color={
+              hovered === p.rackId
+                ? theme.scene.rackHover
+                : highlightActive && !matchedRackIds.has(p.rackId)
+                  ? theme.scene.rackDimmed
+                  : theme.scene.rack
+            }
             onClick={(e) => {
               e.stopPropagation()
               onRackClick(p.rackId)
@@ -82,6 +94,36 @@ function Racks({
             </Text>
           </Billboard>
         ))}
+    </>
+  )
+}
+
+/** Per-device role markers — a glowing band on each matching rack's front face. */
+function RoleMarkers({ markers }: { markers: RoleMarker[] }) {
+  // A shared material can't carry per-instance emissive, so group markers by color
+  // and give each role hue its own <Instances>. Raycast is disabled so the markers
+  // (which sit just in front of the opaque rack faces) never steal rack click/hover.
+  const byColor = useMemo(() => {
+    const groups = new Map<string, RoleMarker[]>()
+    for (const m of markers) {
+      const g = groups.get(m.color)
+      if (g) g.push(m)
+      else groups.set(m.color, [m])
+    }
+    return [...groups.entries()]
+  }, [markers])
+
+  return (
+    <>
+      {byColor.map(([color, group]) => (
+        <Instances key={color} limit={group.length} raycast={() => null}>
+          <boxGeometry args={[1, 1, 1]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.8} toneMapped={false} />
+          {group.map((m, i) => (
+            <Instance key={i} position={m.position} scale={m.scale} />
+          ))}
+        </Instances>
+      ))}
     </>
   )
 }
@@ -135,6 +177,7 @@ export function SiteLevel({
   siteName,
   onRackClick,
   visible,
+  highlightedRoles,
 }: {
   racks: SiteRack[]
   cables: SiteCable[]
@@ -142,6 +185,8 @@ export function SiteLevel({
   siteName: string
   onRackClick: (rackId: string) => void
   visible: boolean
+  /** NetBox role names to highlight; empty = no highlight (today's plain view). */
+  highlightedRoles: Set<string>
 }) {
   const { placements, bounds } = useSiteLayout(racks)
   const size = {
@@ -153,6 +198,16 @@ export function SiteLevel({
     x: (bounds.max.x + bounds.min.x) / 2,
     z: (bounds.max.z + bounds.min.z) / 2,
   }
+
+  const highlightActive = highlightedRoles.size > 0
+  const matchedRackIds = useMemo(
+    () => racksWithRole(racks, highlightedRoles),
+    [racks, highlightedRoles],
+  )
+  const markers = useMemo(
+    () => buildRoleMarkers(racks, placements, highlightedRoles),
+    [racks, placements, highlightedRoles],
+  )
 
   return (
     <group visible={visible}>
@@ -183,8 +238,11 @@ export function SiteLevel({
           placements={placements}
           onRackClick={onRackClick}
           span={Math.max(size.x, size.z, 4)}
+          highlightActive={highlightActive}
+          matchedRackIds={matchedRackIds}
         />
       )}
+      {visible && markers.length > 0 && <RoleMarkers markers={markers} />}
       <RoomLabels racks={racks} placements={placements} />
       <SiteCables placements={placements} cables={cables} lldpSegments={lldpSegments} />
       <Billboard position={[center.x, size.y + 0.6, center.z]}>

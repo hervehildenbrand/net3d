@@ -15,6 +15,8 @@ export const theme = {
     buildingShellOpacity: 0.18,
     rack: '#8aa5bd',
     rackHover: '#5d87ab',
+    /** Non-matching racks when a role highlight is active — recede behind the markers. */
+    rackDimmed: '#3c4a59',
     rackShell: '#dbe5ee',
     rackShellEdges: '#94a8bb',
   },

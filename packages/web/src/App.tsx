@@ -14,6 +14,7 @@ import { useSiteDetail } from './hooks/useSiteDetail'
 import { useAppStore } from './store/useAppStore'
 import { DevicePanel } from './components/DevicePanel'
 import { SiteSearch } from './components/SiteSearch'
+import { RoleLegend } from './components/RoleLegend'
 import { SceneErrorBoundary } from './components/SceneErrorBoundary'
 
 const hudStyle: React.CSSProperties = {
@@ -41,6 +42,9 @@ export function App() {
   const toggleConnectivity = useAppStore((s) => s.toggleConnectivity)
   const rackView = useAppStore((s) => s.rackView)
   const toggleRackView = useAppStore((s) => s.toggleRackView)
+  const highlightedRoles = useAppStore((s) => s.highlightedRoles)
+  const toggleHighlightedRole = useAppStore((s) => s.toggleHighlightedRole)
+  const clearHighlightedRoles = useAppStore((s) => s.clearHighlightedRoles)
   const { data: siteDetail, isLoading: siteLoading } = useSiteDetail(
     level !== 'map' ? selectedSiteName : null,
   )
@@ -127,6 +131,7 @@ export function App() {
                 siteName={selectedSiteName}
                 onRackClick={zoomToRack}
                 visible={level === 'site'}
+                highlightedRoles={highlightedRoles}
               />
             )}
             {level === 'rack' && selectedRack && selectedPlacement && (
@@ -184,6 +189,15 @@ export function App() {
 
       {sites && level === 'map' && !selectedDevice && (
         <SiteSearch sites={sites} onSelect={zoomToSite} />
+      )}
+
+      {level === 'site' && !!siteDetail?.racks?.length && (
+        <RoleLegend
+          racks={siteDetail.racks}
+          highlighted={highlightedRoles}
+          onToggle={toggleHighlightedRole}
+          onClear={clearHighlightedRoles}
+        />
       )}
 
       {level !== 'map' && (
