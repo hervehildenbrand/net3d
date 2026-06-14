@@ -7,10 +7,11 @@ import {
   type LldpCableSegment,
   type RackPlacement,
 } from '@net3d/shared'
-import type { SiteCable, SiteRack } from '../hooks/useSiteDetail'
+import type { SiteCable, SitePower, SiteRack } from '../hooks/useSiteDetail'
 import { theme } from '../theme'
 import { useAppStore } from '../store/useAppStore'
 import { SiteCables } from './cables'
+import { RoomPower } from './power'
 import { buildRoleMarkers, racksWithRole, type RoleMarker } from '../lib/roleHighlight'
 
 /** Hide individual rack labels once the camera is farther than span * this. */
@@ -178,6 +179,8 @@ export function SiteLevel({
   onRackClick,
   visible,
   highlightedRoles,
+  powerVisible,
+  power,
 }: {
   racks: SiteRack[]
   cables: SiteCable[]
@@ -187,6 +190,9 @@ export function SiteLevel({
   visible: boolean
   /** NetBox role names to highlight; empty = no highlight (today's plain view). */
   highlightedRoles: Set<string>
+  /** Power overlay on: render per-rack A/B PDU strips + panel nodes. */
+  powerVisible: boolean
+  power?: SitePower
 }) {
   const { placements, bounds } = useSiteLayout(racks)
   const size = {
@@ -243,6 +249,7 @@ export function SiteLevel({
         />
       )}
       {visible && markers.length > 0 && <RoleMarkers markers={markers} />}
+      {visible && powerVisible && <RoomPower racks={racks} placements={placements} power={power} />}
       <RoomLabels racks={racks} placements={placements} />
       <SiteCables placements={placements} cables={cables} lldpSegments={lldpSegments} />
       <Billboard position={[center.x, size.y + 0.6, center.z]}>

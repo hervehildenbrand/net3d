@@ -1,12 +1,15 @@
 import { describe, expect, test } from 'vitest'
 import type { RackPlacement } from '@net3d/shared'
-import type { CableEndpoint, SiteCable, SiteDevice, SiteRack } from '../hooks/useSiteDetail'
+import type { CableEndpoint, SiteCable, SiteDevice, SitePower, SiteRack } from '../hooks/useSiteDetail'
 import { theme } from '../theme'
 import {
   buildPduRails,
   buildPowerCords,
+  buildRoomPduStrips,
+  collectSitePower,
   isPdu,
   isPowerCable,
+  panelNodes,
   pduDevices,
   pduNameSet,
   pduSide,
@@ -187,5 +190,97 @@ describe('railColor', () => {
   test('maps A/B to the theme feed colors', () => {
     expect(railColor('A')).toBe(theme.power.feedA)
     expect(railColor('B')).toBe(theme.power.feedB)
+  })
+})
+
+describe('buildRoomPduStrips', () => {
+  test('one A strip (left) and one B strip (right) per dual-fed rack', () => {
+    const r = rack([dev({ name: 'srv-1' }), PDU_A, PDU_B], 'r1')
+    const strips = buildRoomPduStrips([r], [placement({ rackId: 'r1' })])
+    expect(strips).toHaveLength(2)
+    const a = strips.find((s) => s.side === 'A')!
+    const b = strips.find((s) => s.side === 'B')!
+    expect(a.position[0]).toBeLessThan(1) // left of rack center x=1
+    expect(b.position[0]).toBeGreaterThan(1) // right of center
+    expect(a.scale[1]).toBeCloseTo(42 * 0.0445, 5) // full rack height
+    expect(a.color).toBe(theme.power.feedA)
+    expect(b.color).toBe(theme.power.feedB)
+    expect(a.rackId).toBe('r1')
+  })
+
+  test('racks without PDUs produce no strips', () => {
+    const r = rack([dev({ name: 'srv-1' })], 'r1')
+    expect(buildRoomPduStrips([r], [placement({ rackId: 'r1' })])).toEqual([])
+  })
+
+  test('skips placements with no matching rack', () => {
+    const r = rack([PDU_A, PDU_B], 'r1')
+    expect(buildRoomPduStrips([r], [placement({ rackId: 'ghost' })])).toEqual([])
+  })
+})
+
+describe('panelNodes', () => {
+  const power: SitePower = {
+    panels: [
+      { id: '1', name: 'AMS1-PWR-A', location: null },
+      { id: '2', name: 'AMS1-PWR-B', location: null },
+    ],
+    feeds: [],
+  }
+
+  test('places an A node and a B node at opposite room edges', () => {
+    const placements = [placement({ rackId: 'r1', x: 0 }), placement({ rackId: 'r2', x: 4 })]
+    const nodes = panelNodes(placements, power)
+    expect(nodes).toHaveLength(2)
+    const a = nodes.find((n) => n.side === 'A')!
+    const b = nodes.find((n) => n.side === 'B')!
+    expect(a.name).toBe('AMS1-PWR-A')
+    expect(a.position[0]).toBeLessThan(b.position[0]) // A left of B
+    expect(a.color).toBe(theme.power.feedA)
+  })
+
+  test('returns [] when there are no panels or no placements', () => {
+    expect(panelNodes([], power)).toEqual([])
+    expect(panelNodes([placement()], { panels: [], feeds: [] })).toEqual([])
+  })
+})
+
+describe('collectSitePower', () => {
+  const racks = [rack([dev({ name: 'srv-1' }), PDU_A, PDU_B], 'r1'), rack([dev({ name: 'srv-2' })], 'r2')]
+  const power: SitePower = {
+    panels: [
+      { id: '1', name: 'AMS1-PWR-A', location: null },
+      { id: '2', name: 'AMS1-PWR-B', location: null },
+    ],
+    feeds: [
+      {
+        id: '10', name: 'AMS1-SRV-01-feed-A', status: 'active', voltage: 415, amperage: 32,
+        phase: 'three-phase', supply: 'ac', type: 'primary', maxUtilization: 80,
+        panelName: 'AMS1-PWR-A', rackName: 'AMS1-SRV-01',
+      },
+    ],
+  }
+
+  test('summarizes panels, feed specs, PDU and rack counts', () => {
+    const s = collectSitePower(racks, power)
+    expect(s.pduCount).toBe(2) // two PDUs in r1
+    expect(s.panelCount).toBe(2)
+    expect(s.feedCount).toBe(1)
+    expect(s.voltage).toBe(415)
+    expect(s.phase).toBe('three-phase')
+    expect(s.amperage).toBe(32)
+  })
+
+  test('works with no server power data (derives PDU count from racks)', () => {
+    const s = collectSitePower(racks, undefined)
+    expect(s.pduCount).toBe(2)
+    expect(s.panelCount).toBe(0)
+    expect(s.feedCount).toBe(0)
+    expect(s.voltage).toBe(null)
+  })
+
+  test('returns zeros for a powerless site', () => {
+    const s = collectSitePower([rack([dev()], 'r1')], { panels: [], feeds: [] })
+    expect(s).toMatchObject({ pduCount: 0, panelCount: 0, feedCount: 0, voltage: null })
   })
 })

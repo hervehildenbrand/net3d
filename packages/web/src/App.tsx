@@ -15,6 +15,7 @@ import { useAppStore } from './store/useAppStore'
 import { DevicePanel } from './components/DevicePanel'
 import { SiteSearch } from './components/SiteSearch'
 import { RoleLegend } from './components/RoleLegend'
+import { PowerLegend } from './components/PowerLegend'
 import { SceneErrorBoundary } from './components/SceneErrorBoundary'
 
 const hudStyle: React.CSSProperties = {
@@ -40,6 +41,8 @@ export function App() {
   const selectDevice = useAppStore((s) => s.selectDevice)
   const connectivityVisible = useAppStore((s) => s.connectivityVisible)
   const toggleConnectivity = useAppStore((s) => s.toggleConnectivity)
+  const powerVisible = useAppStore((s) => s.powerVisible)
+  const togglePower = useAppStore((s) => s.togglePower)
   const rackView = useAppStore((s) => s.rackView)
   const toggleRackView = useAppStore((s) => s.toggleRackView)
   const highlightedRoles = useAppStore((s) => s.highlightedRoles)
@@ -132,6 +135,8 @@ export function App() {
                 onRackClick={zoomToRack}
                 visible={level === 'site'}
                 highlightedRoles={highlightedRoles}
+                powerVisible={powerVisible}
+                power={siteDetail.power}
               />
             )}
             {level === 'rack' && selectedRack && selectedPlacement && (
@@ -200,6 +205,10 @@ export function App() {
         />
       )}
 
+      {level === 'site' && powerVisible && !!siteDetail?.racks?.length && (
+        <PowerLegend racks={siteDetail.racks} power={siteDetail.power} />
+      )}
+
       {level !== 'map' && (
         <button
           onClick={() =>
@@ -238,6 +247,26 @@ export function App() {
           }}
         >
           {connectivityVisible ? '◉ connectivity' : '○ connectivity'}
+        </button>
+      )}
+
+      {level !== 'map' && (
+        <button
+          onClick={togglePower}
+          title="show/hide A/B power: PDU rails + power cords (rack), per-rack strips + panels (room)"
+          style={{
+            ...hudStyle,
+            top: level === 'rack' ? 176 : 96,
+            background: powerVisible ? '#b45309' : '#ffffff',
+            color: powerVisible ? '#ffffff' : '#1e293b',
+            border: '1px solid #cbd5e1',
+            borderRadius: 6,
+            padding: '6px 12px',
+            cursor: 'pointer',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+          }}
+        >
+          {powerVisible ? '◉ power' : '○ power'}
         </button>
       )}
 

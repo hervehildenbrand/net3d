@@ -1,5 +1,5 @@
 import { deviceTransform, type DeviceBox, type RackPlacement } from '@net3d/shared'
-import type { SiteCable, SiteDevice, SiteRack } from '../hooks/useSiteDetail'
+import type { SiteCable, SiteDevice, SitePower, SiteRack } from '../hooks/useSiteDetail'
 import { theme } from '../theme'
 
 export type FeedSide = 'A' | 'B'
@@ -149,4 +149,100 @@ export function buildPowerCords(
     })
   }
   return cords
+}
+
+// ---------------------------------------------------------------------------
+// Room-view overlay: per-rack A/B strips, panel nodes, and a power summary.
+// ---------------------------------------------------------------------------
+
+export interface RoomPduStrip {
+  rackId: string
+  position: [number, number, number]
+  scale: [number, number, number]
+  color: string
+  side: FeedSide
+}
+
+export interface PanelNode {
+  side: FeedSide
+  name: string
+  position: [number, number, number]
+  color: string
+}
+
+export interface PowerSummary {
+  /** Total vertical PDUs across the site's racks. */
+  pduCount: number
+  panelCount: number
+  feedCount: number
+  /** Distinct racks served by at least one feed. */
+  racksFed: number
+  voltage: number | null
+  amperage: number | null
+  phase: string | null
+}
+
+/** Thin A/B side strips on each dual-fed rack so the redundancy reads at room scale. */
+const STRIP_W = 0.04
+const STRIP_INSET = 0.03
+
+export function buildRoomPduStrips(racks: SiteRack[], placements: RackPlacement[]): RoomPduStrip[] {
+  const racksById = new Map(racks.map((r) => [r.id, r]))
+  const strips: RoomPduStrip[] = []
+  for (const p of placements) {
+    const rack = racksById.get(p.rackId)
+    if (!rack) continue
+    for (const { side } of pduDevices(rack)) {
+      const x = side === 'A' ? p.x - p.width / 2 + STRIP_INSET : p.x + p.width / 2 - STRIP_INSET
+      strips.push({
+        rackId: p.rackId,
+        position: [x, p.height / 2, p.z],
+        scale: [STRIP_W, p.height, p.depth * 0.5],
+        color: railColor(side),
+        side,
+      })
+    }
+  }
+  return strips
+}
+
+/** Two panel markers (A left, B right) at the room edges, labelled from NetBox panels. */
+export function panelNodes(placements: RackPlacement[], power: SitePower): PanelNode[] {
+  if (placements.length === 0 || power.panels.length === 0) return []
+  const xs = placements.map((p) => p.x)
+  const zs = placements.map((p) => p.z)
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const cz = (Math.min(...zs) + Math.max(...zs)) / 2
+  const y = Math.max(...placements.map((p) => p.height))
+  const margin = 1.5
+  const nodes: PanelNode[] = []
+  for (const panel of power.panels) {
+    const side = pduSide(panel.name)
+    if (!side) continue
+    nodes.push({
+      side,
+      name: panel.name,
+      position: [side === 'A' ? minX - margin : maxX + margin, y, cz],
+      color: railColor(side),
+    })
+  }
+  return nodes
+}
+
+/** Site power roll-up for the legend: PDU/panel/feed counts + representative feed specs. */
+export function collectSitePower(racks: SiteRack[], power?: SitePower): PowerSummary {
+  let pduCount = 0
+  for (const r of racks) pduCount += r.devices.filter(isPdu).length
+  const feeds = power?.feeds ?? []
+  const first = feeds[0]
+  return {
+    pduCount,
+    panelCount: power?.panels.length ?? 0,
+    feedCount: feeds.length,
+    racksFed: new Set(feeds.map((f) => f.rackName).filter(Boolean)).size,
+    voltage: first?.voltage ?? null,
+    amperage: first?.amperage ?? null,
+    phase: first?.phase ?? null,
+  }
 }

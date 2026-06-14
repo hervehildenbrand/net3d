@@ -14,6 +14,7 @@ import type { NapalmInterface } from '../components/DevicePanel'
 import { theme } from '../theme'
 import { useAppStore } from '../store/useAppStore'
 import { RackCables } from './cables'
+import { RackPower } from './power'
 
 interface PlacedDevice {
   device: SiteDevice
@@ -55,6 +56,7 @@ export function RackLevel({
 }) {
   const [hovered, setHovered] = useState<string | null>(null)
   const connectivityVisible = useAppStore((s) => s.connectivityVisible)
+  const powerVisible = useAppStore((s) => s.powerVisible)
   const rackView = useAppStore((s) => s.rackView)
   const setHoveredDevice = useAppStore((s) => s.setHoveredDevice)
 
@@ -184,9 +186,19 @@ export function RackLevel({
         cables={cables}
         liveStatus={liveStatus}
         lldpSegments={lldpSegments}
-        showConnectivity={connectivityVisible}
+        // power overlay takes over the rear channel — fade data cabling while it's on
+        showConnectivity={connectivityVisible && !powerVisible}
         highlightDeviceName={highlightDeviceName}
       />
+
+      {powerVisible && (
+        <RackPower
+          rack={rack}
+          placement={placement}
+          cables={cables}
+          highlightDeviceName={highlightDeviceName}
+        />
+      )}
 
       <Billboard position={[placement.x, placement.height + 0.18, placement.z]}>
         <Text fontSize={0.1} color={theme.text.primary} anchorX="center" anchorY="bottom">
