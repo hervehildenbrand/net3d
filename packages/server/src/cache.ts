@@ -1,3 +1,5 @@
+import type { DiskCacheStore } from './persistence'
+
 interface Entry {
   value: unknown
   expiresAt: number
@@ -11,10 +13,36 @@ export interface GetOrSetOptions {
   staleWhileRevalidate?: boolean
 }
 
+export interface TtlCacheOptions {
+  /** When set, entries are written through to disk and can be hydrated on boot. */
+  persist?: DiskCacheStore
+  /** Which keys to persist (default: all). Used to skip volatile keys like napalm. */
+  shouldPersist?: (key: string) => boolean
+}
+
 /** In-memory TTL cache. Single-process; swap for redis if the app ever scales out. */
 export class TtlCache {
   private store = new Map<string, Entry>()
   private refreshing = new Set<string>()
+  private readonly persist?: DiskCacheStore
+  private readonly shouldPersist: (key: string) => boolean
+
+  constructor(opts?: TtlCacheOptions) {
+    this.persist = opts?.persist
+    this.shouldPersist = opts?.shouldPersist ?? (() => true)
+  }
+
+  /**
+   * Load persisted entries into memory at startup, keeping their original
+   * expiry. After a restart that expiry is in the past, so SWR routes serve
+   * the value instantly and revalidate it in the background.
+   */
+  hydrate(): void {
+    if (!this.persist) return
+    for (const { key, value, expiresAt } of this.persist.loadAllSync()) {
+      this.store.set(key, { value, expiresAt })
+    }
+  }
 
   get<T>(key: string): T | undefined {
     const entry = this.store.get(key)
@@ -34,7 +62,10 @@ export class TtlCache {
   }
 
   set(key: string, value: unknown, ttlMs: number): void {
-    this.store.set(key, { value, expiresAt: Date.now() + ttlMs })
+    const expiresAt = Date.now() + ttlMs
+    this.store.set(key, { value, expiresAt })
+    // write-through: fire-and-forget; persistence never blocks or breaks a request
+    if (this.persist && this.shouldPersist(key)) void this.persist.write(key, value, expiresAt)
   }
 
   async getOrSet<T>(
