@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from collections import defaultdict
@@ -69,13 +70,24 @@ def _get_all(path):
 
 
 def _create_many(path, specs):
-    """Bulk-create in batches; return the flat list of created records."""
+    """Bulk-create in batches; return the flat list of created records.
+
+    Parallel workers (disjoint sites) still contend on shared counter rows — e.g.
+    the single PDU device-type's instance count — which postgres resolves by
+    aborting one transaction as a deadlock; the batch is untouched, so retry."""
     out = []
     for i in range(0, len(specs), BATCH):
         batch = specs[i : i + BATCH]
         if not batch:
             continue
-        res = _req("POST", path, batch)
+        for attempt in range(5):
+            try:
+                res = _req("POST", path, batch)
+                break
+            except RuntimeError as err:
+                if "deadlock" not in str(err).lower() or attempt == 4:
+                    raise
+                time.sleep(2 * (attempt + 1))
         out.extend(res if isinstance(res, list) else [res])
     return out
 
