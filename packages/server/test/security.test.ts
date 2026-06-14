@@ -25,6 +25,14 @@ describe('security headers (helmet)', () => {
   })
 })
 
+describe('rate limiting', () => {
+  test('emits x-ratelimit-* headers on API responses', async () => {
+    const app = buildApp({ netbox: fakeNetbox() })
+    const res = await app.inject({ method: 'GET', url: '/api/sites' })
+    expect(res.headers['x-ratelimit-limit']).toBeDefined()
+  })
+})
+
 describe('bearer auth on /api/*', () => {
   test('no apiToken → API is open', async () => {
     const app = buildApp({ netbox: fakeNetbox() })

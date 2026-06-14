@@ -109,89 +109,96 @@ export function buildApp({
     }
   }
 
-  app.get('/api/health', async () => ({ status: 'ok' }))
+  // /api routes live in a child plugin registered AFTER rate-limit so that
+  // @fastify/rate-limit's onRoute hook (it attaches the limiter as each route is
+  // registered) actually sees them — routes added to the root before the deferred
+  // plugin finishes loading would silently skip rate limiting. (helmet's global
+  // onRequest hook applies regardless, which is why headers worked but limits didn't.)
+  app.register(async function apiRoutes(app) {
+    app.get('/api/health', async () => ({ status: 'ok' }))
 
-  app.get('/api/meta', async () => {
-    try {
-      return await cache.getOrSet('meta', CACHE_TTL.sites, () => netbox.getStatus())
-    } catch (err) {
-      app.log.warn(err)
-      // showcase degrades gracefully: no capabilities ≠ broken app
-      return { netboxVersion: null, napalmAvailable: false }
-    }
-  })
-
-  app.get('/api/sites', async (_req, reply) => {
-    try {
-      return await cache.getOrSet('sites', CACHE_TTL.sites, () => netbox.getSites(), SWR)
-    } catch (err) {
-      app.log.error(err)
-      return reply.code(502).send({ error: 'netbox_unavailable' })
-    }
-  })
-
-  app.get<{ Params: { name: string } }>('/api/sites/:name', async (req, reply) => {
-    try {
-      const { name } = req.params
-      return await cache.getOrSet(
-        `site:${name}`,
-        CACHE_TTL.siteDetail,
-        () => loadSiteDetail(netbox, name),
-        SWR,
-      )
-    } catch (err) {
-      app.log.error(err)
-      return reply.code(502).send({ error: 'netbox_unavailable' })
-    }
-  })
-
-  let napalmInFlight = 0
-  app.get<{ Params: { id: string; method: string } }>(
-    '/api/devices/:id/napalm/:method',
-    async (req, reply) => {
-      const { id, method } = req.params
-      const ttl = NAPALM_METHODS[method as keyof typeof NAPALM_METHODS]
-      if (ttl === undefined) {
-        return reply.code(400).send({ error: 'method_not_allowed', allowed: Object.keys(NAPALM_METHODS) })
-      }
-      const cacheKey = `napalm:${id}:${method}`
-      const hit = cache.get(cacheKey)
-      if (hit !== undefined) return hit
-      if (napalmInFlight >= napalmMaxQueue) {
-        return reply.code(429).send({ error: 'napalm_busy' })
-      }
-      napalmInFlight++
+    app.get('/api/meta', async () => {
       try {
-        const data = await netbox.napalm(Number(id), method)
-        cache.set(cacheKey, data, ttl)
-        return data
+        return await cache.getOrSet('meta', CACHE_TTL.sites, () => netbox.getStatus())
       } catch (err) {
-        if (err instanceof NapalmUnreachableError) {
-          // err.message carries the device IP ("cannot connect to <ip>") — keep
-          // it server-side only; clients get a generic, non-leaking detail.
-          app.log.warn(err)
-          return reply.code(503).send({ error: 'unreachable', detail: 'device unreachable' })
-        }
+        app.log.warn(err)
+        // showcase degrades gracefully: no capabilities ≠ broken app
+        return { netboxVersion: null, napalmAvailable: false }
+      }
+    })
+
+    app.get('/api/sites', async (_req, reply) => {
+      try {
+        return await cache.getOrSet('sites', CACHE_TTL.sites, () => netbox.getSites(), SWR)
+      } catch (err) {
         app.log.error(err)
         return reply.code(502).send({ error: 'netbox_unavailable' })
-      } finally {
-        napalmInFlight--
       }
-    },
-  )
+    })
 
-  app.get('/api/circuits', async (_req, reply) => {
-    try {
-      return await cache.getOrSet(
-        'circuits',
-        CACHE_TTL.circuits,
-        async () => groupCircuitsBySitePair(await netbox.getCircuits()),
-        SWR,
-      )
-    } catch (err) {
-      app.log.error(err)
-      return reply.code(502).send({ error: 'netbox_unavailable' })
-    }
+    app.get<{ Params: { name: string } }>('/api/sites/:name', async (req, reply) => {
+      try {
+        const { name } = req.params
+        return await cache.getOrSet(
+          `site:${name}`,
+          CACHE_TTL.siteDetail,
+          () => loadSiteDetail(netbox, name),
+          SWR,
+        )
+      } catch (err) {
+        app.log.error(err)
+        return reply.code(502).send({ error: 'netbox_unavailable' })
+      }
+    })
+
+    let napalmInFlight = 0
+    app.get<{ Params: { id: string; method: string } }>(
+      '/api/devices/:id/napalm/:method',
+      async (req, reply) => {
+        const { id, method } = req.params
+        const ttl = NAPALM_METHODS[method as keyof typeof NAPALM_METHODS]
+        if (ttl === undefined) {
+          return reply.code(400).send({ error: 'method_not_allowed', allowed: Object.keys(NAPALM_METHODS) })
+        }
+        const cacheKey = `napalm:${id}:${method}`
+        const hit = cache.get(cacheKey)
+        if (hit !== undefined) return hit
+        if (napalmInFlight >= napalmMaxQueue) {
+          return reply.code(429).send({ error: 'napalm_busy' })
+        }
+        napalmInFlight++
+        try {
+          const data = await netbox.napalm(Number(id), method)
+          cache.set(cacheKey, data, ttl)
+          return data
+        } catch (err) {
+          if (err instanceof NapalmUnreachableError) {
+            // err.message carries the device IP ("cannot connect to <ip>") — keep
+            // it server-side only; clients get a generic, non-leaking detail.
+            app.log.warn(err)
+            return reply.code(503).send({ error: 'unreachable', detail: 'device unreachable' })
+          }
+          app.log.error(err)
+          return reply.code(502).send({ error: 'netbox_unavailable' })
+        } finally {
+          napalmInFlight--
+        }
+      },
+    )
+
+    app.get('/api/circuits', async (_req, reply) => {
+      try {
+        return await cache.getOrSet(
+          'circuits',
+          CACHE_TTL.circuits,
+          async () => groupCircuitsBySitePair(await netbox.getCircuits()),
+          SWR,
+        )
+      } catch (err) {
+        app.log.error(err)
+        return reply.code(502).send({ error: 'netbox_unavailable' })
+      }
+    })
   })
 
   if (webDist) {
