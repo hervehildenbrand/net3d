@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify'
+import fastifyStatic from '@fastify/static'
 import { groupCircuitsBySitePair } from '@net3d/shared'
 import { TtlCache } from './cache'
 import { NapalmUnreachableError, type NetBoxClient } from './netbox'
@@ -29,9 +30,11 @@ export interface AppDeps {
   napalmMaxQueue?: number
   /** Pre-warm all caches at startup and refresh on an interval (0 = once only). */
   prewarm?: { intervalMs?: number; concurrency?: number }
+  /** Absolute path to the built web UI; when set, serve it with an SPA fallback. */
+  webDist?: string
 }
 
-export function buildApp({ netbox, napalmMaxQueue = 8, prewarm }: AppDeps): FastifyInstance {
+export function buildApp({ netbox, napalmMaxQueue = 8, prewarm, webDist }: AppDeps): FastifyInstance {
   const app = Fastify({ logger: false })
   const cache = new TtlCache()
 
@@ -139,6 +142,19 @@ export function buildApp({ netbox, napalmMaxQueue = 8, prewarm }: AppDeps): Fast
       return reply.code(502).send({ error: 'netbox_unavailable' })
     }
   })
+
+  if (webDist) {
+    // Serve the built UI from the same process so production is one container.
+    // wildcard:false registers a route per built file; the SPA fallback lets
+    // client routes deep-link, while /api/* keeps priority and 404s as JSON.
+    app.register(fastifyStatic, { root: webDist, wildcard: false })
+    app.setNotFoundHandler((req, reply) => {
+      if (req.method === 'GET' && !req.url.startsWith('/api/')) {
+        return reply.sendFile('index.html')
+      }
+      return reply.code(404).send({ error: 'not_found' })
+    })
+  }
 
   return app
 }

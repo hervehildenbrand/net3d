@@ -8,6 +8,7 @@ import { SiteLevel, useSiteLayout } from './scene/SiteLevel'
 import { RackLevel } from './scene/RackLevel'
 import { CameraRig } from './scene/CameraRig'
 import { useSites } from './hooks/useSites'
+import { connectionErrorMessage } from './connectionError'
 import { useCircuits } from './hooks/useCircuits'
 import { useSiteDetail } from './hooks/useSiteDetail'
 import { useAppStore } from './store/useAppStore'
@@ -149,7 +150,9 @@ export function App() {
         <strong style={{ color: '#1e293b' }}>net3d</strong>
         <div>
           {isLoading && 'loading sites…'}
-          {error && `error: ${String(error)}`}
+          {error && (
+            <span style={{ color: '#b91c1c' }}>⚠ {connectionErrorMessage(error)}</span>
+          )}
           {sites &&
             level === 'map' &&
             `${sites.length} sites — ${sites.filter((s) => s.latitude !== null).length} on map — ${circuitGroups?.length ?? 0} DC links`}

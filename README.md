@@ -19,8 +19,7 @@ continuous mouse-wheel journey.
 - 🔌 **Cabling, documented and discovered** — solid lines are NetBox cables (all
   termination types: interfaces, front/rear ports, console, power, circuits). Entering
   a rack auto-discovers **LLDP neighbors via the NetBox NAPALM plugin** (the app never
-  contacts devices directly); undocumented links appear as dashed cyan cables, with
-  inter-rack discoveries shown as dashed overhead trays in the site view.
+  contacts devices directly); undocumented links appear as dashed cyan cables.
 - 📟 **Live device panel** — NAPALM facts, environment sensors, interface up/down
   states (auto-refresh), live green/red cable coloring, and an LLDP-vs-NetBox audit.
 - 🪶 **Graceful degradation** — without the NAPALM plugin, all live features hide and
@@ -28,16 +27,19 @@ continuous mouse-wheel journey.
 
 ## Requirements
 
-- Node.js ≥ 20 and [pnpm](https://pnpm.io)
-- A NetBox instance (tested against **3.7.x**) and an API token with read access
+- **Node.js ≥ 22** and [pnpm](https://pnpm.io) 11 (via `corepack enable`). Node 22 is
+  required by pnpm 11; Node 20 will fail to install.
+- A **NetBox** instance — tested against **3.7.x and 4.x** — reachable over HTTP(S),
+  with the **GraphQL API enabled** (NetBox's default) and a **read-only API token**.
 - Optional, for live data: [netbox-napalm-plugin](https://github.com/netbox-community/netbox-napalm-plugin)
-  configured with platform → NAPALM driver mappings and device credentials
+  configured with platform → NAPALM driver mappings and device credentials.
 
 No NetBox handy? Stand one up in minutes with
 [netbox-docker](https://github.com/netbox-community/netbox-docker) and load the
-[demo data](https://github.com/netbox-community/netbox-demo-data).
+[demo data](https://github.com/netbox-community/netbox-demo-data), or use the bundled
+[`showcase/`](showcase/) stack.
 
-## Quickstart
+## Quickstart (development)
 
 ```sh
 cp .env.example .env     # set NETBOX_URL + NETBOX_TOKEN (NETBOX_TLS_VERIFY=false for internal CAs)
@@ -46,9 +48,65 @@ pnpm dev                 # API proxy on :3001, app on http://localhost:5173
 pnpm test                # vitest across all packages
 ```
 
-The API token never reaches the browser — a small Fastify proxy holds it, queries
-NetBox GraphQL, normalizes the data, and caches responses (topology minutes, NAPALM
-seconds-to-minutes per method).
+The API token never reaches the browser: a small Fastify proxy holds it, queries
+NetBox GraphQL, normalizes the data, and caches responses.
+
+## Connecting your NetBox
+
+1. **Mint a token.** In NetBox, open your profile → **API Tokens** → **Add a token**.
+   A read-only token is enough — you can untick *Write enabled*. Copy the key into
+   `NETBOX_TOKEN` and set `NETBOX_URL` to the instance base URL (e.g.
+   `https://netbox.example.com`, no trailing `/api`).
+2. **Start the server.** On boot it verifies the connection and prints one of:
+   - `✓ Connected to NetBox 4.0.5 at https://netbox.example.com — NAPALM available`
+   - `✗ Cannot reach NetBox …` followed by a specific hint — then exits. The hint
+     distinguishes a bad token, an unresolvable host, a refused connection, an
+     untrusted TLS certificate, and a disabled GraphQL API.
+
+   (Set `SKIP_NETBOX_CHECK=1` to boot without the preflight, e.g. when NetBox isn't up
+   yet.)
+
+## Running in production / self-hosting
+
+Two supported ways to run net3d against your own NetBox. Both serve the built UI and
+the API from a single Fastify process.
+
+### Docker (one command)
+
+```sh
+cp .env.example .env          # set NETBOX_URL + NETBOX_TOKEN
+docker compose up --build     # then open http://localhost:8080
+```
+
+- Change the published port with `NET3D_PORT` (e.g. `NET3D_PORT=9000 docker compose up`).
+- Pre-warm caches for snappier first loads with `PREWARM=1` in `.env`.
+- If NetBox runs on your **host** (e.g. the showcase on `localhost:8088`), point the
+  container at it via `NETBOX_URL=http://host.docker.internal:8088`.
+
+### Manual (Node)
+
+```sh
+pnpm install
+pnpm build                                   # → packages/web/dist
+WEB_DIST="$PWD/packages/web/dist" \
+  NETBOX_URL=https://netbox.example.com \
+  NETBOX_TOKEN=… HOST=0.0.0.0 PORT=8080 \
+  pnpm start                                 # serves UI + API on :8080
+```
+
+`pnpm start` runs the Fastify server; with `WEB_DIST` set it also serves the built UI.
+Put it behind your own TLS / reverse proxy.
+
+## Optional enrichments
+
+net3d runs on core NetBox data alone. These unlock extra detail when present, and are
+silently ignored when not:
+
+- **Device-type custom fields** `cpu_model` (text), `cpu_cores` (integer), `ram_gb`
+  (integer), `storage_tb` (integer) → a hardware-specs section in the device panel.
+- **Site tags** `compute` or `pop` → a role badge on the map.
+- **netbox-napalm-plugin** → live facts/environment/interfaces and LLDP cabling
+  discovery. Without it those features simply hide.
 
 ## Architecture
 
@@ -57,22 +115,35 @@ packages/
 ├── shared/   pure, fully-tested logic: map bounds & geodesics, rack layout,
 │             device U-transforms, cable paths, zoom-navigation state machine,
 │             LLDP↔cable diffing
-├── server/   Fastify proxy: GraphQL queries, polymorphic cable-termination
-│             normalization, TTL caches, NAPALM method allowlist + load shedding,
-│             /api/meta capability probe
+├── server/   Fastify proxy: NetBox connection preflight, GraphQL queries,
+│             polymorphic cable-termination normalization, TTL caches, NAPALM
+│             method allowlist + load shedding, optional static UI hosting
 └── web/      Vite + React 19 + react-leaflet 5 + react-three-fiber 9 + zustand
 ```
 
 ### Good to know
 
+- **NetBox 3.7 ↔ 4.x differences are handled automatically** — the server detects the
+  version at runtime and switches GraphQL dialect (filter syntax, enum casing,
+  pagination, polymorphic terminations).
 - **NAPALM calls are live SSH sessions** opened by NetBox (~25 s per device on real
   hardware). net3d bounds concurrency (3 client-side, 8 server-side with 429 shedding)
   and caches LLDP answers for 10 minutes — discovery is progressive, not blocking.
-- **NetBox 3.7 GraphQL quirks** handled here: no `limit` argument on `*_list`, `role`
-  (not `device_role`) on Device, polymorphic cable terminations needing one inline
-  fragment per type.
 - Sites without latitude/longitude don't appear on the map but stay reachable through
   the search box.
+
+## Troubleshooting
+
+| Symptom | Likely cause & fix |
+|---------|--------------------|
+| Server exits at boot with `✗ …` | Follow the printed hint (token, URL, TLS, or GraphQL). |
+| Map loads, then a red `⚠ Can't reach NetBox` | The proxy reached NetBox but a query failed — check the server logs. |
+| `✗ … TLS certificate is not trusted` | Internal/self-signed CA: set `NETBOX_TLS_VERIFY=false`. |
+| `✗ … GraphQL returned HTTP 4xx` | Enable the GraphQL API in NetBox (it is on by default). |
+| `pnpm install` fails with `node:sqlite` | You're on Node < 22; pnpm 11 needs Node 22+. |
+| Site view is empty or sparse | NetBox has no rack positions/faces there; devices without a U-position aren't drawn. |
+| No live device data / no LLDP links | The NAPALM plugin isn't installed (optional). |
+| A site is missing from the map | It has no latitude/longitude — reach it via the search box. |
 
 ## License
 

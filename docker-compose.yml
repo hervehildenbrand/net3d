@@ -1,0 +1,20 @@
+# Run net3d against your own NetBox in one command.
+#
+#   cp .env.example .env        # set NETBOX_URL + NETBOX_TOKEN
+#   docker compose up --build   # then open http://localhost:8080
+#
+# Compose reads NETBOX_* from the same .env. Only the NetBox settings are
+# passed into the container — HOST/PORT/WEB_DIST are baked into the image.
+services:
+  net3d:
+    build: .
+    ports:
+      - "${NET3D_PORT:-8080}:8080"
+    environment:
+      NETBOX_URL: ${NETBOX_URL:?set NETBOX_URL in .env (see .env.example)}
+      NETBOX_TOKEN: ${NETBOX_TOKEN:?set NETBOX_TOKEN in .env (see .env.example)}
+      NETBOX_TLS_VERIFY: ${NETBOX_TLS_VERIFY:-true}
+      # Pre-warm caches at boot for snappier first loads (off by default; can be
+      # slow on very large instances). Set PREWARM=1 in .env to enable.
+      PREWARM: ${PREWARM:-}
+    restart: unless-stopped

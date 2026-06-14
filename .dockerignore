@@ -1,0 +1,12 @@
+.git
+.github
+**/node_modules
+**/dist
+.env
+.env.*
+*.log
+specs/
+showcase/
+Dockerfile
+docker-compose.yml
+.dockerignore

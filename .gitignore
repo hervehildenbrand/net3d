@@ -4,3 +4,20 @@ dist/
 *.log
 .DS_Store
 coverage/
+
+# local env variants
+.env.local
+.env.*.local
+
+# editors / os
+.vscode/
+.idea/
+*.swp
+
+# misc
+.cache/
+tmp/
+*.tgz
+
+# internal planning notes — kept local, not published
+specs/
