@@ -3,6 +3,7 @@ import fastifyStatic from '@fastify/static'
 import { groupCircuitsBySitePair } from '@net3d/shared'
 import { TtlCache } from './cache'
 import { NapalmUnreachableError, type NetBoxClient } from './netbox'
+import type { DiskCacheStore } from './persistence'
 import { loadSiteDetail, prewarmCaches } from './prewarm'
 
 // Stale entries are served instantly and refreshed in the background, so a
@@ -32,11 +33,21 @@ export interface AppDeps {
   prewarm?: { intervalMs?: number; concurrency?: number }
   /** Absolute path to the built web UI; when set, serve it with an SPA fallback. */
   webDist?: string
+  /** When set, the cache is persisted to disk and hydrated on boot (survives restarts). */
+  persist?: DiskCacheStore
 }
 
-export function buildApp({ netbox, napalmMaxQueue = 8, prewarm, webDist }: AppDeps): FastifyInstance {
+// SWR-served payloads worth persisting. napalm:* is live device state with a short
+// TTL (and uses the evicting get()); meta is tiny and non-SWR — both are excluded.
+const PERSISTABLE_KEYS = (key: string): boolean =>
+  key === 'sites' || key === 'circuits' || key.startsWith('site:')
+
+export function buildApp({ netbox, napalmMaxQueue = 8, prewarm, webDist, persist }: AppDeps): FastifyInstance {
   const app = Fastify({ logger: false })
-  const cache = new TtlCache()
+  const cache = new TtlCache(persist ? { persist, shouldPersist: PERSISTABLE_KEYS } : undefined)
+  // Seed memory from disk before serving so the first post-restart request hits
+  // the persisted copy (then revalidates in the background like any stale entry).
+  cache.hydrate()
 
   if (prewarm) {
     const ttl = { sites: CACHE_TTL.sites, circuits: CACHE_TTL.circuits, siteDetail: CACHE_TTL.siteDetail }

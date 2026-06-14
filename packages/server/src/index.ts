@@ -1,7 +1,9 @@
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { buildApp } from './app'
 import { ConnectionCheckError, verifyConnection } from './connection-check'
 import { createNetBoxClient } from './netbox'
+import { createDiskCacheStore } from './persistence'
 
 const {
   NETBOX_URL,
@@ -14,6 +16,8 @@ const {
   SKIP_NETBOX_CHECK,
   WEB_DIST,
   HOST,
+  CACHE_PERSIST,
+  CACHE_DIR,
 } = process.env
 
 if (!NETBOX_URL || !NETBOX_TOKEN) {
@@ -48,10 +52,23 @@ async function main() {
     }
   }
 
+  // Persist the NetBox cache across restarts (default on). A restart otherwise wipes
+  // the in-memory cache, so the next big-site click hangs 30-75s re-warming. Keyed by
+  // NetBox instance so showcase (:8088) and live never read each other's data.
+  const persist =
+    CACHE_PERSIST === '0' || CACHE_PERSIST === 'false'
+      ? undefined
+      : createDiskCacheStore({
+          // default lives next to the server package, stable across cwd + tsx-watch restarts
+          baseDir: CACHE_DIR ? resolve(CACHE_DIR) : fileURLToPath(new URL('../.cache/net3d/', import.meta.url)),
+          netboxUrl,
+        })
+
   const app = buildApp({
     netbox: createNetBoxClient(netboxUrl, netboxToken),
     // when set (production/Docker), serve the built UI from this process too
     webDist: WEB_DIST ? resolve(WEB_DIST) : undefined,
+    persist,
     // opt-in: live NetBox instances can be slow (~25s/site); the showcase enables it
     prewarm:
       PREWARM === '1' || PREWARM === 'true'
