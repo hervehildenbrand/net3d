@@ -5,6 +5,9 @@ instance into an explorable visualization: a real-tile world map of your sites, 
 buildings with your racks, devices at their true U-positions — connected by one
 continuous mouse-wheel journey.
 
+> ### 🌐 [Live demo → net3d.routingstate.com](https://net3d.routingstate.com)
+> Explore it in your browser — the bundled showcase fabric, no setup required.
+
 <p align="center">
   <img src="docs/images/world.png" alt="World map of sites with inter-DC circuit arcs" width="32%" />
   <img src="docs/images/building.png" alt="3D site building with rows of racks" width="32%" />
@@ -60,9 +63,12 @@ NetBox GraphQL, normalizes the data, and caches responses.
 
 ### Try the demo (no NetBox needed)
 
-The bundled [`showcase/`](showcase/) stack stands up a local NetBox 4.x seeded with a
-fictional 20-site fabric. **Requires Docker (Compose v2) and Python 3.** Full details in
-[`showcase/README.md`](showcase/README.md); the short path:
+**Zero setup:** a hosted instance of this showcase is live at
+**[net3d.routingstate.com](https://net3d.routingstate.com)**.
+
+To run it locally instead, the bundled [`showcase/`](showcase/) stack stands up a local
+NetBox 4.x seeded with a fictional 20-site fabric. **Requires Docker (Compose v2) and
+Python 3.** Full details in [`showcase/README.md`](showcase/README.md); the short path:
 
 ```sh
 cd showcase && ./setup.sh        # clones netbox-docker, boots local NetBox on :8088 (~2–4 min first run)
