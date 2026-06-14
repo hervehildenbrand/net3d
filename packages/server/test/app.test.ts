@@ -79,6 +79,7 @@ function fakeNetbox(overrides: Partial<NetBoxClient> = {}): NetBoxClient {
     getCircuits: async () => CIRCUITS,
     getSiteRacks: async () => RACKS,
     getSiteCables: async () => CABLES,
+    getSitePower: async () => ({ panels: [], feeds: [] }),
     napalm: async (_id, method) => ({ [method]: {} }),
     getStatus: async () => ({ netboxVersion: '3.7.8', napalmAvailable: true }),
     ...overrides,
@@ -166,7 +167,7 @@ describe('GET /api/sites/:name', () => {
     })
     const res = await app.inject({ method: 'GET', url: '/api/sites/site-a' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ racks: RACKS, cables: CABLES })
+    expect(res.json()).toEqual({ racks: RACKS, cables: CABLES, power: { panels: [], feeds: [] } })
     expect(requested).toEqual(['site-a'])
   })
 

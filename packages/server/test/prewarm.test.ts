@@ -19,6 +19,7 @@ function mockNetbox(overrides: Partial<NetBoxClient> = {}): NetBoxClient {
     getCircuits: async () => [],
     getSiteRacks: async () => [],
     getSiteCables: async () => [],
+    getSitePower: async () => ({ panels: [], feeds: [] }),
     napalm: async () => ({}),
     getStatus: async () => ({ netboxVersion: '4.6.0', napalmAvailable: false }),
     ...overrides,
@@ -31,8 +32,8 @@ describe('prewarmCaches', () => {
     await prewarmCaches(cache, mockNetbox(), TTL)
     expect(cache.get('sites')).toBeDefined()
     expect(cache.get('circuits')).toBeDefined()
-    expect(cache.get('site:AAA1')).toEqual({ racks: [], cables: [] })
-    expect(cache.get('site:BBB1')).toEqual({ racks: [], cables: [] })
+    expect(cache.get('site:AAA1')).toEqual({ racks: [], cables: [], power: { panels: [], feeds: [] } })
+    expect(cache.get('site:BBB1')).toEqual({ racks: [], cables: [], power: { panels: [], feeds: [] } })
   })
 
   test('caps concurrent site fetches', async () => {
@@ -74,6 +75,6 @@ describe('prewarmCaches', () => {
     const cache = new TtlCache()
     cache.set('site:AAA1', { racks: ['old'], cables: [] }, 60_000)
     await prewarmCaches(cache, mockNetbox(), TTL)
-    expect(cache.get('site:AAA1')).toEqual({ racks: [], cables: [] })
+    expect(cache.get('site:AAA1')).toEqual({ racks: [], cables: [], power: { panels: [], feeds: [] } })
   })
 })

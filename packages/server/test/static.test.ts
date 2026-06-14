@@ -11,6 +11,7 @@ function fakeNetbox(): NetBoxClient {
     getCircuits: async () => [],
     getSiteRacks: async () => [],
     getSiteCables: async () => [],
+    getSitePower: async () => ({ panels: [], feeds: [] }),
     napalm: async (_id, method) => ({ [method]: {} }),
     getStatus: async () => ({ netboxVersion: '4.0.5', napalmAvailable: false }),
   }

@@ -54,8 +54,40 @@ export interface SiteCable {
   b: CableEndpoint | null
 }
 
+export interface SitePowerPanel {
+  id: string
+  name: string
+  location: string | null
+}
+
+export interface SitePowerFeed {
+  id: string
+  name: string
+  status: string
+  voltage: number | null
+  amperage: number | null
+  phase: string | null
+  supply: string | null
+  type: string | null
+  maxUtilization: number | null
+  panelName: string | null
+  rackName: string | null
+}
+
+export interface SitePower {
+  panels: SitePowerPanel[]
+  feeds: SitePowerFeed[]
+}
+
+export interface SiteDetailData {
+  racks: SiteRack[]
+  cables: SiteCable[]
+  /** Power panels + feeds; absent from older server responses, so optional. */
+  power?: SitePower
+}
+
 export function useSiteDetail(siteName: string | null) {
-  return useQuery<{ racks: SiteRack[]; cables: SiteCable[] }>({
+  return useQuery<SiteDetailData>({
     queryKey: ['site', siteName],
     queryFn: async () => {
       const res = await fetch(`/api/sites/${encodeURIComponent(siteName!)}`)

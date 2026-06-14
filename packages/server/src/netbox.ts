@@ -4,9 +4,11 @@ import {
   parseNetBoxMajor,
   siteRacksQuery,
   siteCablesQuery,
+  sitePowerQuery,
   circuitsQuery,
   type NetBoxMajor,
 } from './graphql-dialect'
+import { normalizeRawPower, type RawSitePower, type SitePower } from './power'
 
 export interface NetBoxSite {
   id: string
@@ -69,6 +71,7 @@ export interface NetBoxClient {
   getCircuits(): Promise<SiteCircuit[]>
   getSiteRacks(site: string): Promise<SiteRack[]>
   getSiteCables(site: string): Promise<SiteCable[]>
+  getSitePower(site: string): Promise<SitePower>
   napalm(deviceId: number, method: string): Promise<unknown>
   getStatus(): Promise<NetBoxStatus>
 }
@@ -378,6 +381,12 @@ export function createNetBoxClient(baseUrl: string, token: string): NetBoxClient
         Array.from({ length: pages }, (_, i) => fetchPage(i * limit)),
       )
       return normalizeRawCables(results.flatMap((r) => r.cable_list))
+    },
+
+    async getSitePower(site) {
+      if (!/^[\w.-]+$/.test(site)) throw new Error(`invalid site name: ${site}`)
+      const data = await graphql<RawSitePower>(sitePowerQuery(site, await netboxMajor()))
+      return normalizeRawPower(data)
     },
 
     async napalm(deviceId, method) {

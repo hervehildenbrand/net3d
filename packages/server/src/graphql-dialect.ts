@@ -90,6 +90,34 @@ export function siteCablesQuery(site: string, version: NetBoxMajor, page?: Cable
 }`
 }
 
+// Power panels filter by their own site; feeds have no direct site, so they
+// filter via their panel's site. Field selections are identical across dialects.
+export function sitePowerQuery(site: string, version: NetBoxMajor): string {
+  const panelFilter = version >= 4 ? `filters: {site: {name: {exact: "${site}"}}}` : `site: "${site}"`
+  const feedFilter =
+    version >= 4 ? `filters: {power_panel: {site: {name: {exact: "${site}"}}}}` : `site: "${site}"`
+  return `{
+  power_panel_list(${panelFilter}) {
+    id
+    name
+    location { name }
+  }
+  power_feed_list(${feedFilter}) {
+    id
+    name
+    status
+    voltage
+    amperage
+    phase
+    supply
+    type
+    max_utilization
+    power_panel { name }
+    rack { name }
+  }
+}`
+}
+
 // circuit_list itself isn't filtered, but the per-termination site field moved:
 // 3.7 exposes `site` directly; 4.x exposes it via the `termination` scope union.
 export function circuitsQuery(version: NetBoxMajor): string {

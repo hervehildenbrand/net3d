@@ -2,6 +2,7 @@ import { groupCircuitsBySitePair } from '@net3d/shared'
 import type { TtlCache } from './cache'
 import type { NetBoxClient, SiteRack } from './netbox'
 import type { SiteCable } from './cables'
+import type { SitePower } from './power'
 
 export interface PrewarmTtl {
   sites: number
@@ -12,15 +13,19 @@ export interface PrewarmTtl {
 export interface SiteDetail {
   racks: SiteRack[]
   cables: SiteCable[]
+  /** Power panels + feeds for the room-view chain; empty when none/unsupported. */
+  power: SitePower
 }
 
 /** The /api/sites/:name payload — shared by the route and the pre-warm loop. */
 export async function loadSiteDetail(netbox: NetBoxClient, name: string): Promise<SiteDetail> {
-  const [racks, cables] = await Promise.all([
+  const [racks, cables, power] = await Promise.all([
     netbox.getSiteRacks(name),
     netbox.getSiteCables(name),
+    // power is optional eye-candy: a NetBox without it (or v3) must not fail the load
+    netbox.getSitePower(name).catch(() => ({ panels: [], feeds: [] })),
   ])
-  return { racks, cables }
+  return { racks, cables, power }
 }
 
 /**

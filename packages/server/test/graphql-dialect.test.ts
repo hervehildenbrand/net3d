@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest'
-import { parseNetBoxMajor, siteRacksQuery, siteCablesQuery, circuitsQuery } from '../src/graphql-dialect'
+import {
+  parseNetBoxMajor,
+  siteRacksQuery,
+  siteCablesQuery,
+  circuitsQuery,
+  sitePowerQuery,
+} from '../src/graphql-dialect'
 
 describe('parseNetBoxMajor', () => {
   test('reads 3 from a 3.7.x version', () => {
@@ -89,6 +95,30 @@ describe('siteCablesQuery', () => {
     // cables.ts only needs circuit.cid; CircuitTerminationType has no site field in 4.x
     for (const v of [3, 4] as const) {
       expect(siteCablesQuery('dc1', v)).not.toContain('CircuitTerminationType { circuit { cid } site')
+    }
+  })
+})
+
+describe('sitePowerQuery', () => {
+  test('v3 uses the graphene positional filter for panels', () => {
+    expect(sitePowerQuery('dc1', 3)).toContain('power_panel_list(site: "dc1")')
+  })
+
+  test('v4 filters panels by site and feeds via their panel site', () => {
+    const q = sitePowerQuery('dc1', 4)
+    expect(q).toContain('power_panel_list(filters: {site: {name: {exact: "dc1"}}})')
+    expect(q).toContain('power_feed_list(filters: {power_panel: {site: {name: {exact: "dc1"}}}})')
+  })
+
+  test('selects the feed electrical + relation fields across dialects', () => {
+    for (const v of [3, 4] as const) {
+      const q = sitePowerQuery('dc1', v)
+      expect(q).toContain('voltage')
+      expect(q).toContain('amperage')
+      expect(q).toContain('phase')
+      expect(q).toContain('max_utilization')
+      expect(q).toContain('power_panel { name }')
+      expect(q).toContain('rack { name }')
     }
   })
 })
