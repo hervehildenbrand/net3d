@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { buildApp } from './app'
 import { ConnectionCheckError, verifyConnection } from './connection-check'
 import { createNetBoxClient } from './netbox'
@@ -11,6 +12,8 @@ const {
   PREWARM_INTERVAL_MS,
   PREWARM_CONCURRENCY,
   SKIP_NETBOX_CHECK,
+  WEB_DIST,
+  HOST,
 } = process.env
 
 if (!NETBOX_URL || !NETBOX_TOKEN) {
@@ -47,6 +50,8 @@ async function main() {
 
   const app = buildApp({
     netbox: createNetBoxClient(netboxUrl, netboxToken),
+    // when set (production/Docker), serve the built UI from this process too
+    webDist: WEB_DIST ? resolve(WEB_DIST) : undefined,
     // opt-in: live NetBox instances can be slow (~25s/site); the showcase enables it
     prewarm:
       PREWARM === '1' || PREWARM === 'true'
@@ -58,8 +63,10 @@ async function main() {
   })
 
   const port = Number(PORT ?? 3001)
-  await app.listen({ port, host: '127.0.0.1' })
-  console.log(`net3d server on http://localhost:${port}`)
+  // default to loopback for local dev; containers set HOST=0.0.0.0 to be reachable
+  const host = HOST ?? '127.0.0.1'
+  await app.listen({ port, host })
+  console.log(`net3d server on http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`)
 }
 
 main().catch((err) => {
