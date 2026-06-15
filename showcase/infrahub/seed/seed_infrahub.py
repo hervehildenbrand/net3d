@@ -24,10 +24,12 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from collections import defaultdict
 from pathlib import Path
 
 from infrahub_sdk import Config, InfrahubClientSync
+from infrahub_sdk.exceptions import ServerNotResponsiveError
 
 # Reuse the NetBox showcase's generation helpers + data fixtures.
 NB_SEED = Path(__file__).resolve().parents[2] / "seed"  # showcase/seed
@@ -83,25 +85,43 @@ def hexcolor(c: str) -> str:
 
 client = InfrahubClientSync(address=ADDR, config=Config(api_token=TOKEN))
 
+# A loaded host can make the server briefly unresponsive; every write is an
+# idempotent upsert, so retrying with backoff is safe.
+BATCH_CONCURRENCY = int(os.environ.get("SEED_BATCH_CONCURRENCY", "2"))
+MAX_RETRIES = int(os.environ.get("SEED_MAX_RETRIES", "6"))
+
+
+def _retry(fn):
+    for attempt in range(MAX_RETRIES):
+        try:
+            return fn()
+        except ServerNotResponsiveError:
+            if attempt == MAX_RETRIES - 1:
+                raise
+            time.sleep(3 * (attempt + 1))
+    raise RuntimeError("unreachable")
+
 
 def upsert(kind: str, data: dict):
     obj = client.create(kind=kind, data=data)
-    obj.save(allow_upsert=True)
+    _retry(lambda: obj.save(allow_upsert=True))
     return obj
 
 
 def batch_upsert(specs: list[tuple[str, dict]]):
-    """Create+save a list of (kind, data) via a concurrent batch; return saved nodes."""
-    batch = client.create_batch()
-    nodes = []
-    for kind, data in specs:
-        node = client.create(kind=kind, data=data)
-        nodes.append(node)
-        batch.add(task=node.save, node=node, allow_upsert=True)
-    saved = []
-    for node, _ in batch.execute():
-        saved.append(node)
-    return saved
+    """Create+save a list of (kind, data) via a bounded batch; retry on timeout.
+
+    The batch is idempotent (upsert), so on a transient server timeout we rebuild
+    and re-run the whole batch rather than tracking partial completion.
+    """
+    def run():
+        batch = client.create_batch(max_concurrent_execution=BATCH_CONCURRENCY)
+        built = [client.create(kind=kind, data=data) for kind, data in specs]
+        for node in built:
+            batch.add(task=node.save, node=node, allow_upsert=True)
+        return [node for node, _ in batch.execute()]
+
+    return _retry(run)
 
 
 # ---------------------------------------------------------------------------

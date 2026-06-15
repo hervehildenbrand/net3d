@@ -96,7 +96,10 @@ query {
   }
 }`
 
-export function sitePowerQuery(site: string): string {
+// Panels filter directly by site. Feeds can't be filtered by rack->site (Infrahub
+// only generates single-hop relationship filters), so getSitePower resolves the
+// site's panel ids first and filters feeds by power_panel__ids.
+export function sitePanelsQuery(site: string): string {
   return `
 query {
   DcimPowerPanel(site__name__value: "${site}") {
@@ -106,7 +109,14 @@ query {
       location { value }
     } }
   }
-  DcimPowerFeed(rack__site__name__value: "${site}") {
+}`
+}
+
+export function feedsByPanelsQuery(panelIds: string[]): string {
+  const ids = panelIds.map((id) => `"${id}"`).join(', ')
+  return `
+query {
+  DcimPowerFeed(power_panel__ids: [${ids}]) {
     edges { node {
       id
       name { value }

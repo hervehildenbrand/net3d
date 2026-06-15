@@ -12,7 +12,14 @@ import type { SitePower } from '../power'
 import type { SoTClient } from '../sot/client'
 import { NapalmUnreachableError } from '../sot/errors'
 import type { Site, SiteRack, SoTStatus } from '../sot/types'
-import { CABLES_QUERY, CIRCUITS_QUERY, SITES_QUERY, siteRacksQuery, sitePowerQuery } from './queries'
+import {
+  CABLES_QUERY,
+  CIRCUITS_QUERY,
+  SITES_QUERY,
+  feedsByPanelsQuery,
+  siteRacksQuery,
+  sitePanelsQuery,
+} from './queries'
 import {
   normalizeInfrahubCables,
   normalizeInfrahubCircuits,
@@ -97,11 +104,13 @@ export function createInfrahubClient(
 
     async getSitePower(site: string): Promise<SitePower> {
       if (!SITE_RE.test(site)) throw new Error(`invalid site name: ${site}`)
-      const data = await graphql<{
-        DcimPowerPanel: NodeList<RawPowerPanel>
-        DcimPowerFeed: NodeList<RawPowerFeed>
-      }>(sitePowerQuery(site))
-      return normalizeInfrahubPower(nodes(data.DcimPowerPanel), nodes(data.DcimPowerFeed))
+      const panelData = await graphql<{ DcimPowerPanel: NodeList<RawPowerPanel> }>(sitePanelsQuery(site))
+      const panels = nodes(panelData.DcimPowerPanel)
+      const panelIds = panels.map((p) => p.id)
+      const feeds = panelIds.length
+        ? nodes((await graphql<{ DcimPowerFeed: NodeList<RawPowerFeed> }>(feedsByPanelsQuery(panelIds))).DcimPowerFeed)
+        : []
+      return normalizeInfrahubPower(panels, feeds)
     },
 
     // Infrahub has no NAPALM plugin: live device queries are never available.
