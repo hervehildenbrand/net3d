@@ -83,12 +83,17 @@ def hexcolor(c: str) -> str:
     return c if c.startswith("#") else f"#{c}"
 
 
-client = InfrahubClientSync(address=ADDR, config=Config(api_token=TOKEN))
-
 # A loaded host can make the server briefly unresponsive; every write is an
 # idempotent upsert, so retrying with backoff is safe.
 BATCH_CONCURRENCY = int(os.environ.get("SEED_BATCH_CONCURRENCY", "2"))
 MAX_RETRIES = int(os.environ.get("SEED_MAX_RETRIES", "6"))
+
+# infrahub-sdk >=1.x sets batch concurrency on the client Config; create_batch()
+# no longer accepts a max_concurrent_execution kwarg.
+client = InfrahubClientSync(
+    address=ADDR,
+    config=Config(api_token=TOKEN, max_concurrent_execution=BATCH_CONCURRENCY),
+)
 
 
 def _retry(fn):
@@ -115,7 +120,7 @@ def batch_upsert(specs: list[tuple[str, dict]]):
     and re-run the whole batch rather than tracking partial completion.
     """
     def run():
-        batch = client.create_batch(max_concurrent_execution=BATCH_CONCURRENCY)
+        batch = client.create_batch()
         built = [client.create(kind=kind, data=data) for kind, data in specs]
         for node in built:
             batch.add(task=node.save, node=node, allow_upsert=True)
