@@ -243,6 +243,8 @@ services:
     command: >
       gunicorn --config backend/infrahub/serve/gunicorn_config.py
       -w ${WEB_CONCURRENCY:-2}
+      --timeout ${GUNICORN_TIMEOUT:-600}
+      --graceful-timeout ${GUNICORN_TIMEOUT:-600}
       --logger-class infrahub.serve.log.GunicornLogger
       infrahub.server:app
     depends_on:
