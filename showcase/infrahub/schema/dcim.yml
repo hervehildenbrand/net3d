@@ -1,0 +1,566 @@
+---
+# net3d DCIM schema for Infrahub.
+#
+# A focused DCIM model that exactly supports what net3d reads back (sites, racks,
+# devices, interfaces, cables, power, circuits). It adopts Opsmill schema-library
+# conventions (a cable-endpoint generic, Dropdown status/face, a Color role) but
+# uses explicit Site/Rack/Device nodes that map 1:1 to net3d's domain types, so the
+# adapter transforms and the seed stay simple. Namespaces: Dcim and Circuit.
+version: "1.0"
+
+generics:
+  # Anything a cable can terminate on (interface, power feed, circuit endpoint).
+  - name: Endpoint
+    namespace: Dcim
+    label: Cable Endpoint
+    description: An object that can terminate a cable.
+    attributes:
+      - name: name
+        kind: Text
+        order_weight: 1000
+
+nodes:
+  # ---- Geography & racks -------------------------------------------------
+  - name: Site
+    namespace: Dcim
+    label: Site
+    human_friendly_id: ["name__value"]
+    uniqueness_constraints:
+      - ["name__value"]
+    order_by: ["name__value"]
+    display_labels: ["name__value"]
+    attributes:
+      - name: name
+        kind: Text
+        unique: true
+        order_weight: 1000
+      - name: latitude
+        kind: Number
+        optional: true
+        order_weight: 1100
+      - name: longitude
+        kind: Number
+        optional: true
+        order_weight: 1200
+      - name: region
+        kind: Text
+        optional: true
+        order_weight: 1300
+      - name: status
+        kind: Dropdown
+        order_weight: 1400
+        default_value: active
+        choices:
+          - name: active
+            color: "#7fbf7f"
+          - name: planned
+            color: "#ffff7f"
+          - name: decommissioned
+            color: "#bfbfbf"
+      - name: physical_address
+        kind: Text
+        optional: true
+        order_weight: 1500
+      - name: facility
+        kind: Text
+        optional: true
+        order_weight: 1600
+      # net3d derives the site's globe role from this (compute datacenter vs PoP).
+      - name: role
+        kind: Dropdown
+        optional: true
+        order_weight: 1700
+        choices:
+          - name: compute
+            color: "#4caf50"
+          - name: pop
+            color: "#2196f3"
+    relationships:
+      # Reverse ends of Rack.site / Device.site, so the site list can report
+      # rack/device counts in a single query (GraphQL exposes `count`).
+      - name: racks
+        peer: DcimRack
+        cardinality: many
+        kind: Component
+        optional: true
+        identifier: site__rack
+        order_weight: 2000
+      - name: devices
+        peer: DcimDevice
+        cardinality: many
+        kind: Generic
+        optional: true
+        identifier: site__device
+        order_weight: 2010
+
+  - name: Rack
+    namespace: Dcim
+    label: Rack
+    human_friendly_id: ["site__name__value", "name__value"]
+    uniqueness_constraints:
+      - ["site", "name__value"]
+    order_by: ["name__value"]
+    display_labels: ["name__value"]
+    attributes:
+      - name: name
+        kind: Text
+        order_weight: 1000
+      - name: u_height
+        kind: Number
+        default_value: 42
+        order_weight: 1100
+      - name: location
+        kind: Text
+        optional: true
+        order_weight: 1200
+    relationships:
+      - name: site
+        peer: DcimSite
+        cardinality: one
+        kind: Parent
+        optional: false
+        identifier: site__rack
+        order_weight: 900
+      # Reverse of Device.rack, so a site's racks come back with nested devices.
+      - name: devices
+        peer: DcimDevice
+        cardinality: many
+        kind: Component
+        optional: true
+        identifier: rack__device
+        order_weight: 1000
+
+  # ---- Device taxonomy ---------------------------------------------------
+  - name: Manufacturer
+    namespace: Dcim
+    label: Manufacturer
+    human_friendly_id: ["name__value"]
+    uniqueness_constraints:
+      - ["name__value"]
+    display_labels: ["name__value"]
+    attributes:
+      - name: name
+        kind: Text
+        unique: true
+        order_weight: 1000
+
+  - name: DeviceType
+    namespace: Dcim
+    label: Device Type
+    human_friendly_id: ["model__value"]
+    uniqueness_constraints:
+      - ["model__value"]
+    order_by: ["model__value"]
+    display_labels: ["model__value"]
+    attributes:
+      - name: model
+        kind: Text
+        unique: true
+        order_weight: 1000
+      - name: u_height
+        kind: Number
+        default_value: 1
+        order_weight: 1100
+      - name: is_full_depth
+        kind: Boolean
+        default_value: true
+        order_weight: 1200
+      # Optional hardware specs net3d surfaces in the device panel.
+      - name: cpu_model
+        kind: Text
+        optional: true
+        order_weight: 1300
+      - name: cpu_cores
+        kind: Number
+        optional: true
+        order_weight: 1400
+      - name: ram_gb
+        kind: Number
+        optional: true
+        order_weight: 1500
+      - name: storage_tb
+        kind: Number
+        optional: true
+        order_weight: 1600
+    relationships:
+      - name: manufacturer
+        peer: DcimManufacturer
+        cardinality: one
+        kind: Attribute
+        optional: false
+        order_weight: 900
+
+  - name: DeviceRole
+    namespace: Dcim
+    label: Device Role
+    human_friendly_id: ["name__value"]
+    uniqueness_constraints:
+      - ["name__value"]
+    display_labels: ["name__value"]
+    attributes:
+      - name: name
+        kind: Text
+        unique: true
+        order_weight: 1000
+      - name: color
+        kind: Color
+        default_value: "#888888"
+        order_weight: 1100
+
+  - name: Platform
+    namespace: Dcim
+    label: Platform
+    human_friendly_id: ["name__value"]
+    uniqueness_constraints:
+      - ["name__value"]
+    display_labels: ["name__value"]
+    attributes:
+      - name: name
+        kind: Text
+        unique: true
+        order_weight: 1000
+
+  - name: Device
+    namespace: Dcim
+    label: Device
+    human_friendly_id: ["site__name__value", "name__value"]
+    uniqueness_constraints:
+      - ["site", "name__value"]
+    order_by: ["name__value"]
+    display_labels: ["name__value"]
+    attributes:
+      - name: name
+        kind: Text
+        order_weight: 1000
+      - name: position
+        kind: Number
+        optional: true
+        order_weight: 1100
+      - name: face
+        kind: Dropdown
+        optional: true
+        order_weight: 1200
+        choices:
+          - name: front
+          - name: rear
+      - name: status
+        kind: Dropdown
+        order_weight: 1300
+        default_value: active
+        choices:
+          - name: active
+            color: "#7fbf7f"
+          - name: planned
+            color: "#ffff7f"
+          - name: offline
+            color: "#f44336"
+          - name: decommissioned
+            color: "#bfbfbf"
+      - name: serial
+        kind: Text
+        optional: true
+        order_weight: 1400
+      - name: asset_tag
+        kind: Text
+        optional: true
+        order_weight: 1500
+      - name: description
+        kind: Text
+        optional: true
+        order_weight: 1600
+      - name: primary_ip
+        kind: Text
+        optional: true
+        order_weight: 1700
+      - name: oob_ip
+        kind: Text
+        optional: true
+        order_weight: 1800
+    relationships:
+      - name: site
+        peer: DcimSite
+        cardinality: one
+        kind: Attribute
+        optional: false
+        identifier: site__device
+        order_weight: 800
+      - name: rack
+        peer: DcimRack
+        cardinality: one
+        kind: Parent
+        optional: true
+        identifier: rack__device
+        order_weight: 810
+      - name: device_type
+        peer: DcimDeviceType
+        cardinality: one
+        kind: Attribute
+        optional: false
+        order_weight: 820
+      - name: role
+        peer: DcimDeviceRole
+        cardinality: one
+        kind: Attribute
+        optional: false
+        order_weight: 830
+      - name: platform
+        peer: DcimPlatform
+        cardinality: one
+        kind: Attribute
+        optional: true
+        order_weight: 840
+      - name: interfaces
+        peer: DcimInterface
+        cardinality: many
+        kind: Component
+        optional: true
+        identifier: device__interface
+        order_weight: 850
+
+  - name: Interface
+    namespace: Dcim
+    label: Interface
+    inherit_from: ["DcimEndpoint"]
+    human_friendly_id: ["device__name__value", "name__value"]
+    uniqueness_constraints:
+      - ["device", "name__value"]
+    order_by: ["name__value"]
+    display_labels: ["name__value"]
+    attributes:
+      - name: interface_type
+        kind: Text
+        optional: true
+        order_weight: 1100
+    relationships:
+      - name: device
+        peer: DcimDevice
+        cardinality: one
+        kind: Parent
+        optional: false
+        identifier: device__interface
+        order_weight: 900
+
+  - name: Cable
+    namespace: Dcim
+    label: Cable
+    order_by: ["status__value"]
+    attributes:
+      - name: cable_type
+        kind: Text
+        optional: true
+        order_weight: 1100
+      - name: status
+        kind: Dropdown
+        order_weight: 1200
+        default_value: connected
+        choices:
+          - name: connected
+            color: "#7fbf7f"
+          - name: planned
+            color: "#ffff7f"
+          - name: decommissioned
+            color: "#bfbfbf"
+      - name: color
+        kind: Color
+        optional: true
+        order_weight: 1300
+    relationships:
+      - name: endpoint_a
+        peer: DcimEndpoint
+        cardinality: one
+        kind: Attribute
+        optional: true
+        identifier: cable__endpoint_a
+        order_weight: 1000
+      - name: endpoint_b
+        peer: DcimEndpoint
+        cardinality: one
+        kind: Attribute
+        optional: true
+        identifier: cable__endpoint_b
+        order_weight: 1010
+
+  # ---- Power -------------------------------------------------------------
+  - name: PowerPanel
+    namespace: Dcim
+    label: Power Panel
+    human_friendly_id: ["site__name__value", "name__value"]
+    uniqueness_constraints:
+      - ["site", "name__value"]
+    display_labels: ["name__value"]
+    attributes:
+      - name: name
+        kind: Text
+        order_weight: 1000
+      - name: location
+        kind: Text
+        optional: true
+        order_weight: 1100
+    relationships:
+      - name: site
+        peer: DcimSite
+        cardinality: one
+        kind: Parent
+        optional: false
+        identifier: site__powerpanel
+        order_weight: 900
+
+  - name: PowerFeed
+    namespace: Dcim
+    label: Power Feed
+    human_friendly_id: ["power_panel__name__value", "name__value"]
+    uniqueness_constraints:
+      - ["power_panel", "name__value"]
+    display_labels: ["name__value"]
+    attributes:
+      - name: name
+        kind: Text
+        order_weight: 1000
+      - name: status
+        kind: Dropdown
+        order_weight: 1100
+        default_value: active
+        choices:
+          - name: active
+            color: "#7fbf7f"
+          - name: offline
+            color: "#f44336"
+          - name: planned
+            color: "#ffff7f"
+      - name: voltage
+        kind: Number
+        optional: true
+        order_weight: 1200
+      - name: amperage
+        kind: Number
+        optional: true
+        order_weight: 1300
+      - name: phase
+        kind: Dropdown
+        optional: true
+        order_weight: 1400
+        choices:
+          - name: single-phase
+          - name: three-phase
+      - name: supply
+        kind: Dropdown
+        optional: true
+        order_weight: 1500
+        choices:
+          - name: ac
+          - name: dc
+      - name: feed_type
+        kind: Dropdown
+        optional: true
+        order_weight: 1600
+        choices:
+          - name: primary
+          - name: redundant
+      - name: max_utilization
+        kind: Number
+        optional: true
+        order_weight: 1700
+    relationships:
+      - name: power_panel
+        peer: DcimPowerPanel
+        cardinality: one
+        kind: Parent
+        optional: false
+        identifier: powerpanel__powerfeed
+        order_weight: 800
+      - name: rack
+        peer: DcimRack
+        cardinality: one
+        kind: Attribute
+        optional: true
+        identifier: rack__powerfeed
+        order_weight: 810
+
+  # ---- Circuits ----------------------------------------------------------
+  - name: Provider
+    namespace: Circuit
+    label: Provider
+    human_friendly_id: ["name__value"]
+    uniqueness_constraints:
+      - ["name__value"]
+    display_labels: ["name__value"]
+    attributes:
+      - name: name
+        kind: Text
+        unique: true
+        order_weight: 1000
+
+  - name: Circuit
+    namespace: Circuit
+    label: Circuit
+    human_friendly_id: ["cid__value"]
+    uniqueness_constraints:
+      - ["cid__value"]
+    order_by: ["cid__value"]
+    display_labels: ["cid__value"]
+    attributes:
+      - name: cid
+        kind: Text
+        unique: true
+        order_weight: 1000
+      - name: status
+        kind: Dropdown
+        order_weight: 1100
+        default_value: active
+        choices:
+          - name: active
+            color: "#7fbf7f"
+          - name: planned
+            color: "#ffff7f"
+          - name: decommissioned
+            color: "#bfbfbf"
+      - name: commit_rate
+        kind: Number
+        optional: true
+        order_weight: 1200
+      - name: description
+        kind: Text
+        optional: true
+        order_weight: 1300
+    relationships:
+      - name: provider
+        peer: CircuitProvider
+        cardinality: one
+        kind: Attribute
+        optional: false
+        order_weight: 900
+      - name: endpoints
+        peer: CircuitEndpoint
+        cardinality: many
+        kind: Component
+        optional: true
+        identifier: circuit__endpoint
+        order_weight: 1000
+
+  - name: Endpoint
+    namespace: Circuit
+    label: Circuit Endpoint
+    inherit_from: ["DcimEndpoint"]
+    display_labels: ["name__value"]
+    attributes:
+      - name: term_side
+        kind: Dropdown
+        order_weight: 1100
+        choices:
+          - name: A
+          - name: Z
+    relationships:
+      - name: circuit
+        peer: CircuitCircuit
+        cardinality: one
+        kind: Parent
+        optional: false
+        identifier: circuit__endpoint
+        order_weight: 900
+      - name: site
+        peer: DcimSite
+        cardinality: one
+        kind: Attribute
+        optional: true
+        identifier: site__circuitendpoint
+        order_weight: 910
