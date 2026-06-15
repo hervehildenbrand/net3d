@@ -54,6 +54,10 @@ SPINES_PER_DC = int(os.environ.get("SPINES_PER_DC", "4"))
 CORES_PER_DC = int(os.environ.get("CORES_PER_DC", "2"))
 SPINE_UPLINKS = int(os.environ.get("SPINE_UPLINKS", "2"))
 SERVER_CABLING_SAMPLE = int(os.environ.get("SERVER_CABLING_SAMPLE", "2"))
+# Seed sites without circuits (for resumable per-site runs over a big mirror); the
+# circuit ring needs the full site list, so a final CIRCUITS_ONLY pass creates them.
+SKIP_CIRCUITS = os.environ.get("SKIP_CIRCUITS", "") in ("1", "true")
+CIRCUITS_ONLY = os.environ.get("CIRCUITS_ONLY", "") in ("1", "true")
 
 RACK_HEIGHT = 42
 OOB_SWITCH_POS = 40
@@ -87,6 +91,13 @@ def hexcolor(c: str) -> str:
 # idempotent upsert, so retrying with backoff is safe.
 BATCH_CONCURRENCY = int(os.environ.get("SEED_BATCH_CONCURRENCY", "2"))
 MAX_RETRIES = int(os.environ.get("SEED_MAX_RETRIES", "6"))
+# Cap how many nodes go in one batch so a server timeout only re-runs that slice,
+# not a whole full-density site (~1k devices / ~2k interfaces) at once.
+BATCH_CHUNK = int(os.environ.get("SEED_BATCH_CHUNK", "250"))
+
+
+def _chunks(seq: list, size: int) -> list:
+    return [seq[i : i + size] for i in range(0, len(seq), size)]
 
 # infrahub-sdk >=1.x sets batch concurrency on the client Config; create_batch()
 # no longer accepts a max_concurrent_execution kwarg.
@@ -114,19 +125,22 @@ def upsert(kind: str, data: dict):
 
 
 def batch_upsert(specs: list[tuple[str, dict]]):
-    """Create+save a list of (kind, data) via a bounded batch; retry on timeout.
+    """Create+save a list of (kind, data) via bounded, chunked batches; retry on timeout.
 
-    The batch is idempotent (upsert), so on a transient server timeout we rebuild
-    and re-run the whole batch rather than tracking partial completion.
+    Each chunk is idempotent (upsert), so on a transient server timeout we rebuild
+    and re-run just that chunk rather than tracking partial completion.
     """
-    def run():
-        batch = client.create_batch()
-        built = [client.create(kind=kind, data=data) for kind, data in specs]
-        for node in built:
-            batch.add(task=node.save, node=node, allow_upsert=True)
-        return [node for node, _ in batch.execute()]
+    out = []
+    for chunk in _chunks(specs, BATCH_CHUNK):
+        def run(chunk=chunk):
+            batch = client.create_batch()
+            built = [client.create(kind=kind, data=data) for kind, data in chunk]
+            for node in built:
+                batch.add(task=node.save, node=node, allow_upsert=True)
+            return [node for node, _ in batch.execute()]
 
-    return _retry(run)
+        out.extend(_retry(run))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -397,12 +411,38 @@ def seed_circuits(dcs, sites, providers):
 
 def main():
     print(f"Seeding Infrahub at {ADDR}", flush=True)
-    dcs = [d for d in load("datacenters.json") if d["code"].upper() in ONLY_SITES] if ONLY_SITES else load("datacenters.json")
+    full_dcs = load("datacenters.json")
+
+    # Circuits-only: don't (re)seed sites — read the ones already in Infrahub and
+    # build the ring over the FULL dc list (so a site-by-site mirror gets its
+    # inter-DC circuits in one final pass).
+    if CIRCUITS_ONLY:
+        providers = {p["name"]: upsert("CircuitProvider", {"name": p["name"]}) for p in load("providers.json")}
+        sites = {s.name.value: s for s in client.all("DcimSite")}
+        print(f"Circuits-only pass over {len(sites)} existing sites", flush=True)
+        # Clear any prior circuits (e.g. from a smaller earlier seed) so the
+        # full-list ring yields exactly the canonical set, re-runnably. Endpoints
+        # first (they parent onto a circuit), then the circuits themselves.
+        old_circuits = client.all("CircuitCircuit")
+        for ep in client.all("CircuitEndpoint"):
+            _retry(ep.delete)
+        for c in old_circuits:
+            _retry(c.delete)
+        if old_circuits:
+            print(f"   cleared {len(old_circuits)} prior circuits", flush=True)
+        seed_circuits(full_dcs, sites, providers)
+        print("Done (circuits only).", flush=True)
+        return
+
+    dcs = [d for d in full_dcs if d["code"].upper() in ONLY_SITES] if ONLY_SITES else full_dcs
     roles, types_by_role, type_by_slug, providers = seed_reference()
     sites = {}
     for dc in dcs:
         sites[dc["code"]] = seed_site(dc, roles, types_by_role, type_by_slug)
-    seed_circuits(dcs, sites, providers)
+    if SKIP_CIRCUITS:
+        print("(circuits skipped)", flush=True)
+    else:
+        seed_circuits(dcs, sites, providers)
     print("Done.", flush=True)
 
 
