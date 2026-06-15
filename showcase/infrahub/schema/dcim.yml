@@ -34,12 +34,14 @@ nodes:
         kind: Text
         unique: true
         order_weight: 1000
+      # Stored as Text because Infrahub's Number kind is integer-only (BigInt);
+      # the adapter parses these to numbers (NetBox also returns decimals as strings).
       - name: latitude
-        kind: Number
+        kind: Text
         optional: true
         order_weight: 1100
       - name: longitude
-        kind: Number
+        kind: Text
         optional: true
         order_weight: 1200
       - name: region
@@ -96,14 +98,15 @@ nodes:
   - name: Rack
     namespace: Dcim
     label: Rack
-    human_friendly_id: ["site__name__value", "name__value"]
+    human_friendly_id: ["name__value"]
     uniqueness_constraints:
-      - ["site", "name__value"]
+      - ["name__value"]
     order_by: ["name__value"]
     display_labels: ["name__value"]
     attributes:
       - name: name
         kind: Text
+        unique: true
         order_weight: 1000
       - name: u_height
         kind: Number
@@ -178,8 +181,9 @@ nodes:
         kind: Number
         optional: true
         order_weight: 1500
+      # Text (not Number): storage is a decimal (e.g. 7.68 TB); adapter parses it.
       - name: storage_tb
-        kind: Number
+        kind: Text
         optional: true
         order_weight: 1600
     relationships:
@@ -223,14 +227,15 @@ nodes:
   - name: Device
     namespace: Dcim
     label: Device
-    human_friendly_id: ["site__name__value", "name__value"]
+    human_friendly_id: ["name__value"]
     uniqueness_constraints:
-      - ["site", "name__value"]
+      - ["name__value"]
     order_by: ["name__value"]
     display_labels: ["name__value"]
     attributes:
       - name: name
         kind: Text
+        unique: true
         order_weight: 1000
       - name: position
         kind: Number
@@ -288,7 +293,7 @@ nodes:
         peer: DcimRack
         cardinality: one
         kind: Parent
-        optional: true
+        optional: false
         identifier: rack__device
         order_weight: 810
       - name: device_type
@@ -384,13 +389,14 @@ nodes:
   - name: PowerPanel
     namespace: Dcim
     label: Power Panel
-    human_friendly_id: ["site__name__value", "name__value"]
+    human_friendly_id: ["name__value"]
     uniqueness_constraints:
-      - ["site", "name__value"]
+      - ["name__value"]
     display_labels: ["name__value"]
     attributes:
       - name: name
         kind: Text
+        unique: true
         order_weight: 1000
       - name: location
         kind: Text
@@ -408,13 +414,14 @@ nodes:
   - name: PowerFeed
     namespace: Dcim
     label: Power Feed
-    human_friendly_id: ["power_panel__name__value", "name__value"]
+    human_friendly_id: ["name__value"]
     uniqueness_constraints:
-      - ["power_panel", "name__value"]
+      - ["name__value"]
     display_labels: ["name__value"]
     attributes:
       - name: name
         kind: Text
+        unique: true
         order_weight: 1000
       - name: status
         kind: Dropdown

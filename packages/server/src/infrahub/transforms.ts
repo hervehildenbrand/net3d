@@ -26,6 +26,13 @@ const val = <T>(a: Val<T> | undefined): T | null => (a ? a.value : null)
 const node = <T>(r: One<T> | undefined): T | null => (r ? r.node : null)
 const list = <T>(m: Many<T> | undefined): T[] => (m ? m.edges.map((e) => e.node) : [])
 const dehash = (c: string | null): string => (c ? c.replace(/^#/, '') : '')
+/** Parse a decimal stored as Text (Infrahub Number is integer-only) to a number. */
+const num = (a: Val<string> | undefined): number | null => {
+  const s = val(a)
+  if (s == null || s === '') return null
+  const n = Number(s)
+  return Number.isNaN(n) ? null : n
+}
 
 export function normalizeInfrahubSites(raw: RawSite[]): Site[] {
   return raw.map((s) => {
@@ -33,8 +40,8 @@ export function normalizeInfrahubSites(raw: RawSite[]): Site[] {
     return {
       id: s.id,
       name: val(s.name) ?? '',
-      latitude: val(s.latitude),
-      longitude: val(s.longitude),
+      latitude: num(s.latitude),
+      longitude: num(s.longitude),
       region: val(s.region),
       status: val(s.status) ?? 'active',
       physicalAddress: val(s.physical_address) || null,
@@ -57,7 +64,7 @@ function normalizeDevice(d: RawDevice): SiteDevice {
   if (cpuCores != null) specs.cpuCores = cpuCores
   const ramGb = val(dt?.ram_gb)
   if (ramGb != null) specs.ramGb = ramGb
-  const storageTb = val(dt?.storage_tb)
+  const storageTb = num(dt?.storage_tb)
   if (storageTb != null) specs.storageTb = storageTb
   return {
     id: d.id,

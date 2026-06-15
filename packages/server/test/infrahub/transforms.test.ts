@@ -22,8 +22,8 @@ describe('normalizeInfrahubSites', () => {
       {
         id: 'abc',
         name: v('AMS1'),
-        latitude: v(52.3),
-        longitude: v(4.9),
+        latitude: v('52.3'),
+        longitude: v('4.9'),
         region: v('EMEA'),
         status: v('active'),
         physical_address: v('Science Park'),
@@ -66,7 +66,7 @@ describe('normalizeInfrahubSites', () => {
 describe('normalizeInfrahubRacks', () => {
   const deviceType = one({
     model: v('PowerEdge R650'), u_height: v(1), is_full_depth: v(true),
-    cpu_model: v('2x Xeon'), cpu_cores: v(64), ram_gb: v(512), storage_tb: v(7.68),
+    cpu_model: v('2x Xeon'), cpu_cores: v(64), ram_gb: v(512), storage_tb: v('7.68'),
     manufacturer: one({ name: v('Dell') }),
   })
 

@@ -10,8 +10,9 @@ export type Count = { count: number } | null
 export interface RawSite {
   id: string
   name: Val<string>
-  latitude: Val<number>
-  longitude: Val<number>
+  // Text in the schema (Infrahub Number is integer-only); parsed to number.
+  latitude: Val<string>
+  longitude: Val<string>
   region: Val<string>
   status: Val<string>
   physical_address: Val<string>
@@ -32,7 +33,8 @@ export interface RawDeviceType {
   cpu_model: Val<string>
   cpu_cores: Val<number>
   ram_gb: Val<number>
-  storage_tb: Val<number>
+  // Text in the schema (decimal TB); parsed to number.
+  storage_tb: Val<string>
   manufacturer: One<RawManufacturer>
 }
 

@@ -132,7 +132,8 @@ def seed_reference():
         }
         for k in ("cpu_model", "cpu_cores", "ram_gb", "storage_tb"):
             if dt.get("specs", {}).get(k) is not None:
-                data[k] = dt["specs"][k]
+                # storage_tb is Text (decimal); the rest are ints/text as-is.
+                data[k] = str(dt["specs"][k]) if k == "storage_tb" else dt["specs"][k]
         rec = upsert("DcimDeviceType", data)
         rec._u_height = dt["u_height"]
         types_by_role[dt["role"]].append(rec)
@@ -152,8 +153,10 @@ def seed_site(dc, roles, types_by_role, type_by_slug):
 
     site = upsert("DcimSite", {
         "name": code,
-        "latitude": dc["latitude"],
-        "longitude": dc["longitude"],
+        # latitude/longitude/storage_tb are Text in the schema (Infrahub Number is
+        # integer-only); store decimals as strings.
+        "latitude": str(dc["latitude"]),
+        "longitude": str(dc["longitude"]),
         "region": REGION_NAMES.get(dc["region"], dc["region"]),
         "status": "active",
         "physical_address": dc.get("address", ""),
