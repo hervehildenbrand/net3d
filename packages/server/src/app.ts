@@ -5,7 +5,8 @@ import rateLimit from '@fastify/rate-limit'
 import { timingSafeEqual } from 'node:crypto'
 import { groupCircuitsBySitePair } from '@net3d/shared'
 import { TtlCache } from './cache'
-import { NapalmUnreachableError, type NetBoxClient } from './netbox'
+import { NapalmUnreachableError } from './netbox'
+import type { SoTClient } from './sot/client'
 import { loadSiteDetail, prewarmCaches } from './prewarm'
 
 // Stale entries are served instantly and refreshed in the background, so a
@@ -28,7 +29,10 @@ export const NAPALM_METHODS = {
 } as const
 
 export interface AppDeps {
-  netbox: NetBoxClient
+  /** The active source-of-truth client (NetBox or Infrahub). */
+  netbox: SoTClient
+  /** Which backend `netbox` is; reported by /api/meta even when it's unreachable. */
+  backend?: 'netbox' | 'infrahub'
   /** Max NAPALM calls in flight or waiting before requests are shed with 429. */
   napalmMaxQueue?: number
   /** Pre-warm all caches at startup and refresh on an interval (0 = once only). */
@@ -43,6 +47,7 @@ export interface AppDeps {
 
 export function buildApp({
   netbox,
+  backend = 'netbox',
   napalmMaxQueue = 8,
   prewarm,
   webDist,
@@ -127,7 +132,7 @@ export function buildApp({
       } catch (err) {
         app.log.warn(err)
         // showcase degrades gracefully: no capabilities ≠ broken app
-        return { netboxVersion: null, napalmAvailable: false }
+        return { backend, version: null, napalmAvailable: false }
       }
     })
 

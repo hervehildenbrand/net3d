@@ -50,6 +50,7 @@ async function main() {
 
   const app = buildApp({
     netbox: createNetBoxClient(netboxUrl, netboxToken, { tlsVerify }),
+    backend: 'netbox',
     // when set (production/Docker), serve the built UI from this process too
     webDist: WEB_DIST ? resolve(WEB_DIST) : undefined,
     // optional shared-secret guard; unset = open (showcase / public demo)

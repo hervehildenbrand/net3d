@@ -1,20 +1,25 @@
 import { useQuery } from '@tanstack/react-query'
 
 export interface Capabilities {
-  netboxVersion: string | null
+  /** Which source of truth is serving data. */
+  backend: 'netbox' | 'infrahub'
+  /** Backend version string, or null if unknown. */
+  version: string | null
   napalmAvailable: boolean
 }
 
-/** What this NetBox can do — NAPALM/LLDP UI hides when the plugin is absent. */
+const NO_CAPABILITIES: Capabilities = { backend: 'netbox', version: null, napalmAvailable: false }
+
+/** What the active backend can do — NAPALM/LLDP UI hides when live queries are absent. */
 export function useCapabilities(): Capabilities {
   const { data } = useQuery<Capabilities>({
     queryKey: ['meta'],
     queryFn: async () => {
       const res = await fetch('/api/meta')
-      if (!res.ok) return { netboxVersion: null, napalmAvailable: false }
+      if (!res.ok) return NO_CAPABILITIES
       return res.json()
     },
     staleTime: Infinity,
   })
-  return data ?? { netboxVersion: null, napalmAvailable: false }
+  return data ?? NO_CAPABILITIES
 }

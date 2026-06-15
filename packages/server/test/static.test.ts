@@ -13,7 +13,7 @@ function fakeNetbox(): NetBoxClient {
     getSiteCables: async () => [],
     getSitePower: async () => ({ panels: [], feeds: [] }),
     napalm: async (_id, method) => ({ [method]: {} }),
-    getStatus: async () => ({ netboxVersion: '4.0.5', napalmAvailable: false }),
+    getStatus: async () => ({ backend: 'netbox', version: '4.0.5', napalmAvailable: false }),
   }
 }
 

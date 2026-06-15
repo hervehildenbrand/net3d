@@ -11,7 +11,7 @@ function fakeNetbox(overrides: Partial<NetBoxClient> = {}): NetBoxClient {
     getSiteCables: async () => [],
     getSitePower: async () => ({ panels: [], feeds: [] }),
     napalm: async (_id, method) => ({ [method]: { ok: true } }),
-    getStatus: async () => ({ netboxVersion: '3.7.8', napalmAvailable: true }),
+    getStatus: async () => ({ backend: 'netbox', version: '3.7.8', napalmAvailable: true }),
     ...overrides,
   }
 }

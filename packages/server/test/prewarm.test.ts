@@ -21,7 +21,7 @@ function mockNetbox(overrides: Partial<NetBoxClient> = {}): NetBoxClient {
     getSiteCables: async () => [],
     getSitePower: async () => ({ panels: [], feeds: [] }),
     napalm: async () => ({}),
-    getStatus: async () => ({ netboxVersion: '4.6.0', napalmAvailable: false }),
+    getStatus: async () => ({ backend: 'netbox', version: '4.6.0', napalmAvailable: false }),
     ...overrides,
   } as NetBoxClient
 }

@@ -10,77 +10,19 @@ import {
   type NetBoxMajor,
 } from './graphql-dialect'
 import { normalizeRawPower, type RawSitePower, type SitePower } from './power'
+import type { SoTClient } from './sot/client'
+import type { DeviceSpecs, Site, SiteDevice, SiteRack, SoTStatus } from './sot/types'
 
-export interface NetBoxSite {
-  id: string
-  name: string
-  latitude: number | null
-  longitude: number | null
-  region: string | null
-  status: string
-  physicalAddress: string | null
-  facility: string | null
-  /** Derived from the site's compute/pop tag; null when untagged. */
-  role: 'compute' | 'pop' | null
-  rackCount: number | null
-  deviceCount: number | null
-}
-
-export interface DeviceSpecs {
-  cpuModel?: string
-  cpuCores?: number
-  ramGb?: number
-  storageTb?: number
-}
-
-export interface SiteDevice {
-  id: string
-  name: string
-  /** U position; null for unpositioned (e.g. child/0U) devices. */
-  position: number | null
-  face: string | null
-  roleName: string
-  roleColor: string
-  uHeight: number
-  model: string
-  manufacturer: string
-  isFullDepth: boolean
-  status: string
-  /** Hardware specs from device-type custom fields; undefined when not documented. */
-  specs?: DeviceSpecs
-  /** NetBox inventory fields; null when not set. */
-  serial: string | null
-  assetTag: string | null
-  description: string | null
-  platform: string | null
-  /** primary_ip4 address, with mask (e.g. "10.0.0.5/24"). */
-  primaryIp: string | null
-  /** out-of-band mgmt address, with mask. */
-  oobIp: string | null
-}
-
-export interface SiteRack {
-  id: string
-  name: string
-  uHeight: number
-  location: string | null
-  devices: SiteDevice[]
-}
-
-export interface NetBoxClient {
-  getSites(): Promise<NetBoxSite[]>
-  getCircuits(): Promise<SiteCircuit[]>
-  getSiteRacks(site: string): Promise<SiteRack[]>
-  getSiteCables(site: string): Promise<SiteCable[]>
-  getSitePower(site: string): Promise<SitePower>
-  napalm(deviceId: number, method: string): Promise<unknown>
-  getStatus(): Promise<NetBoxStatus>
-}
-
-export interface NetBoxStatus {
-  netboxVersion: string | null
-  napalmAvailable: boolean
-}
+// Back-compat aliases: the domain types now live in ./sot/types (backend-agnostic).
+// Existing imports of these names from './netbox' keep working unchanged.
+export type { SoTClient as NetBoxClient } from './sot/client'
+export type {
+  Site as NetBoxSite,
+  SiteDevice,
+  SiteRack,
+  DeviceSpecs,
+  SoTStatus as NetBoxStatus,
+} from './sot/types'
 
 /** The NAPALM plugin reached NetBox but NetBox could not reach the device. */
 export class NapalmUnreachableError extends Error {}
@@ -215,7 +157,7 @@ export interface SiteCounts {
   deviceCount: number | null
 }
 
-export function normalizeRawSites(raw: RawSite[], counts: Map<string, SiteCounts>): NetBoxSite[] {
+export function normalizeRawSites(raw: RawSite[], counts: Map<string, SiteCounts>): Site[] {
   return raw.map((s) => {
     const slugs = (s.tags ?? []).map((t) => t.slug)
     return {
@@ -258,7 +200,7 @@ export function createNetBoxClient(
   baseUrl: string,
   token: string,
   opts: { tlsVerify?: boolean } = {},
-): NetBoxClient {
+): SoTClient {
   // verification on by default; only an explicit tlsVerify:false relaxes it
   const doFetch = netboxFetch(opts.tlsVerify !== false)
   // Detect the GraphQL dialect once (lazily, on first filtered query) and memoize.
@@ -436,7 +378,8 @@ export function createNetBoxClient(
       if (!res.ok) throw new Error(`NetBox status HTTP ${res.status}`)
       const body = (await res.json()) as { 'netbox-version'?: string; plugins?: Record<string, unknown> }
       return {
-        netboxVersion: body['netbox-version'] ?? null,
+        backend: 'netbox',
+        version: body['netbox-version'] ?? null,
         napalmAvailable: Object.keys(body.plugins ?? {}).some((p) => p.includes('napalm')),
       }
     },

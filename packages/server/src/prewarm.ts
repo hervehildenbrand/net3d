@@ -1,6 +1,7 @@
 import { groupCircuitsBySitePair } from '@net3d/shared'
 import type { TtlCache } from './cache'
-import type { NetBoxClient, SiteRack } from './netbox'
+import type { SoTClient } from './sot/client'
+import type { SiteRack } from './sot/types'
 import type { SiteCable } from './cables'
 import type { SitePower } from './power'
 
@@ -18,7 +19,7 @@ export interface SiteDetail {
 }
 
 /** The /api/sites/:name payload — shared by the route and the pre-warm loop. */
-export async function loadSiteDetail(netbox: NetBoxClient, name: string): Promise<SiteDetail> {
+export async function loadSiteDetail(netbox: SoTClient, name: string): Promise<SiteDetail> {
   const [racks, cables, power] = await Promise.all([
     netbox.getSiteRacks(name),
     netbox.getSiteCables(name),
@@ -36,7 +37,7 @@ export async function loadSiteDetail(netbox: NetBoxClient, name: string): Promis
  */
 export async function prewarmCaches(
   cache: TtlCache,
-  netbox: NetBoxClient,
+  netbox: SoTClient,
   ttl: PrewarmTtl,
   concurrency = 2,
 ): Promise<void> {

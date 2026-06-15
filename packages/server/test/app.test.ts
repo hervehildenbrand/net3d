@@ -81,7 +81,7 @@ function fakeNetbox(overrides: Partial<NetBoxClient> = {}): NetBoxClient {
     getSiteCables: async () => CABLES,
     getSitePower: async () => ({ panels: [], feeds: [] }),
     napalm: async (_id, method) => ({ [method]: {} }),
-    getStatus: async () => ({ netboxVersion: '3.7.8', napalmAvailable: true }),
+    getStatus: async () => ({ backend: 'netbox', version: '3.7.8', napalmAvailable: true }),
     ...overrides,
   }
 }
@@ -133,14 +133,14 @@ describe('GET /api/sites', () => {
 })
 
 describe('GET /api/meta', () => {
-  test('reports NetBox version and NAPALM availability', async () => {
+  test('reports backend, version and NAPALM availability', async () => {
     const app = buildApp({ netbox: fakeNetbox() })
     const res = await app.inject({ method: 'GET', url: '/api/meta' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ netboxVersion: '3.7.8', napalmAvailable: true })
+    expect(res.json()).toEqual({ backend: 'netbox', version: '3.7.8', napalmAvailable: true })
   })
 
-  test('degrades to no-capabilities instead of failing when NetBox is down', async () => {
+  test('degrades to no-capabilities instead of failing when the backend is down', async () => {
     const app = buildApp({
       netbox: fakeNetbox({
         getStatus: async () => {
@@ -150,7 +150,7 @@ describe('GET /api/meta', () => {
     })
     const res = await app.inject({ method: 'GET', url: '/api/meta' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ netboxVersion: null, napalmAvailable: false })
+    expect(res.json()).toEqual({ backend: 'netbox', version: null, napalmAvailable: false })
   })
 })
 
