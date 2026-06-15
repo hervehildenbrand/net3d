@@ -12,9 +12,11 @@ import {
 import { normalizeRawPower, type RawSitePower, type SitePower } from './power'
 import type { SoTClient } from './sot/client'
 import type { DeviceSpecs, Site, SiteDevice, SiteRack, SoTStatus } from './sot/types'
+import { NapalmUnreachableError } from './sot/errors'
 
-// Back-compat aliases: the domain types now live in ./sot/types (backend-agnostic).
-// Existing imports of these names from './netbox' keep working unchanged.
+// Back-compat aliases: the domain types now live in ./sot/types (backend-agnostic)
+// and NapalmUnreachableError in ./sot/errors. Existing imports of these names from
+// './netbox' keep working unchanged.
 export type { SoTClient as NetBoxClient } from './sot/client'
 export type {
   Site as NetBoxSite,
@@ -23,9 +25,7 @@ export type {
   DeviceSpecs,
   SoTStatus as NetBoxStatus,
 } from './sot/types'
-
-/** The NAPALM plugin reached NetBox but NetBox could not reach the device. */
-export class NapalmUnreachableError extends Error {}
+export { NapalmUnreachableError } from './sot/errors'
 
 // NetBox 3.7: *_list takes no pagination args and returns all rows.
 const SITES_QUERY = `{

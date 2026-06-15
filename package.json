@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "pnpm --parallel --filter @net3d/server --filter @net3d/web dev",
     "dev:showcase": "pnpm --parallel --filter @net3d/server --filter @net3d/web dev:showcase",
+    "dev:showcase-infrahub": "pnpm --parallel --filter @net3d/server --filter @net3d/web dev:showcase-infrahub",
     "build": "pnpm --filter @net3d/web build",
     "start": "pnpm --filter @net3d/server start:prod",
     "test": "vitest run",

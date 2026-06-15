@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "dev:showcase": "vite",
+    "dev:showcase-infrahub": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview"
   },
