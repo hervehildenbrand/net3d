@@ -21,7 +21,9 @@ at their true U-positions, connected by one continuous mouse-wheel journey.
   site markers colored by role (with a legend), and inter-DC circuits drawn as geodesic
   lines weighted by circuit capacity.
 - 🔀 **Pluggable source of truth**: read from **NetBox or Infrahub** through one adapter
-  seam (`SOT_BACKEND`); the visualization is identical either way.
+  seam (`SOT_BACKEND`); the visualization is identical either way. When both backends are
+  deployed, an in-app switcher (with each backend's logo) flips between them at runtime —
+  the [live demo](https://net3d.routingstate.com) serves both.
 - 🔍 **Zoom-through navigation**: scroll into a site on the map and you crossfade into
   its 3D building; keep scrolling toward a rack and you're inside it; scroll out to
   retrace every step. Clicks work as shortcuts; hysteresis prevents level flapping.
