@@ -5,6 +5,8 @@ import {
   stepNavigation,
   thresholdsForSpan,
 } from '@net3d/shared'
+import type { SpecMetric } from '../lib/specsHeatmap'
+import type { PowerSource } from '../lib/powerChain'
 
 export type ViewLevel = 'map' | 'site' | 'rack'
 
@@ -34,6 +36,9 @@ interface AppState {
   /** Power overlay: PDU rails + A/B power cords (rack) and per-rack PDU strips (room). */
   powerVisible: boolean
   togglePower: () => void
+  /** Power-chain root: a clicked panel/feed whose fed racks + devices are highlighted; null = none. */
+  selectedPowerSource: PowerSource | null
+  setPowerSource: (source: PowerSource | null) => void
   /** Rack view camera side: 'rear' frames the cabling, 'front' the device faces. */
   rackView: 'front' | 'rear'
   toggleRackView: () => void
@@ -47,6 +52,9 @@ interface AppState {
   highlightedRoles: Set<string>
   toggleHighlightedRole: (name: string) => void
   clearHighlightedRoles: () => void
+  /** Specs heatmap: recolor devices (rack) and racks (room) by this metric; null = off. */
+  specsHeatmapMetric: SpecMetric | null
+  setSpecsMetric: (metric: SpecMetric | null) => void
   /** Leaflet zoomend/moveend feed: candidate site near the view center, if any. */
   handleMapSignals: (zoom: number, site: { name: string; lat: number; lng: number } | null) => void
   /** CameraControls feed at site/rack level; span sizes the exit thresholds. */
@@ -82,13 +90,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
   zoomToRack: (rackId) => set({ level: 'rack', selectedRackId: rackId, rackView: 'front' }),
   zoomToMap: () =>
-    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false }),
+    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null }),
   selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
   setMapView: (view) => set({ mapView: view }),
   connectivityVisible: true,
   toggleConnectivity: () => set({ connectivityVisible: !get().connectivityVisible }),
   powerVisible: false,
-  togglePower: () => set({ powerVisible: !get().powerVisible }),
+  // turning the overlay off also drops any chain selection — it has no meaning hidden
+  togglePower: () =>
+    set((s) => (s.powerVisible ? { powerVisible: false, selectedPowerSource: null } : { powerVisible: true })),
+  selectedPowerSource: null,
+  setPowerSource: (source) => set({ selectedPowerSource: source }),
   rackView: 'front',
   toggleRackView: () => set({ rackView: get().rackView === 'front' ? 'rear' : 'front' }),
   siteViewDistance: null,
@@ -104,6 +116,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { highlightedRoles: next }
     }),
   clearHighlightedRoles: () => set({ highlightedRoles: new Set<string>() }),
+  specsHeatmapMetric: null,
+  setSpecsMetric: (metric) => set({ specsHeatmapMetric: metric }),
 
   handleMapSignals: (zoom, site) => {
     const { level, zoomToSite, setMapView } = get()

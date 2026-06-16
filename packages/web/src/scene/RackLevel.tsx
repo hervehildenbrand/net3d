@@ -1,10 +1,14 @@
 import { useMemo, useState } from 'react'
-import { Billboard, Edges, Html, Text } from '@react-three/drei'
+import { Billboard, Edges, Html, Instance, Instances, Text } from '@react-three/drei'
 import {
+  cableMedium,
   deviceTransform,
   faceLabel,
   faceMatchesView,
+  getCablesForDevice,
   mapInterfacesToCables,
+  portNamesFromLinks,
+  portSlotLayout,
   type LldpCableSegment,
   type RackPlacement,
 } from '@net3d/shared'
@@ -13,12 +17,54 @@ import { useNapalm } from '../hooks/useNapalm'
 import type { NapalmInterface } from '../components/DevicePanel'
 import { theme } from '../theme'
 import { useAppStore } from '../store/useAppStore'
+import { specsColor, type SpecMetric } from '../lib/specsHeatmap'
 import { RackCables } from './cables'
 import { RackPower } from './power'
+
+/** Active specs-heatmap metric + its site-wide range; null = recolor by role. */
+export interface HeatmapView {
+  metric: SpecMetric
+  min: number
+  max: number
+}
 
 interface PlacedDevice {
   device: SiteDevice
   box: { x: number; y: number; z: number; w: number; h: number; d: number }
+}
+
+interface PortMarker {
+  position: [number, number, number]
+  scale: [number, number, number]
+  color: string
+}
+
+/** Small studs on each device's rear face marking its connected port slots, grouped
+ *  by cable medium for color. Raycast off so they never steal device click/hover. */
+function PortMarkers({ markers }: { markers: PortMarker[] }) {
+  const byColor = useMemo(() => {
+    const groups = new Map<string, PortMarker[]>()
+    for (const m of markers) {
+      const g = groups.get(m.color)
+      if (g) g.push(m)
+      else groups.set(m.color, [m])
+    }
+    return [...groups.entries()]
+  }, [markers])
+
+  return (
+    <>
+      {byColor.map(([color, group]) => (
+        <Instances key={color} limit={group.length} raycast={() => null}>
+          <boxGeometry args={[1, 1, 1]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.4} />
+          {group.map((m, i) => (
+            <Instance key={i} position={m.position} scale={m.scale} />
+          ))}
+        </Instances>
+      ))}
+    </>
+  )
 }
 
 const tooltipStyle: React.CSSProperties = {
@@ -44,6 +90,7 @@ export function RackLevel({
   onDeviceClick,
   selectedDeviceId,
   visible,
+  heatmap = null,
 }: {
   rack: SiteRack
   placement: RackPlacement
@@ -53,6 +100,8 @@ export function RackLevel({
   onDeviceClick: (deviceId: string) => void
   selectedDeviceId: string | null
   visible: boolean
+  /** When set, recolor device boxes by this metric instead of role color. */
+  heatmap?: HeatmapView | null
 }) {
   const [hovered, setHovered] = useState<string | null>(null)
   const connectivityVisible = useAppStore((s) => s.connectivityVisible)
@@ -85,6 +134,32 @@ export function RackLevel({
     [rack, placement],
   )
 
+  // Port studs sit on the rear face where cabling lands, so they only read in the
+  // rear (cabling) view; skip them in front view to avoid overhead and z-fighting.
+  // Each device's slots come from the same helper the cables use, so they align.
+  const portMarkers = useMemo<PortMarker[]>(() => {
+    if (rackView !== 'rear' || powerVisible) return []
+    const cableById = new Map(cables.map((c) => [c.id, c]))
+    const out: PortMarker[] = []
+    for (const { device, box } of placed) {
+      const links = getCablesForDevice(cables, device.name)
+      const slots = portSlotLayout(box, portNamesFromLinks(links))
+      const mediumByIface = new Map<string, string>()
+      for (const link of links) {
+        mediumByIface.set(link.interfaceName, theme.cable.medium[cableMedium(cableById.get(link.cableId)?.type ?? null)])
+      }
+      for (const [iface, slot] of slots) {
+        out.push({
+          // nudge just behind the rear face so the stud is visible from the back
+          position: [slot.x, slot.y, slot.z - 0.004],
+          scale: [Math.max(slot.w * 0.6, 0.004), Math.max(slot.h * 0.6, 0.004), 0.008],
+          color: mediumByIface.get(iface) ?? theme.cable.medium.other,
+        })
+      }
+    }
+    return out
+  }, [placed, cables, rackView, powerVisible])
+
   return (
     <group visible={visible}>
       {/* rack-local lights — site lights are hidden with the site group */}
@@ -109,6 +184,10 @@ export function RackLevel({
         // but selection/hover always wins so any device stays inspectable
         const matchesView = faceMatchesView(device, rackView)
         const dimmed = !active && !hover && !matchesView
+        // heatmap overrides role color when a metric is active
+        const boxColor = heatmap
+          ? specsColor(device.specs?.[heatmap.metric], heatmap.min, heatmap.max)
+          : `#${device.roleColor}`
         return (
           <group key={device.id}>
             <mesh
@@ -133,8 +212,8 @@ export function RackLevel({
               {/* transparent for the dim effect; NO depthWrite=false — device
                   boxes need real z-ordering (only the rack shell ghosts). */}
               <meshStandardMaterial
-                color={`#${device.roleColor}`}
-                emissive={`#${device.roleColor}`}
+                color={boxColor}
+                emissive={boxColor}
                 emissiveIntensity={active ? 0.9 : hover ? 0.55 : dimmed ? 0.12 : 0.25}
                 roughness={0.45}
                 metalness={0.3}
@@ -179,6 +258,8 @@ export function RackLevel({
           </Html>
         )
       })()}
+
+      {portMarkers.length > 0 && <PortMarkers markers={portMarkers} />}
 
       <RackCables
         rack={rack}

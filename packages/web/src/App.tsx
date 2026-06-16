@@ -16,6 +16,9 @@ import { DevicePanel } from './components/DevicePanel'
 import { SiteSearch } from './components/SiteSearch'
 import { RoleLegend } from './components/RoleLegend'
 import { PowerLegend } from './components/PowerLegend'
+import { SpecsHeatmapLegend } from './components/SpecsHeatmapLegend'
+import { computeSpecsRange } from './lib/specsHeatmap'
+import { tracePowerChain } from './lib/powerChain'
 import { SceneErrorBoundary } from './components/SceneErrorBoundary'
 
 const hudStyle: React.CSSProperties = {
@@ -43,11 +46,15 @@ export function App() {
   const toggleConnectivity = useAppStore((s) => s.toggleConnectivity)
   const powerVisible = useAppStore((s) => s.powerVisible)
   const togglePower = useAppStore((s) => s.togglePower)
+  const selectedPowerSource = useAppStore((s) => s.selectedPowerSource)
+  const setPowerSource = useAppStore((s) => s.setPowerSource)
   const rackView = useAppStore((s) => s.rackView)
   const toggleRackView = useAppStore((s) => s.toggleRackView)
   const highlightedRoles = useAppStore((s) => s.highlightedRoles)
   const toggleHighlightedRole = useAppStore((s) => s.toggleHighlightedRole)
   const clearHighlightedRoles = useAppStore((s) => s.clearHighlightedRoles)
+  const specsHeatmapMetric = useAppStore((s) => s.specsHeatmapMetric)
+  const setSpecsMetric = useAppStore((s) => s.setSpecsMetric)
   const { data: siteDetail, isLoading: siteLoading } = useSiteDetail(
     level !== 'map' ? selectedSiteName : null,
   )
@@ -55,6 +62,30 @@ export function App() {
   const selectedRack = siteDetail?.racks.find((r) => r.id === selectedRackId)
   const selectedPlacement = placements.find((p) => p.rackId === selectedRackId)
   const selectedDevice = selectedRack?.devices.find((d) => d.id === selectedDeviceId)
+
+  // Site-wide specs range, computed once so rack view, room view, and the legend
+  // all normalize against the same min/max (null when the heatmap is off).
+  const heatmap = useMemo(() => {
+    if (!specsHeatmapMetric || !siteDetail) return null
+    const { min, max } = computeSpecsRange(siteDetail.racks, specsHeatmapMetric)
+    return { metric: specsHeatmapMetric, min, max }
+  }, [specsHeatmapMetric, siteDetail])
+
+  // Power chain: the racks + devices fed by the clicked panel/feed (null when off).
+  const powerChain = useMemo(
+    () =>
+      powerVisible && selectedPowerSource && siteDetail
+        ? tracePowerChain(siteDetail.racks, siteDetail.power, selectedPowerSource)
+        : null,
+    [powerVisible, selectedPowerSource, siteDetail],
+  )
+  // Clicking the active panel again clears the chain (toggle).
+  const onPanelClick = (name: string) =>
+    setPowerSource(
+      selectedPowerSource?.kind === 'panel' && selectedPowerSource.name === name
+        ? null
+        : { kind: 'panel', name },
+    )
 
   // LLDP discovery: activates for the rack being viewed; results accumulate site-wide.
   const allSiteDevices = useMemo(
@@ -137,6 +168,10 @@ export function App() {
                 highlightedRoles={highlightedRoles}
                 powerVisible={powerVisible}
                 power={siteDetail.power}
+                heatmap={heatmap}
+                powerChainRackIds={powerChain?.rackIds ?? null}
+                selectedPanel={selectedPowerSource?.kind === 'panel' ? selectedPowerSource.name : null}
+                onPanelClick={onPanelClick}
               />
             )}
             {level === 'rack' && selectedRack && selectedPlacement && (
@@ -149,6 +184,7 @@ export function App() {
                 onDeviceClick={selectDevice}
                 selectedDeviceId={selectedDeviceId}
                 visible
+                heatmap={heatmap}
               />
             )}
             <CameraRig />
@@ -206,7 +242,31 @@ export function App() {
       )}
 
       {level === 'site' && powerVisible && !!siteDetail?.racks?.length && (
-        <PowerLegend racks={siteDetail.racks} power={siteDetail.power} />
+        <PowerLegend
+          racks={siteDetail.racks}
+          power={siteDetail.power}
+          chain={
+            powerChain && selectedPowerSource
+              ? {
+                  sourceName: selectedPowerSource.name,
+                  rackCount: powerChain.rackIds.size,
+                  deviceCount: powerChain.deviceNames.size,
+                }
+              : null
+          }
+          onClearChain={() => setPowerSource(null)}
+        />
+      )}
+
+      {/* Heatmap legend doubles as its on/off control. At site level it stacks
+          below the role legend (top-right); at rack level that slot is free. */}
+      {level !== 'map' && !!siteDetail?.racks?.length && (
+        <SpecsHeatmapLegend
+          racks={siteDetail.racks}
+          metric={specsHeatmapMetric}
+          onSelect={setSpecsMetric}
+          top={level === 'site' ? 320 : 16}
+        />
       )}
 
       {level !== 'map' && (

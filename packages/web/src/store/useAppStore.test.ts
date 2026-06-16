@@ -138,3 +138,65 @@ describe('powerVisible', () => {
     expect(useAppStore.getState().powerVisible).toBe(false)
   })
 })
+
+describe('selectedPowerSource', () => {
+  beforeEach(() => {
+    useAppStore.getState().zoomToMap()
+  })
+
+  test('initializes to null', () => {
+    expect(useAppStore.getState().selectedPowerSource).toBe(null)
+  })
+
+  test('setPowerSource records and clears the source', () => {
+    useAppStore.getState().setPowerSource({ kind: 'panel', name: 'PANEL-A' })
+    expect(useAppStore.getState().selectedPowerSource).toEqual({ kind: 'panel', name: 'PANEL-A' })
+    useAppStore.getState().setPowerSource(null)
+    expect(useAppStore.getState().selectedPowerSource).toBe(null)
+  })
+
+  test('turning the power overlay off clears any selected source', () => {
+    useAppStore.getState().togglePower() // on
+    useAppStore.getState().setPowerSource({ kind: 'feed', name: 'FEED1' })
+    useAppStore.getState().togglePower() // off
+    expect(useAppStore.getState().selectedPowerSource).toBe(null)
+  })
+
+  test('zoomToMap resets it to null', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().setPowerSource({ kind: 'panel', name: 'PANEL-A' })
+    useAppStore.getState().zoomToMap()
+    expect(useAppStore.getState().selectedPowerSource).toBe(null)
+  })
+})
+
+describe('specsHeatmapMetric', () => {
+  beforeEach(() => {
+    useAppStore.getState().zoomToMap()
+  })
+
+  test('initializes to null (heatmap off)', () => {
+    expect(useAppStore.getState().specsHeatmapMetric).toBe(null)
+  })
+
+  test('setSpecsMetric selects a metric and back to null', () => {
+    useAppStore.getState().setSpecsMetric('ramGb')
+    expect(useAppStore.getState().specsHeatmapMetric).toBe('ramGb')
+    useAppStore.getState().setSpecsMetric(null)
+    expect(useAppStore.getState().specsHeatmapMetric).toBe(null)
+  })
+
+  test('persists across site<->rack navigation', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().setSpecsMetric('cpuCores')
+    useAppStore.getState().zoomToRack('rack-1')
+    expect(useAppStore.getState().specsHeatmapMetric).toBe('cpuCores')
+  })
+
+  test('zoomToMap resets it to null', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().setSpecsMetric('storageTb')
+    useAppStore.getState().zoomToMap()
+    expect(useAppStore.getState().specsHeatmapMetric).toBe(null)
+  })
+})
