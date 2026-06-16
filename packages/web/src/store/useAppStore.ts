@@ -5,6 +5,7 @@ import {
   stepNavigation,
   thresholdsForSpan,
 } from '@net3d/shared'
+import type { SpecMetric } from '../lib/specsHeatmap'
 
 export type ViewLevel = 'map' | 'site' | 'rack'
 
@@ -47,6 +48,9 @@ interface AppState {
   highlightedRoles: Set<string>
   toggleHighlightedRole: (name: string) => void
   clearHighlightedRoles: () => void
+  /** Specs heatmap: recolor devices (rack) and racks (room) by this metric; null = off. */
+  specsHeatmapMetric: SpecMetric | null
+  setSpecsMetric: (metric: SpecMetric | null) => void
   /** Leaflet zoomend/moveend feed: candidate site near the view center, if any. */
   handleMapSignals: (zoom: number, site: { name: string; lat: number; lng: number } | null) => void
   /** CameraControls feed at site/rack level; span sizes the exit thresholds. */
@@ -82,7 +86,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
   zoomToRack: (rackId) => set({ level: 'rack', selectedRackId: rackId, rackView: 'front' }),
   zoomToMap: () =>
-    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false }),
+    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, specsHeatmapMetric: null }),
   selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
   setMapView: (view) => set({ mapView: view }),
   connectivityVisible: true,
@@ -104,6 +108,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { highlightedRoles: next }
     }),
   clearHighlightedRoles: () => set({ highlightedRoles: new Set<string>() }),
+  specsHeatmapMetric: null,
+  setSpecsMetric: (metric) => set({ specsHeatmapMetric: metric }),
 
   handleMapSignals: (zoom, site) => {
     const { level, zoomToSite, setMapView } = get()

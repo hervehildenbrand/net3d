@@ -39,6 +39,15 @@ export const theme = {
     feedB: '#2563eb',
     panel: '#334155',
   },
+  // Device-specs heatmap ramp: cool low -> warm high, with a distinct slate for
+  // devices that carry no value for the active metric. Stops are exact so the
+  // gradient endpoints/midpoint land on these colors verbatim.
+  heatmap: {
+    low: '#2563eb', // blue (low capacity)
+    mid: '#facc15', // yellow (mid)
+    high: '#dc2626', // red (high capacity)
+    noData: '#475569', // slate (metric not populated)
+  },
   cable: {
     fallback: '#0ea5e9',
     lldp: '#06b6d4',

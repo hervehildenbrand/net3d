@@ -13,8 +13,16 @@ import { useNapalm } from '../hooks/useNapalm'
 import type { NapalmInterface } from '../components/DevicePanel'
 import { theme } from '../theme'
 import { useAppStore } from '../store/useAppStore'
+import { specsColor, type SpecMetric } from '../lib/specsHeatmap'
 import { RackCables } from './cables'
 import { RackPower } from './power'
+
+/** Active specs-heatmap metric + its site-wide range; null = recolor by role. */
+export interface HeatmapView {
+  metric: SpecMetric
+  min: number
+  max: number
+}
 
 interface PlacedDevice {
   device: SiteDevice
@@ -44,6 +52,7 @@ export function RackLevel({
   onDeviceClick,
   selectedDeviceId,
   visible,
+  heatmap = null,
 }: {
   rack: SiteRack
   placement: RackPlacement
@@ -53,6 +62,8 @@ export function RackLevel({
   onDeviceClick: (deviceId: string) => void
   selectedDeviceId: string | null
   visible: boolean
+  /** When set, recolor device boxes by this metric instead of role color. */
+  heatmap?: HeatmapView | null
 }) {
   const [hovered, setHovered] = useState<string | null>(null)
   const connectivityVisible = useAppStore((s) => s.connectivityVisible)
@@ -109,6 +120,10 @@ export function RackLevel({
         // but selection/hover always wins so any device stays inspectable
         const matchesView = faceMatchesView(device, rackView)
         const dimmed = !active && !hover && !matchesView
+        // heatmap overrides role color when a metric is active
+        const boxColor = heatmap
+          ? specsColor(device.specs?.[heatmap.metric], heatmap.min, heatmap.max)
+          : `#${device.roleColor}`
         return (
           <group key={device.id}>
             <mesh
@@ -133,8 +148,8 @@ export function RackLevel({
               {/* transparent for the dim effect; NO depthWrite=false — device
                   boxes need real z-ordering (only the rack shell ghosts). */}
               <meshStandardMaterial
-                color={`#${device.roleColor}`}
-                emissive={`#${device.roleColor}`}
+                color={boxColor}
+                emissive={boxColor}
                 emissiveIntensity={active ? 0.9 : hover ? 0.55 : dimmed ? 0.12 : 0.25}
                 roughness={0.45}
                 metalness={0.3}

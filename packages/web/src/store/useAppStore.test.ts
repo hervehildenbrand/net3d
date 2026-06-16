@@ -138,3 +138,34 @@ describe('powerVisible', () => {
     expect(useAppStore.getState().powerVisible).toBe(false)
   })
 })
+
+describe('specsHeatmapMetric', () => {
+  beforeEach(() => {
+    useAppStore.getState().zoomToMap()
+  })
+
+  test('initializes to null (heatmap off)', () => {
+    expect(useAppStore.getState().specsHeatmapMetric).toBe(null)
+  })
+
+  test('setSpecsMetric selects a metric and back to null', () => {
+    useAppStore.getState().setSpecsMetric('ramGb')
+    expect(useAppStore.getState().specsHeatmapMetric).toBe('ramGb')
+    useAppStore.getState().setSpecsMetric(null)
+    expect(useAppStore.getState().specsHeatmapMetric).toBe(null)
+  })
+
+  test('persists across site<->rack navigation', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().setSpecsMetric('cpuCores')
+    useAppStore.getState().zoomToRack('rack-1')
+    expect(useAppStore.getState().specsHeatmapMetric).toBe('cpuCores')
+  })
+
+  test('zoomToMap resets it to null', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().setSpecsMetric('storageTb')
+    useAppStore.getState().zoomToMap()
+    expect(useAppStore.getState().specsHeatmapMetric).toBe(null)
+  })
+})

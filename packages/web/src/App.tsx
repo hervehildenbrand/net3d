@@ -16,6 +16,8 @@ import { DevicePanel } from './components/DevicePanel'
 import { SiteSearch } from './components/SiteSearch'
 import { RoleLegend } from './components/RoleLegend'
 import { PowerLegend } from './components/PowerLegend'
+import { SpecsHeatmapLegend } from './components/SpecsHeatmapLegend'
+import { computeSpecsRange } from './lib/specsHeatmap'
 import { SceneErrorBoundary } from './components/SceneErrorBoundary'
 
 const hudStyle: React.CSSProperties = {
@@ -48,6 +50,8 @@ export function App() {
   const highlightedRoles = useAppStore((s) => s.highlightedRoles)
   const toggleHighlightedRole = useAppStore((s) => s.toggleHighlightedRole)
   const clearHighlightedRoles = useAppStore((s) => s.clearHighlightedRoles)
+  const specsHeatmapMetric = useAppStore((s) => s.specsHeatmapMetric)
+  const setSpecsMetric = useAppStore((s) => s.setSpecsMetric)
   const { data: siteDetail, isLoading: siteLoading } = useSiteDetail(
     level !== 'map' ? selectedSiteName : null,
   )
@@ -55,6 +59,14 @@ export function App() {
   const selectedRack = siteDetail?.racks.find((r) => r.id === selectedRackId)
   const selectedPlacement = placements.find((p) => p.rackId === selectedRackId)
   const selectedDevice = selectedRack?.devices.find((d) => d.id === selectedDeviceId)
+
+  // Site-wide specs range, computed once so rack view, room view, and the legend
+  // all normalize against the same min/max (null when the heatmap is off).
+  const heatmap = useMemo(() => {
+    if (!specsHeatmapMetric || !siteDetail) return null
+    const { min, max } = computeSpecsRange(siteDetail.racks, specsHeatmapMetric)
+    return { metric: specsHeatmapMetric, min, max }
+  }, [specsHeatmapMetric, siteDetail])
 
   // LLDP discovery: activates for the rack being viewed; results accumulate site-wide.
   const allSiteDevices = useMemo(
@@ -137,6 +149,7 @@ export function App() {
                 highlightedRoles={highlightedRoles}
                 powerVisible={powerVisible}
                 power={siteDetail.power}
+                heatmap={heatmap}
               />
             )}
             {level === 'rack' && selectedRack && selectedPlacement && (
@@ -149,6 +162,7 @@ export function App() {
                 onDeviceClick={selectDevice}
                 selectedDeviceId={selectedDeviceId}
                 visible
+                heatmap={heatmap}
               />
             )}
             <CameraRig />
@@ -207,6 +221,17 @@ export function App() {
 
       {level === 'site' && powerVisible && !!siteDetail?.racks?.length && (
         <PowerLegend racks={siteDetail.racks} power={siteDetail.power} />
+      )}
+
+      {/* Heatmap legend doubles as its on/off control. At site level it stacks
+          below the role legend (top-right); at rack level that slot is free. */}
+      {level !== 'map' && !!siteDetail?.racks?.length && (
+        <SpecsHeatmapLegend
+          racks={siteDetail.racks}
+          metric={specsHeatmapMetric}
+          onSelect={setSpecsMetric}
+          top={level === 'site' ? 320 : 16}
+        />
       )}
 
       {level !== 'map' && (

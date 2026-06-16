@@ -13,6 +13,8 @@ import { useAppStore } from '../store/useAppStore'
 import { SiteCables } from './cables'
 import { RoomPower } from './power'
 import { buildRoleMarkers, racksWithRole, type RoleMarker } from '../lib/roleHighlight'
+import { rackAggregate, specsColor } from '../lib/specsHeatmap'
+import type { HeatmapView } from './RackLevel'
 
 /** Hide individual rack labels once the camera is farther than span * this. */
 const RACK_LABEL_THRESHOLD = 0.9
@@ -37,6 +39,7 @@ function Racks({
   span,
   highlightActive,
   matchedRackIds,
+  heatColorByRack = null,
 }: {
   placements: RackPlacement[]
   onRackClick: (rackId: string) => void
@@ -45,6 +48,8 @@ function Racks({
   /** A role highlight is active — dim racks that hold no matching device. */
   highlightActive: boolean
   matchedRackIds: Set<string>
+  /** When set, color each rack by its aggregate specs metric (overrides role dimming). */
+  heatColorByRack?: Map<string, string> | null
 }) {
   const [hovered, setHovered] = useState<string | null>(null)
   const siteViewDistance = useAppStore((s) => s.siteViewDistance)
@@ -67,9 +72,11 @@ function Racks({
             color={
               hovered === p.rackId
                 ? theme.scene.rackHover
-                : highlightActive && !matchedRackIds.has(p.rackId)
-                  ? theme.scene.rackDimmed
-                  : theme.scene.rack
+                : heatColorByRack
+                  ? (heatColorByRack.get(p.rackId) ?? theme.heatmap.noData)
+                  : highlightActive && !matchedRackIds.has(p.rackId)
+                    ? theme.scene.rackDimmed
+                    : theme.scene.rack
             }
             onClick={(e) => {
               e.stopPropagation()
@@ -181,6 +188,7 @@ export function SiteLevel({
   highlightedRoles,
   powerVisible,
   power,
+  heatmap = null,
 }: {
   racks: SiteRack[]
   cables: SiteCable[]
@@ -193,6 +201,8 @@ export function SiteLevel({
   /** Power overlay on: render per-rack A/B PDU strips + panel nodes. */
   powerVisible: boolean
   power?: SitePower
+  /** When set, color rack boxes by each rack's aggregate specs metric. */
+  heatmap?: HeatmapView | null
 }) {
   const { placements, bounds } = useSiteLayout(racks)
   const size = {
@@ -214,6 +224,14 @@ export function SiteLevel({
     () => buildRoleMarkers(racks, placements, highlightedRoles),
     [racks, placements, highlightedRoles],
   )
+  const heatColorByRack = useMemo(() => {
+    if (!heatmap) return null
+    const m = new Map<string, string>()
+    for (const r of racks) {
+      m.set(r.id, specsColor(rackAggregate(r, heatmap.metric), heatmap.min, heatmap.max))
+    }
+    return m
+  }, [racks, heatmap])
 
   return (
     <group visible={visible}>
@@ -246,6 +264,7 @@ export function SiteLevel({
           span={Math.max(size.x, size.z, 4)}
           highlightActive={highlightActive}
           matchedRackIds={matchedRackIds}
+          heatColorByRack={heatColorByRack}
         />
       )}
       {visible && markers.length > 0 && <RoleMarkers markers={markers} />}
