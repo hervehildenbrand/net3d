@@ -6,12 +6,12 @@ import {
   cableMedium,
   classifyCableForRack,
   classifyCableKind,
-  collectDevicePortNames,
   deviceTransform,
   getCablesForDevice,
   interRackCablePath,
   intraRackCablePath,
   LANE_PITCH_M,
+  portNamesFromLinks,
   portSlotLayout,
   STUB_LENGTH_M,
   summarizeDestinations,
@@ -128,8 +128,9 @@ export function RackCables({
     // port markers in RackLevel use the same layout, so cables meet the right port.
     const attach = new Map<string, Vec3>() // key: `${cableId}:${deviceName}`
     for (const [deviceName, box] of boxByDevice) {
-      const slots = portSlotLayout(box, collectDevicePortNames(cables, deviceName))
-      for (const link of getCablesForDevice(cables, deviceName)) {
+      const links = getCablesForDevice(cables, deviceName)
+      const slots = portSlotLayout(box, portNamesFromLinks(links))
+      for (const link of links) {
         const slot = slots.get(link.interfaceName)
         if (slot) attach.set(`${link.cableId}:${deviceName}`, { x: slot.x, y: slot.y, z: slot.z })
       }

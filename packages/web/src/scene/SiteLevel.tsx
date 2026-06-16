@@ -72,6 +72,8 @@ function Racks({
             key={p.rackId}
             position={[p.x, p.height / 2, p.z]}
             scale={[p.width, p.height, p.depth]}
+            // color precedence: hover > power-chain dim (non-fed) > specs heatmap >
+            // role-highlight dim > base rack color
             color={
               hovered === p.rackId
                 ? theme.scene.rackHover

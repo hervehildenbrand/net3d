@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import type { DeviceBox } from '../src/devices'
 import type { DeviceCableEnd } from '../src/devicecables'
-import { collectDevicePortNames, PORT_PITCH_M, portSlotLayout } from '../src/ports'
+import { collectDevicePortNames, PORT_PITCH_M, portNamesFromLinks, portSlotLayout } from '../src/ports'
 
 function end(deviceName: string | null, name: string): DeviceCableEnd {
   return { kind: 'device', name, deviceName, rackName: null }
@@ -15,7 +15,26 @@ function box(overrides: Partial<DeviceBox> = {}): DeviceBox {
   return { x: 1, y: 2, z: 3, w: 0.56, h: 0.04, d: 1.0, ...overrides }
 }
 
+describe('portNamesFromLinks', () => {
+  test('returns [] for no links', () => {
+    expect(portNamesFromLinks([])).toEqual([])
+  })
+
+  test('dedups interface names while preserving the incoming (sorted) order', () => {
+    const links = [
+      { interfaceName: 'Ethernet1' },
+      { interfaceName: 'Ethernet1' },
+      { interfaceName: 'Ethernet2' },
+    ]
+    expect(portNamesFromLinks(links)).toEqual(['Ethernet1', 'Ethernet2'])
+  })
+})
+
 describe('collectDevicePortNames', () => {
+  test('returns [] for an empty cables array', () => {
+    expect(collectDevicePortNames([], 'sw1')).toEqual([])
+  })
+
   test('returns [] when no cable touches the device', () => {
     expect(collectDevicePortNames([cable('c1', end('other', 'et-0/0/1'), null)], 'sw1')).toEqual([])
   })

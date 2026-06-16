@@ -2,12 +2,12 @@ import { useMemo, useState } from 'react'
 import { Billboard, Edges, Html, Instance, Instances, Text } from '@react-three/drei'
 import {
   cableMedium,
-  collectDevicePortNames,
   deviceTransform,
   faceLabel,
   faceMatchesView,
   getCablesForDevice,
   mapInterfacesToCables,
+  portNamesFromLinks,
   portSlotLayout,
   type LldpCableSegment,
   type RackPlacement,
@@ -142,9 +142,10 @@ export function RackLevel({
     const cableById = new Map(cables.map((c) => [c.id, c]))
     const out: PortMarker[] = []
     for (const { device, box } of placed) {
-      const slots = portSlotLayout(box, collectDevicePortNames(cables, device.name))
+      const links = getCablesForDevice(cables, device.name)
+      const slots = portSlotLayout(box, portNamesFromLinks(links))
       const mediumByIface = new Map<string, string>()
-      for (const link of getCablesForDevice(cables, device.name)) {
+      for (const link of links) {
         mediumByIface.set(link.interfaceName, theme.cable.medium[cableMedium(cableById.get(link.cableId)?.type ?? null)])
       }
       for (const [iface, slot] of slots) {

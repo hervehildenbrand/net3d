@@ -15,21 +15,28 @@ export interface PortSlot {
 
 type CableLike = { id: string; a: DeviceCableEnd | null; b: DeviceCableEnd | null }
 
-/**
- * Unique interface names that terminate on a device across the given cables,
- * sorted (getCablesForDevice already sorts by interface name; we just dedup,
- * preserving that order). This is the synthetic faceplate — only connected
- * ports, since that's all the data carries.
- */
-export function collectDevicePortNames(cables: CableLike[], deviceName: string): string[] {
+/** Unique interface names from already-resolved device links, preserving order. */
+export function portNamesFromLinks(links: { interfaceName: string }[]): string[] {
   const seen = new Set<string>()
   const names: string[] = []
-  for (const link of getCablesForDevice(cables, deviceName)) {
+  for (const link of links) {
     if (seen.has(link.interfaceName)) continue
     seen.add(link.interfaceName)
     names.push(link.interfaceName)
   }
   return names
+}
+
+/**
+ * Unique interface names that terminate on a device across the given cables,
+ * sorted (getCablesForDevice already sorts by interface name; we just dedup,
+ * preserving that order). This is the synthetic faceplate — only connected
+ * ports, since that's all the data carries. Callers that also need the links
+ * should call getCablesForDevice once and use portNamesFromLinks to avoid a
+ * second scan.
+ */
+export function collectDevicePortNames(cables: CableLike[], deviceName: string): string[] {
+  return portNamesFromLinks(getCablesForDevice(cables, deviceName))
 }
 
 /**
