@@ -1,8 +1,10 @@
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { buildApp } from './app'
 import { ConnectionCheckError, verifyConnection } from './connection-check'
 import { netboxFetch } from './netbox'
 import { createSoTClient, getSoTConfigFromEnv } from './sot/factory'
+import { createDiskCacheStore } from './persistence'
 
 const {
   PORT,
@@ -13,6 +15,8 @@ const {
   SKIP_SOT_CHECK,
   WEB_DIST,
   HOST,
+  CACHE_PERSIST,
+  CACHE_DIR,
 } = process.env
 
 // Which source of truth, and its connection details (NETBOX_* / INFRAHUB_*).
@@ -61,6 +65,21 @@ async function main() {
     }
   }
 
+  // Persist the NetBox cache across restarts (default on). A restart otherwise wipes
+  // the in-memory cache, so the next big-site click hangs 30-75s re-warming. Keyed by
+  // NetBox instance so showcase (:8088) and live never read each other's data.
+  // key the on-disk cache by the active backend instance so showcase (:8088),
+  // live NetBox, and Infrahub (:8000) never read each other's data
+  const cacheKeyUrl = config.backend === 'netbox' ? config.netbox.url! : config.infrahub.url!
+  const persist =
+    CACHE_PERSIST === '0' || CACHE_PERSIST === 'false'
+      ? undefined
+      : createDiskCacheStore({
+          // default lives next to the server package, stable across cwd + tsx-watch restarts
+          baseDir: CACHE_DIR ? resolve(CACHE_DIR) : fileURLToPath(new URL('../.cache/net3d/', import.meta.url)),
+          netboxUrl: cacheKeyUrl,
+        })
+
   const app = buildApp({
     netbox: sot,
     backend: config.backend,
@@ -70,6 +89,8 @@ async function main() {
     apiToken: process.env.NET3D_API_TOKEN || undefined,
     // structured logs in real runs; buildApp defaults to silent for tests
     logger: { level: process.env.LOG_LEVEL ?? 'info' },
+    // persist the cache to disk so a restart doesn't wipe the warm cache
+    persist,
     // opt-in: live instances can be slow (~25s/site); the showcase enables it
     prewarm:
       PREWARM === '1' || PREWARM === 'true'

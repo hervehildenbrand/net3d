@@ -7,6 +7,7 @@ import { groupCircuitsBySitePair } from '@net3d/shared'
 import { TtlCache } from './cache'
 import { NapalmUnreachableError } from './netbox'
 import type { SoTClient } from './sot/client'
+import type { DiskCacheStore } from './persistence'
 import { loadSiteDetail, prewarmCaches } from './prewarm'
 
 // Stale entries are served instantly and refreshed in the background, so a
@@ -43,7 +44,14 @@ export interface AppDeps {
   apiToken?: string
   /** Fastify logger config; default false keeps tests quiet. */
   logger?: FastifyServerOptions['logger']
+  /** When set, the cache is persisted to disk and hydrated on boot (survives restarts). */
+  persist?: DiskCacheStore
 }
+
+// SWR-served payloads worth persisting. napalm:* is live device state with a short
+// TTL (and uses the evicting get()); meta is tiny and non-SWR — both are excluded.
+const PERSISTABLE_KEYS = (key: string): boolean =>
+  key === 'sites' || key === 'circuits' || key.startsWith('site:')
 
 export function buildApp({
   netbox,
@@ -53,9 +61,13 @@ export function buildApp({
   webDist,
   apiToken,
   logger = false,
+  persist,
 }: AppDeps): FastifyInstance {
   const app = Fastify({ logger })
-  const cache = new TtlCache()
+  const cache = new TtlCache(persist ? { persist, shouldPersist: PERSISTABLE_KEYS } : undefined)
+  // Seed memory from disk before serving so the first post-restart request hits
+  // the persisted copy (then revalidates in the background like any stale entry).
+  cache.hydrate()
 
   // Defense-in-depth headers. The CSP is permissive enough for the WebGL/map UI
   // (raster tiles, GL textures, inline styles from R3F/drei); tune in the browser
