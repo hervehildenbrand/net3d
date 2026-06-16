@@ -1,9 +1,9 @@
 # net3d
 
-**Zoom from the world map into a rack unit.** net3d turns any [NetBox](https://netbox.dev)
-instance into an explorable visualization: a real-tile world map of your sites, 3D
-buildings with your racks, devices at their true U-positions, connected by one
-continuous mouse-wheel journey.
+**Zoom from the world map into a rack unit.** net3d turns your network source of truth —
+[NetBox](https://netbox.dev) or [Infrahub](https://opsmill.com) — into an explorable
+visualization: a real-tile world map of your sites, 3D buildings with your racks, devices
+at their true U-positions, connected by one continuous mouse-wheel journey.
 
 > ### 🌐 [Live demo → net3d.routingstate.com](https://net3d.routingstate.com)
 > Explore it in your browser: the bundled showcase fabric, no setup required.
@@ -17,8 +17,11 @@ continuous mouse-wheel journey.
 
 ## Features
 
-- 🗺 **World map** (Leaflet + CARTO Positron) auto-fitted to your geocoded sites, with
-  inter-DC circuits drawn as geodesic lines weighted by circuit count.
+- 🗺 **World map** (Leaflet + CARTO Positron) auto-fitted to your geocoded sites: clickable
+  site markers colored by role (with a legend), and inter-DC circuits drawn as geodesic
+  lines weighted by circuit capacity.
+- 🔀 **Pluggable source of truth**: read from **NetBox or Infrahub** through one adapter
+  seam (`SOT_BACKEND`); the visualization is identical either way.
 - 🔍 **Zoom-through navigation**: scroll into a site on the map and you crossfade into
   its 3D building; keep scrolling toward a rack and you're inside it; scroll out to
   retrace every step. Clicks work as shortcuts; hysteresis prevents level flapping.
@@ -33,15 +36,26 @@ continuous mouse-wheel journey.
 - 📟 **Live device panel**: NAPALM facts, environment sensors, interface up/down
   states (auto-refresh), live green/red cable coloring, and an LLDP-vs-NetBox audit.
 - 🪶 **Graceful degradation**: without the NAPALM plugin, all live features hide and
-  the app runs on documented NetBox data alone.
+  the app runs on documented data alone.
+- 📊 **Specs heatmap**: color racks and devices by hardware density — CPU cores, RAM, or
+  storage from device-type fields — aggregated per rack so dense compute stands out.
+- ⚡ **Power-chain tracing**: follow a device's feed back through PDUs and power feeds to
+  its source, with the whole chain highlighted in the rack.
+- 🎨 **Role highlighting**: an interactive role legend in the site and rack views toggles
+  emphasis per device role.
+- 💾 **Disk-persistent cache**: the proxy's cache is keyed per backend instance and
+  survives restarts, so a restart doesn't re-warm from cold.
 
 ## Requirements
 
 - **Node.js ≥ 22** and [pnpm](https://pnpm.io) 11 (via `corepack enable`). Node 22 is
   required by pnpm 11; Node 20 will fail to install.
-- A **NetBox** instance, tested against **3.7.x and 4.x**, reachable over HTTP(S),
-  with the **GraphQL API enabled** (NetBox's default) and a **read-only API token**.
-- Optional, for live data: [netbox-napalm-plugin](https://github.com/netbox-community/netbox-napalm-plugin)
+- A backend — **either**:
+  - a **NetBox** instance, tested against **3.7.x and 4.x**, reachable over HTTP(S),
+    with the **GraphQL API enabled** (NetBox's default) and a **read-only API token**; **or**
+  - an **Infrahub** instance (set `SOT_BACKEND=infrahub`), reachable over HTTP(S) with an
+    API token. NAPALM-backed live features are NetBox-only and hide automatically on Infrahub.
+- Optional, for live data (NetBox only): [netbox-napalm-plugin](https://github.com/netbox-community/netbox-napalm-plugin)
   configured with platform → NAPALM driver mappings and device credentials.
 
 No NetBox handy? Stand one up in minutes with
@@ -90,8 +104,26 @@ cd ../.. && pnpm install && pnpm dev:showcase   # app on http://localhost:5173
      distinguishes a bad token, an unresolvable host, a refused connection, an
      untrusted TLS certificate, and a disabled GraphQL API.
 
-   (Set `SKIP_NETBOX_CHECK=1` to boot without the preflight, e.g. when NetBox isn't up
-   yet.)
+   (Set `SKIP_NETBOX_CHECK=1` — or the backend-agnostic `SKIP_SOT_CHECK=1` — to boot
+   without the preflight, e.g. when the backend isn't up yet.)
+
+### Using Infrahub instead
+
+net3d reads from [Infrahub](https://opsmill.com) through the same adapter; switch backends
+with a few env vars (no code change):
+
+```sh
+SOT_BACKEND=infrahub
+INFRAHUB_URL=https://infrahub.example.com   # base URL, no trailing /graphql
+INFRAHUB_TOKEN=…                             # Infrahub API token
+INFRAHUB_BRANCH=main                         # optional, defaults to "main"
+```
+
+The server's boot preflight then reports the Infrahub connection instead of NetBox.
+NAPALM/LLDP live features stay hidden (they have no Infrahub equivalent); everything else —
+map, sites, racks, cabling, specs heatmap, power chains — works identically. A local
+Infrahub demo stack lives in [`showcase/infrahub/`](showcase/infrahub/); run it with
+`pnpm dev:showcase-infrahub`.
 
 ## Running in production / self-hosting
 
@@ -146,8 +178,9 @@ net3d runs on core NetBox data alone. These unlock extra detail when present, an
 silently ignored when not:
 
 - **Device-type custom fields** `cpu_model` (text), `cpu_cores` (integer), `ram_gb`
-  (integer), `storage_tb` (integer) → a hardware-specs section in the device panel.
-- **Site tags** `compute` or `pop` → a role badge on the map.
+  (integer), `storage_tb` (integer) → a hardware-specs section in the device panel and
+  the per-rack **specs heatmap**.
+- **Site tags** `compute` or `pop` → a role badge and marker color on the map.
 - **netbox-napalm-plugin** → live facts/environment/interfaces and LLDP cabling
   discovery. Without it those features simply hide.
 
@@ -158,9 +191,11 @@ packages/
 ├── shared/   pure, fully-tested logic: map bounds & geodesics, rack layout,
 │             device U-transforms, cable paths, zoom-navigation state machine,
 │             LLDP↔cable diffing
-├── server/   Fastify proxy: NetBox connection preflight, GraphQL queries,
-│             polymorphic cable-termination normalization, TTL caches, NAPALM
-│             method allowlist + load shedding, optional static UI hosting
+├── server/   Fastify proxy: a pluggable source-of-truth seam (sot/ → NetBox or
+│             Infrahub client behind one SoTClient interface), connection preflight,
+│             GraphQL queries, polymorphic cable-termination normalization, TTL +
+│             disk-persistent caches, NAPALM method allowlist + load shedding,
+│             optional static UI hosting
 └── web/      Vite + React 19 + react-leaflet 5 + react-three-fiber 9 + zustand
 ```
 

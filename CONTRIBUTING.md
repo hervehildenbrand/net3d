@@ -8,7 +8,8 @@ get a development environment running and land a change.
 - **Node.js ≥ 22** (required by pnpm 11)
 - **[pnpm](https://pnpm.io) 11** (the repo pins `pnpm@11.6.0` via `packageManager`)
 - A NetBox instance (tested against **3.7.x and 4.x**) and a read-access API token — or use the
-  bundled showcase (see below) if you just want to run the app against demo data.
+  bundled showcase (see below) if you just want to run the app against demo data. net3d can
+  also read from **Infrahub** (`SOT_BACKEND=infrahub`); both share one `SoTClient` seam.
 
 ## Getting started
 
@@ -52,9 +53,14 @@ A few things that save head-scratching:
 packages/
 ├── shared/   pure, fully-tested logic (map bounds, rack layout, cable paths,
 │             zoom-navigation state machine, LLDP↔cable diffing)
-├── server/   Fastify proxy: GraphQL queries, cable normalization, caches, NAPALM
+├── server/   Fastify proxy: pluggable source-of-truth seam (sot/ → NetBox | Infrahub),
+│             GraphQL queries, cable normalization, caches, NAPALM
 └── web/      Vite + React 19 + react-leaflet + react-three-fiber + zustand
 ```
+
+The `packages/server/src/sot/` directory holds the backend seam: `client.ts` defines the
+`SoTClient` interface, `factory.ts` picks NetBox or Infrahub from `SOT_BACKEND`, and each
+backend has its own client. Everything downstream depends only on `SoTClient`.
 
 `packages/shared` is intentionally framework-free and **must stay test-covered** — add
 or update tests alongside any logic change there. The proxy holds the NetBox token; it

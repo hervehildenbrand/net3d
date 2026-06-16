@@ -12,6 +12,10 @@ your own NetBox. It models a fictional hyperscale operator:
 
 Everything here is fake; no production data is used.
 
+> Want to demo the **Infrahub** backend instead? A parallel stack with the same fabric
+> lives in [`infrahub/`](infrahub/) — see [`infrahub/README.md`](infrahub/README.md) and
+> run the app with `pnpm dev:showcase-infrahub`.
+
 ## Prerequisites
 
 - **Docker Engine + Compose v2** (the stack runs in containers)
