@@ -3,9 +3,18 @@
 
 Pure stdlib, no pytest needed: run `python3 test_server_roles.py`.
 """
+import json
+import os
 from collections import Counter
 
 import server_roles as sr
+
+_DATA = os.path.join(os.path.dirname(__file__), "data", "device_types.json")
+
+
+def _server_device_types():
+    with open(_DATA) as f:
+        return [d for d in json.load(f) if d["role"] == "server"]
 
 EXPECTED_SLUGS = {
     "esx-server", "baremetal-server", "db-server", "storage-server",
@@ -64,6 +73,42 @@ def test_clustered_roles_are_more_dominant():
         return Counter(sr.server_role(r, s) for s in range(18))[slug]
     assert dominance("storage-server") >= dominance("esx-server")
     assert dominance("db-server") >= dominance("baremetal-server")
+
+
+def test_every_role_maps_to_a_real_server_device_type():
+    slugs = {d["slug"] for d in _server_device_types()}
+    for role in ROLES:
+        dt = sr.server_device_type_slug(role)
+        assert dt in slugs, (role, dt, slugs)
+
+
+def test_spec_mapping_is_diverse_so_racks_differ():
+    # the whole point: distinct roles -> distinct hardware, so a rack's primary
+    # function shows up as its capacity in the room-view heatmap.
+    mapped = {sr.server_device_type_slug(r) for r in ROLES}
+    assert len(mapped) >= 5, mapped
+
+
+def test_mapped_types_all_carry_full_specs():
+    by_slug = {d["slug"]: d for d in _server_device_types()}
+    for role in ROLES:
+        specs = by_slug[sr.server_device_type_slug(role)].get("specs", {})
+        assert specs.get("cpu_cores") and specs.get("ram_gb") and specs.get("storage_tb"), (role, specs)
+
+
+def test_server_device_types_have_distinct_specs():
+    # every server device type is a distinct (cpu,ram,storage) profile, so the
+    # heatmap actually separates them.
+    profiles = {
+        (d["specs"]["cpu_cores"], d["specs"]["ram_gb"], d["specs"]["storage_tb"])
+        for d in _server_device_types()
+    }
+    assert len(profiles) == len(_server_device_types()), "duplicate server spec profiles"
+
+
+def test_unknown_role_falls_back_to_a_valid_server_type():
+    slugs = {d["slug"] for d in _server_device_types()}
+    assert sr.server_device_type_slug("does-not-exist") in slugs
 
 
 def test_parse_server_name():
