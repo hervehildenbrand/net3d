@@ -205,6 +205,11 @@ export function App() {
         />
       )}
 
+      {/* Rack view: read-only color key so the per-role device colors are legible. */}
+      {level === 'rack' && selectedRack && !selectedDevice && (
+        <RoleLegend racks={[selectedRack]} readOnly title="Color legend" />
+      )}
+
       {level === 'site' && powerVisible && !!siteDetail?.racks?.length && (
         <PowerLegend racks={siteDetail.racks} power={siteDetail.power} />
       )}

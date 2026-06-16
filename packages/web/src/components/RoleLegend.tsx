@@ -57,29 +57,42 @@ const swatch: React.CSSProperties = {
 }
 
 /**
- * Room-view role legend: lists the site's device roles (with placeable counts)
- * and toggles which ones are highlighted across the racks. Empty when the site
- * has no rack-mounted devices.
+ * Role legend: lists the device roles (with placeable counts) and their colors.
+ *
+ * Two modes:
+ * - interactive (room view): each row toggles highlighting of that role across
+ *   the racks; a "clear" button resets.
+ * - readOnly (rack view): a plain color key — swatch + name + count — so a user
+ *   looking at a single rack can tell what the device colors mean.
+ *
+ * Empty when the given racks hold no rack-mounted devices.
  */
 export function RoleLegend({
   racks,
   highlighted,
   onToggle,
   onClear,
+  readOnly = false,
+  title = 'Highlight role',
 }: {
   racks: SiteRack[]
-  highlighted: Set<string>
-  onToggle: (name: string) => void
-  onClear: () => void
+  highlighted?: Set<string>
+  onToggle?: (name: string) => void
+  onClear?: () => void
+  /** Render a non-interactive color key (no toggle/clear/dimming). */
+  readOnly?: boolean
+  title?: string
 }) {
   const roles = useMemo(() => collectSiteRoles(racks), [racks])
   if (roles.length === 0) return null
 
+  const active = !readOnly && (highlighted?.size ?? 0) > 0
+
   return (
     <div style={panelStyle}>
       <div style={headerRow}>
-        <span style={{ fontWeight: 600, color: theme.text.primary }}>Highlight role</span>
-        {highlighted.size > 0 && (
+        <span style={{ fontWeight: 600, color: theme.text.primary }}>{title}</span>
+        {active && (
           <button onClick={onClear} style={clearBtn}>
             clear
           </button>
@@ -87,14 +100,9 @@ export function RoleLegend({
       </div>
       <div style={{ maxHeight: 260, overflowY: 'auto' }}>
         {roles.map((r) => {
-          const on = highlighted.has(r.name)
-          return (
-            <button
-              key={r.name}
-              onClick={() => onToggle(r.name)}
-              title={`${r.count} ${r.name} device${r.count === 1 ? '' : 's'}`}
-              style={{ ...rowStyle, opacity: highlighted.size === 0 || on ? 1 : 0.45 }}
-            >
+          const on = !readOnly && (highlighted?.has(r.name) ?? false)
+          const rowContent = (
+            <>
               <span
                 style={{
                   ...swatch,
@@ -105,6 +113,27 @@ export function RoleLegend({
               />
               <span style={{ flex: 1, textAlign: 'left', color: theme.text.primary }}>{r.name}</span>
               <span style={{ color: theme.text.muted }}>{r.count}</span>
+            </>
+          )
+          if (readOnly) {
+            return (
+              <div
+                key={r.name}
+                title={`${r.count} ${r.name} device${r.count === 1 ? '' : 's'}`}
+                style={{ ...rowStyle, cursor: 'default' }}
+              >
+                {rowContent}
+              </div>
+            )
+          }
+          return (
+            <button
+              key={r.name}
+              onClick={() => onToggle?.(r.name)}
+              title={`${r.count} ${r.name} device${r.count === 1 ? '' : 's'}`}
+              style={{ ...rowStyle, opacity: active && !on ? 0.45 : 1 }}
+            >
+              {rowContent}
             </button>
           )
         })}

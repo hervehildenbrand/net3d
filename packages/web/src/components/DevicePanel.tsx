@@ -38,6 +38,9 @@ const panel: React.CSSProperties = {
   right: 0,
   bottom: 0,
   width: 380,
+  // Above the 3D <Canvas> (zIndex 2) and HUD (zIndex 20); without this the
+  // canvas paints over the panel and swallows every click — incl. the ✕.
+  zIndex: 30,
   overflowY: 'auto',
   background: 'rgba(255, 255, 255, 0.96)',
   borderLeft: '1px solid #cbd5e1',
