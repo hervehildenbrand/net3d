@@ -91,6 +91,7 @@ export function RackLevel({
   selectedDeviceId,
   visible,
   heatmap = null,
+  highlightedRoles,
 }: {
   rack: SiteRack
   placement: RackPlacement
@@ -102,6 +103,8 @@ export function RackLevel({
   visible: boolean
   /** When set, recolor device boxes by this metric instead of role color. */
   heatmap?: HeatmapView | null
+  /** NetBox role names to highlight; empty = no highlight (plain front/rear view). */
+  highlightedRoles: Set<string>
 }) {
   const [hovered, setHovered] = useState<string | null>(null)
   const connectivityVisible = useAppStore((s) => s.connectivityVisible)
@@ -183,8 +186,14 @@ export function RackLevel({
         // emphasize the devices facing the current camera side; dim the rest,
         // but selection/hover always wins so any device stays inspectable
         const matchesView = faceMatchesView(device, rackView)
-        const dimmed = !active && !hover && !matchesView
-        // heatmap overrides role color when a metric is active
+        // role highlight (legend) takes over the dimming when active: matching
+        // roles glow, the rest recede — mirrors the room-view rack highlight.
+        const highlightActive = highlightedRoles.size > 0
+        const roleMatch = !highlightActive || highlightedRoles.has(device.roleName)
+        const dimmed =
+          !active && !hover && (highlightActive ? !roleMatch : !matchesView)
+        const emphasized = highlightActive && roleMatch && !active && !hover
+        // heatmap recolors the box (orthogonal to the role-highlight dim/emphasis)
         const boxColor = heatmap
           ? specsColor(device.specs?.[heatmap.metric], heatmap.min, heatmap.max)
           : `#${device.roleColor}`
@@ -214,7 +223,9 @@ export function RackLevel({
               <meshStandardMaterial
                 color={boxColor}
                 emissive={boxColor}
-                emissiveIntensity={active ? 0.9 : hover ? 0.55 : dimmed ? 0.12 : 0.25}
+                emissiveIntensity={
+                  active ? 0.9 : hover ? 0.55 : emphasized ? 0.7 : dimmed ? 0.12 : 0.25
+                }
                 roughness={0.45}
                 metalness={0.3}
                 transparent

@@ -16,6 +16,29 @@ export function latLonToVector3(lat: number, lon: number, radius = 1): Vec3 {
   }
 }
 
+/**
+ * Initial great-circle bearing from A to B, in degrees clockwise from north,
+ * normalised to [0, 360). 0 = north, 90 = east, 180 = south, 270 = west.
+ */
+export function compassBearing(latA: number, lonA: number, latB: number, lonB: number): number {
+  const φ1 = latA * DEG
+  const φ2 = latB * DEG
+  const Δλ = (lonB - lonA) * DEG
+  const y = Math.sin(Δλ) * Math.cos(φ2)
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ)
+  const θ = Math.atan2(y, x) / DEG
+  return ((θ % 360) + 360) % 360
+}
+
+/**
+ * Convert a compass bearing to a ground-plane offset for the Y-up scene, where
+ * north maps to -z and east to +x. Returns a vector of the given radius.
+ */
+export function bearingToGroundOffset(bearingDeg: number, radius: number): { x: number; z: number } {
+  const θ = bearingDeg * DEG
+  return { x: radius * Math.sin(θ), z: -radius * Math.cos(θ) }
+}
+
 export interface ArcOptions {
   radius: number
   segments: number

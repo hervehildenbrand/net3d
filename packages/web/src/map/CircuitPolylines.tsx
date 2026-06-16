@@ -29,8 +29,10 @@ export function CircuitPolylines({
         {
           key: `${g.siteA}|${g.siteZ}`,
           positions: greatCircleLatLngs(a.latitude, a.longitude!, z.latitude, z.longitude!, 48),
-          weight: speedBucketToWidth(bucket),
-          opacity: bucket === '400G' ? 0.8 : bucket === '100G' ? 0.6 : 0.4,
+          // Raise the thinnest links off the floor: 10G circuits at weight 1.5
+          // were nearly invisible on the light basemap.
+          weight: Math.max(speedBucketToWidth(bucket), 2),
+          opacity: bucket === '400G' ? 0.9 : bucket === '100G' ? 0.75 : 0.6,
           title: `${g.siteA} ↔ ${g.siteZ} — ${g.count} circuit${g.count > 1 ? 's' : ''}`,
           circuits: g.circuits ?? [],
         },

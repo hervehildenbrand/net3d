@@ -1,6 +1,12 @@
 import { useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { lldpToSegments, type RackLocation } from '@net3d/shared'
+import {
+  commitRateToSpeedBucket,
+  compassBearing,
+  lldpToSegments,
+  type RackLocation,
+} from '@net3d/shared'
+import type { DcLink } from './scene/dclinks'
 import { MapLayer } from './map/MapLayer'
 import { useLldpDiscovery } from './hooks/useLldpDiscovery'
 import { useCapabilities } from './hooks/useCapabilities'
@@ -48,6 +54,8 @@ export function App() {
   const togglePower = useAppStore((s) => s.togglePower)
   const selectedPowerSource = useAppStore((s) => s.selectedPowerSource)
   const setPowerSource = useAppStore((s) => s.setPowerSource)
+  const dcLinksVisible = useAppStore((s) => s.dcLinksVisible)
+  const toggleDcLinks = useAppStore((s) => s.toggleDcLinks)
   const rackView = useAppStore((s) => s.rackView)
   const toggleRackView = useAppStore((s) => s.toggleRackView)
   const highlightedRoles = useAppStore((s) => s.highlightedRoles)
@@ -116,6 +124,36 @@ export function App() {
     return segments
   }, [lldp.byDevice, siteDetail])
 
+  // Inter-DC links for the site in view: each circuit group touching this site,
+  // placed by the geographic bearing from this site to its peer.
+  const dcLinks = useMemo<DcLink[]>(() => {
+    if (!sites || !selectedSiteName || !circuitGroups) return []
+    const byName = new Map(sites.map((s) => [s.name, s]))
+    const origin = byName.get(selectedSiteName)
+    return circuitGroups.flatMap((g) => {
+      const isA = g.siteA === selectedSiteName
+      const isZ = g.siteZ === selectedSiteName
+      if (!isA && !isZ) return []
+      const peerName = isA ? g.siteZ : g.siteA
+      const peer = byName.get(peerName)
+      const bearingDeg =
+        origin?.latitude != null &&
+        origin.longitude != null &&
+        peer?.latitude != null &&
+        peer.longitude != null
+          ? compassBearing(origin.latitude, origin.longitude, peer.latitude, peer.longitude)
+          : null
+      return [
+        {
+          peerName,
+          count: g.count,
+          bucket: commitRateToSpeedBucket(g.maxCommitRate ?? null),
+          bearingDeg,
+        },
+      ]
+    })
+  }, [sites, selectedSiteName, circuitGroups])
+
   const inScene = level !== 'map'
 
   return (
@@ -172,6 +210,8 @@ export function App() {
                 powerChainRackIds={powerChain?.rackIds ?? null}
                 selectedPanel={selectedPowerSource?.kind === 'panel' ? selectedPowerSource.name : null}
                 onPanelClick={onPanelClick}
+                dcLinks={dcLinks}
+                dcLinksVisible={dcLinksVisible}
               />
             )}
             {level === 'rack' && selectedRack && selectedPlacement && (
@@ -185,6 +225,7 @@ export function App() {
                 selectedDeviceId={selectedDeviceId}
                 visible
                 heatmap={heatmap}
+                highlightedRoles={highlightedRoles}
               />
             )}
             <CameraRig />
@@ -241,6 +282,17 @@ export function App() {
         />
       )}
 
+      {/* Rack view: same interactive role legend as the room view, scoped to this
+          rack — toggle one or more roles to highlight matching devices. */}
+      {level === 'rack' && selectedRack && !selectedDevice && (
+        <RoleLegend
+          racks={[selectedRack]}
+          highlighted={highlightedRoles}
+          onToggle={toggleHighlightedRole}
+          onClear={clearHighlightedRoles}
+        />
+      )}
+
       {level === 'site' && powerVisible && !!siteDetail?.racks?.length && (
         <PowerLegend
           racks={siteDetail.racks}
@@ -258,14 +310,14 @@ export function App() {
         />
       )}
 
-      {/* Heatmap legend doubles as its on/off control. At site level it stacks
-          below the role legend (top-right); at rack level that slot is free. */}
+      {/* Heatmap legend doubles as its on/off control. It stacks below the role
+          legend (top-right), which is now shown at both site and rack level. */}
       {level !== 'map' && !!siteDetail?.racks?.length && (
         <SpecsHeatmapLegend
           racks={siteDetail.racks}
           metric={specsHeatmapMetric}
           onSelect={setSpecsMetric}
-          top={level === 'site' ? 320 : 16}
+          top={320}
         />
       )}
 
@@ -327,6 +379,26 @@ export function App() {
           }}
         >
           {powerVisible ? '◉ power' : '○ power'}
+        </button>
+      )}
+
+      {level === 'site' && (
+        <button
+          onClick={toggleDcLinks}
+          title="show/hide labelled inter-DC circuit links radiating toward peer sites"
+          style={{
+            ...hudStyle,
+            top: 136,
+            background: dcLinksVisible ? '#0ea5e9' : '#ffffff',
+            color: dcLinksVisible ? '#ffffff' : '#1e293b',
+            border: '1px solid #cbd5e1',
+            borderRadius: 6,
+            padding: '6px 12px',
+            cursor: 'pointer',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+          }}
+        >
+          {dcLinksVisible ? '◉ DC links' : '○ DC links'}
         </button>
       )}
 

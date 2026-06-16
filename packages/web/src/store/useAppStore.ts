@@ -39,6 +39,9 @@ interface AppState {
   /** Power-chain root: a clicked panel/feed whose fed racks + devices are highlighted; null = none. */
   selectedPowerSource: PowerSource | null
   setPowerSource: (source: PowerSource | null) => void
+  /** Site view: render labelled inter-DC circuit links radiating toward peer sites. */
+  dcLinksVisible: boolean
+  toggleDcLinks: () => void
   /** Rack view camera side: 'rear' frames the cabling, 'front' the device faces. */
   rackView: 'front' | 'rear'
   toggleRackView: () => void
@@ -101,6 +104,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => (s.powerVisible ? { powerVisible: false, selectedPowerSource: null } : { powerVisible: true })),
   selectedPowerSource: null,
   setPowerSource: (source) => set({ selectedPowerSource: source }),
+  dcLinksVisible: false,
+  toggleDcLinks: () => set({ dcLinksVisible: !get().dcLinksVisible }),
   rackView: 'front',
   toggleRackView: () => set({ rackView: get().rackView === 'front' ? 'rear' : 'front' }),
   siteViewDistance: null,

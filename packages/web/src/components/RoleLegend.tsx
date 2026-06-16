@@ -57,9 +57,10 @@ const swatch: React.CSSProperties = {
 }
 
 /**
- * Room-view role legend: lists the site's device roles (with placeable counts)
- * and toggles which ones are highlighted across the racks. Empty when the site
- * has no rack-mounted devices.
+ * Role legend: lists the device roles (with placeable counts) and toggles which
+ * ones are highlighted — across the racks in the room view, or within the single
+ * rack in the rack view. Multiple roles can be selected at once. Empty when the
+ * given racks hold no rack-mounted devices.
  */
 export function RoleLegend({
   racks,

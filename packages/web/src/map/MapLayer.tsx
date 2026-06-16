@@ -7,6 +7,8 @@ import { useSitePrefetch } from '../hooks/useSitePrefetch'
 import { useAppStore } from '../store/useAppStore'
 import { CircuitPolylines } from './CircuitPolylines'
 import { SiteTooltip } from './SiteTooltip'
+import { MapLegend } from './MapLegend'
+import { markerColorsForRole } from './markerColors'
 
 /** Below the enter threshold (14), but close enough that entry is likely. */
 const PREFETCH_ZOOM = 11
@@ -96,6 +98,7 @@ export function MapLayer({
   const geocoded = sites.filter((s) => s.latitude !== null && s.longitude !== null)
 
   return (
+    <>
     <MapContainer
       style={{ width: '100%', height: '100%', background: '#f4f6f8' }}
       center={[30, 0]}
@@ -108,12 +111,14 @@ export function MapLayer({
       <MapNavWatcher sites={sites} />
       <MapViewRestorer />
       <CircuitPolylines sites={sites} groups={circuitGroups} />
-      {geocoded.map((s) => (
+      {geocoded.map((s) => {
+        const mc = markerColorsForRole(s.role)
+        return (
         <CircleMarker
           key={s.id}
           center={[s.latitude!, s.longitude!]}
           radius={7}
-          pathOptions={{ color: '#0284c7', weight: 2, fillColor: '#38bdf8', fillOpacity: 0.85 }}
+          pathOptions={{ color: mc.color, weight: 2, fillColor: mc.fill, fillOpacity: 0.85 }}
           eventHandlers={{
             mouseover: () => prefetchSite(s.name),
             click: () => {
@@ -126,7 +131,10 @@ export function MapLayer({
             <SiteTooltip site={s} />
           </Tooltip>
         </CircleMarker>
-      ))}
+        )
+      })}
     </MapContainer>
+    <MapLegend />
+    </>
   )
 }

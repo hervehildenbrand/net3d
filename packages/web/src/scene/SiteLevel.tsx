@@ -12,6 +12,7 @@ import { theme } from '../theme'
 import { useAppStore } from '../store/useAppStore'
 import { SiteCables } from './cables'
 import { RoomPower } from './power'
+import { SiteDcLinks, type DcLink } from './dclinks'
 import { buildRoleMarkers, racksWithRole, type RoleMarker } from '../lib/roleHighlight'
 import { rackAggregate, specsColor } from '../lib/specsHeatmap'
 import type { HeatmapView } from './RackLevel'
@@ -199,6 +200,8 @@ export function SiteLevel({
   powerChainRackIds = null,
   selectedPanel = null,
   onPanelClick,
+  dcLinks = [],
+  dcLinksVisible = false,
 }: {
   racks: SiteRack[]
   cables: SiteCable[]
@@ -219,6 +222,10 @@ export function SiteLevel({
   selectedPanel?: string | null
   /** Click a room-view panel node to root/clear a power chain. */
   onPanelClick?: (name: string) => void
+  /** Inter-DC circuit links from this site to its peers. */
+  dcLinks?: DcLink[]
+  /** DC-links overlay on: render the labelled peer links radiating from the roof. */
+  dcLinksVisible?: boolean
 }) {
   const { placements, bounds } = useSiteLayout(racks)
   const size = {
@@ -292,6 +299,14 @@ export function SiteLevel({
           power={power}
           onPanelClick={onPanelClick}
           selectedPanel={selectedPanel}
+        />
+      )}
+      {visible && dcLinksVisible && dcLinks.length > 0 && (
+        <SiteDcLinks
+          links={dcLinks}
+          center={center}
+          topY={size.y + 1}
+          radius={Math.max(size.x, size.z, 4) * 0.85}
         />
       )}
       <RoomLabels racks={racks} placements={placements} />
