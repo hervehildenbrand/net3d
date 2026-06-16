@@ -12,6 +12,7 @@ import { theme } from '../theme'
 import { useAppStore } from '../store/useAppStore'
 import { SiteCables } from './cables'
 import { RoomPower } from './power'
+import { SiteDcLinks, type DcLink } from './dclinks'
 import { buildRoleMarkers, racksWithRole, type RoleMarker } from '../lib/roleHighlight'
 
 /** Hide individual rack labels once the camera is farther than span * this. */
@@ -181,6 +182,8 @@ export function SiteLevel({
   highlightedRoles,
   powerVisible,
   power,
+  dcLinks = [],
+  dcLinksVisible = false,
 }: {
   racks: SiteRack[]
   cables: SiteCable[]
@@ -193,6 +196,10 @@ export function SiteLevel({
   /** Power overlay on: render per-rack A/B PDU strips + panel nodes. */
   powerVisible: boolean
   power?: SitePower
+  /** Inter-DC circuit links from this site to its peers. */
+  dcLinks?: DcLink[]
+  /** DC-links overlay on: render the labelled peer links radiating from the roof. */
+  dcLinksVisible?: boolean
 }) {
   const { placements, bounds } = useSiteLayout(racks)
   const size = {
@@ -250,6 +257,14 @@ export function SiteLevel({
       )}
       {visible && markers.length > 0 && <RoleMarkers markers={markers} />}
       {visible && powerVisible && <RoomPower racks={racks} placements={placements} power={power} />}
+      {visible && dcLinksVisible && dcLinks.length > 0 && (
+        <SiteDcLinks
+          links={dcLinks}
+          center={center}
+          topY={size.y + 1}
+          radius={Math.max(size.x, size.z, 4) * 0.85}
+        />
+      )}
       <RoomLabels racks={racks} placements={placements} />
       <SiteCables placements={placements} cables={cables} lldpSegments={lldpSegments} />
       <Billboard position={[center.x, size.y + 0.6, center.z]}>

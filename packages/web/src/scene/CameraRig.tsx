@@ -23,17 +23,27 @@ export function CameraRig() {
   // the neighbour rack). Suppress signals until the transition settles.
   const transitioning = useRef(false)
   const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // Identifies the latest transition so a stale (earlier) fly's promise can't
+  // clear the flag for a newer one (e.g. rapid enter-rack → ← site).
+  const txnId = useRef(0)
 
   const beginTransition = useCallback((p: Promise<unknown> | void) => {
+    const id = ++txnId.current
     transitioning.current = true
     if (settleTimer.current) clearTimeout(settleTimer.current)
+    // The setLookAt promise resolves on *rest* (camera settled at the target),
+    // which is the correct moment to re-arm the nav machine: by then we're far
+    // from any rack. Only clear if this is still the active transition.
     const done = () => {
-      transitioning.current = false
+      if (txnId.current === id) transitioning.current = false
     }
-    void Promise.resolve(p).then(done)
-    // Safety net: never let the flag stick if the promise resolves oddly.
-    // 900ms comfortably exceeds smoothTime (0.6s).
-    settleTimer.current = setTimeout(done, 900)
+    if (p && typeof (p as Promise<unknown>).then === 'function') {
+      void (p as Promise<unknown>).then(done)
+    }
+    // Fallback only — long enough to outlast even a big-building fly-out, so it
+    // never clears mid-flight (the bug a short timeout caused). The promise is
+    // the normal path.
+    settleTimer.current = setTimeout(done, 4000)
   }, [])
 
   useEffect(() => () => clearTimeout(settleTimer.current), [])

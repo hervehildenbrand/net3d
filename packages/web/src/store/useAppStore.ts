@@ -34,6 +34,9 @@ interface AppState {
   /** Power overlay: PDU rails + A/B power cords (rack) and per-rack PDU strips (room). */
   powerVisible: boolean
   togglePower: () => void
+  /** Site view: render labelled inter-DC circuit links radiating toward peer sites. */
+  dcLinksVisible: boolean
+  toggleDcLinks: () => void
   /** Rack view camera side: 'rear' frames the cabling, 'front' the device faces. */
   rackView: 'front' | 'rear'
   toggleRackView: () => void
@@ -89,6 +92,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleConnectivity: () => set({ connectivityVisible: !get().connectivityVisible }),
   powerVisible: false,
   togglePower: () => set({ powerVisible: !get().powerVisible }),
+  dcLinksVisible: false,
+  toggleDcLinks: () => set({ dcLinksVisible: !get().dcLinksVisible }),
   rackView: 'front',
   toggleRackView: () => set({ rackView: get().rackView === 'front' ? 'rear' : 'front' }),
   siteViewDistance: null,

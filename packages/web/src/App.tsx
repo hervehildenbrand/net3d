@@ -1,6 +1,12 @@
 import { useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { lldpToSegments, type RackLocation } from '@net3d/shared'
+import {
+  commitRateToSpeedBucket,
+  compassBearing,
+  lldpToSegments,
+  type RackLocation,
+} from '@net3d/shared'
+import type { DcLink } from './scene/dclinks'
 import { MapLayer } from './map/MapLayer'
 import { useLldpDiscovery } from './hooks/useLldpDiscovery'
 import { useCapabilities } from './hooks/useCapabilities'
@@ -43,6 +49,8 @@ export function App() {
   const toggleConnectivity = useAppStore((s) => s.toggleConnectivity)
   const powerVisible = useAppStore((s) => s.powerVisible)
   const togglePower = useAppStore((s) => s.togglePower)
+  const dcLinksVisible = useAppStore((s) => s.dcLinksVisible)
+  const toggleDcLinks = useAppStore((s) => s.toggleDcLinks)
   const rackView = useAppStore((s) => s.rackView)
   const toggleRackView = useAppStore((s) => s.toggleRackView)
   const highlightedRoles = useAppStore((s) => s.highlightedRoles)
@@ -84,6 +92,36 @@ export function App() {
     }
     return segments
   }, [lldp.byDevice, siteDetail])
+
+  // Inter-DC links for the site in view: each circuit group touching this site,
+  // placed by the geographic bearing from this site to its peer.
+  const dcLinks = useMemo<DcLink[]>(() => {
+    if (!sites || !selectedSiteName || !circuitGroups) return []
+    const byName = new Map(sites.map((s) => [s.name, s]))
+    const origin = byName.get(selectedSiteName)
+    return circuitGroups.flatMap((g) => {
+      const isA = g.siteA === selectedSiteName
+      const isZ = g.siteZ === selectedSiteName
+      if (!isA && !isZ) return []
+      const peerName = isA ? g.siteZ : g.siteA
+      const peer = byName.get(peerName)
+      const bearingDeg =
+        origin?.latitude != null &&
+        origin.longitude != null &&
+        peer?.latitude != null &&
+        peer.longitude != null
+          ? compassBearing(origin.latitude, origin.longitude, peer.latitude, peer.longitude)
+          : null
+      return [
+        {
+          peerName,
+          count: g.count,
+          bucket: commitRateToSpeedBucket(g.maxCommitRate ?? null),
+          bearingDeg,
+        },
+      ]
+    })
+  }, [sites, selectedSiteName, circuitGroups])
 
   const inScene = level !== 'map'
 
@@ -137,6 +175,8 @@ export function App() {
                 highlightedRoles={highlightedRoles}
                 powerVisible={powerVisible}
                 power={siteDetail.power}
+                dcLinks={dcLinks}
+                dcLinksVisible={dcLinksVisible}
               />
             )}
             {level === 'rack' && selectedRack && selectedPlacement && (
@@ -272,6 +312,26 @@ export function App() {
           }}
         >
           {powerVisible ? '◉ power' : '○ power'}
+        </button>
+      )}
+
+      {level === 'site' && (
+        <button
+          onClick={toggleDcLinks}
+          title="show/hide labelled inter-DC circuit links radiating toward peer sites"
+          style={{
+            ...hudStyle,
+            top: 136,
+            background: dcLinksVisible ? '#0ea5e9' : '#ffffff',
+            color: dcLinksVisible ? '#ffffff' : '#1e293b',
+            border: '1px solid #cbd5e1',
+            borderRadius: 6,
+            padding: '6px 12px',
+            cursor: 'pointer',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+          }}
+        >
+          {dcLinksVisible ? '◉ DC links' : '○ DC links'}
         </button>
       )}
 
