@@ -189,6 +189,7 @@ export function App() {
                 onDeviceClick={selectDevice}
                 selectedDeviceId={selectedDeviceId}
                 visible
+                highlightedRoles={highlightedRoles}
               />
             )}
             <CameraRig />
@@ -245,9 +246,15 @@ export function App() {
         />
       )}
 
-      {/* Rack view: read-only color key so the per-role device colors are legible. */}
+      {/* Rack view: same interactive role legend as the room view, scoped to this
+          rack — toggle one or more roles to highlight matching devices. */}
       {level === 'rack' && selectedRack && !selectedDevice && (
-        <RoleLegend racks={[selectedRack]} readOnly title="Color legend" />
+        <RoleLegend
+          racks={[selectedRack]}
+          highlighted={highlightedRoles}
+          onToggle={toggleHighlightedRole}
+          onClear={clearHighlightedRoles}
+        />
       )}
 
       {level === 'site' && powerVisible && !!siteDetail?.racks?.length && (

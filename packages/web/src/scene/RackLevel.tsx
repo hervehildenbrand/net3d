@@ -44,6 +44,7 @@ export function RackLevel({
   onDeviceClick,
   selectedDeviceId,
   visible,
+  highlightedRoles,
 }: {
   rack: SiteRack
   placement: RackPlacement
@@ -53,6 +54,8 @@ export function RackLevel({
   onDeviceClick: (deviceId: string) => void
   selectedDeviceId: string | null
   visible: boolean
+  /** NetBox role names to highlight; empty = no highlight (plain front/rear view). */
+  highlightedRoles: Set<string>
 }) {
   const [hovered, setHovered] = useState<string | null>(null)
   const connectivityVisible = useAppStore((s) => s.connectivityVisible)
@@ -108,7 +111,13 @@ export function RackLevel({
         // emphasize the devices facing the current camera side; dim the rest,
         // but selection/hover always wins so any device stays inspectable
         const matchesView = faceMatchesView(device, rackView)
-        const dimmed = !active && !hover && !matchesView
+        // role highlight (legend) takes over the dimming when active: matching
+        // roles glow, the rest recede — mirrors the room-view rack highlight.
+        const highlightActive = highlightedRoles.size > 0
+        const roleMatch = !highlightActive || highlightedRoles.has(device.roleName)
+        const dimmed =
+          !active && !hover && (highlightActive ? !roleMatch : !matchesView)
+        const emphasized = highlightActive && roleMatch && !active && !hover
         return (
           <group key={device.id}>
             <mesh
@@ -135,7 +144,9 @@ export function RackLevel({
               <meshStandardMaterial
                 color={`#${device.roleColor}`}
                 emissive={`#${device.roleColor}`}
-                emissiveIntensity={active ? 0.9 : hover ? 0.55 : dimmed ? 0.12 : 0.25}
+                emissiveIntensity={
+                  active ? 0.9 : hover ? 0.55 : emphasized ? 0.7 : dimmed ? 0.12 : 0.25
+                }
                 roughness={0.45}
                 metalness={0.3}
                 transparent
