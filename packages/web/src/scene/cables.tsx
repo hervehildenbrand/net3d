@@ -6,11 +6,13 @@ import {
   cableMedium,
   classifyCableForRack,
   classifyCableKind,
+  collectDevicePortNames,
   deviceTransform,
   getCablesForDevice,
   interRackCablePath,
   intraRackCablePath,
   LANE_PITCH_M,
+  portSlotLayout,
   STUB_LENGTH_M,
   summarizeDestinations,
   type CableMedium,
@@ -120,18 +122,17 @@ export function RackCables({
       }
     }
 
-    // Fan each device's cables (intra + outgoing) to distinct attach points across
-    // its face height, so you can read how many links a device has and where they land.
-    const union = [...intra, ...outgoing.map((o) => o.cable)]
+    // Anchor each cable to its interface's port slot on the device's rear face, so
+    // a device's links land on distinct, stable points (a synthetic faceplate built
+    // from the connected interface names) instead of being fanned by ordinal. The
+    // port markers in RackLevel use the same layout, so cables meet the right port.
     const attach = new Map<string, Vec3>() // key: `${cableId}:${deviceName}`
     for (const [deviceName, box] of boxByDevice) {
-      const links = getCablesForDevice(union, deviceName)
-      const n = links.length
-      links.forEach((link, i) => {
-        const y = box.y - box.h / 2 + ((i + 1) / (n + 1)) * box.h
-        // leave the device at its rear face so cabling exits toward the back
-        attach.set(`${link.cableId}:${deviceName}`, { x: box.x + box.w / 2, y, z: box.z - box.d / 2 })
-      })
+      const slots = portSlotLayout(box, collectDevicePortNames(cables, deviceName))
+      for (const link of getCablesForDevice(cables, deviceName)) {
+        const slot = slots.get(link.interfaceName)
+        if (slot) attach.set(`${link.cableId}:${deviceName}`, { x: slot.x, y: slot.y, z: slot.z })
+      }
     }
 
     const intraLines = intra.map((c, idx) => {
