@@ -58,6 +58,9 @@ SERVER_CABLING_SAMPLE = int(os.environ.get("SERVER_CABLING_SAMPLE", "2"))
 # circuit ring needs the full site list, so a final CIRCUITS_ONLY pass creates them.
 SKIP_CIRCUITS = os.environ.get("SKIP_CIRCUITS", "") in ("1", "true")
 CIRCUITS_ONLY = os.environ.get("CIRCUITS_ONLY", "") in ("1", "true")
+# One-off cleanup: delete cables that duplicate an endpoint pair (left over from
+# earlier re-seeds before cable creation became idempotent).
+DEDUPE_CABLES = os.environ.get("DEDUPE_CABLES", "") in ("1", "true")
 
 RACK_HEIGHT = 42
 OOB_SWITCH_POS = 40
@@ -98,6 +101,27 @@ BATCH_CHUNK = int(os.environ.get("SEED_BATCH_CHUNK", "250"))
 
 def _chunks(seq: list, size: int) -> list:
     return [seq[i : i + size] for i in range(0, len(seq), size)]
+
+
+def cable_pairs(cables: list[dict]) -> set:
+    """Order-independent endpoint-pair keys from cables [{'a','b'}] — a cable is
+    identified by the two interfaces it joins (DcimCable has no natural unique key),
+    so this is the set used to skip cables that already exist."""
+    return {frozenset((c["a"], c["b"])) for c in cables}
+
+
+def duplicate_cable_ids(cables: list[dict]) -> list:
+    """Ids of cables that repeat an endpoint pair already seen (keep the first)."""
+    seen: set = set()
+    dups: list = []
+    for c in cables:
+        key = frozenset((c["a"], c["b"]))
+        if key in seen:
+            dups.append(c["id"])
+        else:
+            seen.add(key)
+    return dups
+
 
 # infrahub-sdk >=1.x sets batch concurrency on the client Config; create_batch()
 # no longer accepts a max_concurrent_execution kwarg.
@@ -141,6 +165,33 @@ def batch_upsert(specs: list[tuple[str, dict]]):
 
         out.extend(_retry(run))
     return out
+
+
+def _fetch_cables(filter_str: str = "") -> list[dict]:
+    """Fetch cables (optionally filtered) as [{'id','a','b'}] via GraphQL, where a/b
+    are the endpoint interface ids."""
+    q = (f"{{ DcimCable{filter_str} {{ edges {{ node {{ id "
+         f"endpoint_a {{ node {{ id }} }} endpoint_b {{ node {{ id }} }} }} }} }} }}")
+    data = _retry(lambda: client.execute_graphql(query=q))
+    out = []
+    for e in data["DcimCable"]["edges"]:
+        n = e["node"]
+        a = (n.get("endpoint_a") or {}).get("node") or {}
+        b = (n.get("endpoint_b") or {}).get("node") or {}
+        if a.get("id") and b.get("id"):
+            out.append({"id": n["id"], "a": a["id"], "b": b["id"]})
+    return out
+
+
+def _existing_cable_pairs(iface_ids: list[str]) -> set:
+    """Endpoint-pair keys of cables already terminating on any of these interfaces
+    (both sides, chunked to bound query size). Empty on a first-time site seed."""
+    cables: list[dict] = []
+    for side in ("endpoint_a", "endpoint_b"):
+        for chunk in _chunks(iface_ids, 500):
+            ids = ", ".join(f'"{i}"' for i in chunk)
+            cables += _fetch_cables(f"({side}__ids: [{ids}])")
+    return cable_pairs(cables)
 
 
 # ---------------------------------------------------------------------------
@@ -332,15 +383,20 @@ def seed_site(dc, roles, types_by_role, type_by_slug):
     iface_id = {(n.device.id, n.name.value): n.id for n in iface_nodes}
     print(f"   {len(iface_id)} interfaces", flush=True)
 
+    # DcimCable has no natural unique key, so allow_upsert can't dedupe — skip cables
+    # whose endpoint pair already exists, keeping re-seeds idempotent (no duplicates).
+    existing = _existing_cable_pairs(list(iface_id.values()))
     cable_specs = []
     for a_dev, a_if, b_dev, b_if, ctype in plan:
         aid = iface_id[(devices[a_dev].id, a_if)]
         bid = iface_id[(devices[b_dev].id, b_if)]
+        if frozenset((aid, bid)) in existing:
+            continue
         cable_specs.append(("DcimCable", {
             "status": "connected", "cable_type": ctype, "endpoint_a": aid, "endpoint_b": bid,
         }))
     batch_upsert(cable_specs)
-    print(f"   {len(cable_specs)} cables", flush=True)
+    print(f"   {len(cable_specs)} cables ({len(plan) - len(cable_specs)} already present)", flush=True)
 
     # ---- power: panels (A/B) + per-rack feeds (A/B) ----
     panels = {}
@@ -412,6 +468,23 @@ def seed_circuits(dcs, sites, providers):
 def main():
     print(f"Seeding Infrahub at {ADDR}", flush=True)
     full_dcs = load("datacenters.json")
+
+    # Dedupe-only: delete cables that repeat an endpoint pair (left over from
+    # pre-idempotency re-seeds), keeping one cable per pair. No site/circuit work.
+    if DEDUPE_CABLES:
+        all_cables = _fetch_cables()
+        dup_ids = set(duplicate_cable_ids(all_cables))
+        print(f"Dedupe: {len(all_cables)} cables, {len(dup_ids)} duplicates to delete", flush=True)
+        if dup_ids:
+            nodes = [n for n in client.all("DcimCable") if n.id in dup_ids]
+            for chunk in _chunks(nodes, BATCH_CHUNK):
+                batch = client.create_batch()
+                for n in chunk:
+                    batch.add(task=n.delete, node=n)
+                _retry(lambda b=batch: list(b.execute()))
+            print(f"   deleted {len(nodes)} duplicate cables", flush=True)
+        print("Done (dedupe cables).", flush=True)
+        return
 
     # Circuits-only: don't (re)seed sites — read the ones already in Infrahub and
     # build the ring over the FULL dc list (so a site-by-site mirror gets its
