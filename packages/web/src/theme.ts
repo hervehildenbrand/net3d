@@ -5,7 +5,10 @@ export const theme = {
     attribution:
       '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
     background: '#f4f6f8',
-    marker: { color: '#0284c7', fill: '#38bdf8' },
+    // Site markers, coloured by DC role (matches the SiteTooltip role badge).
+    marker: { color: '#0284c7', fill: '#38bdf8' }, // compute (default)
+    markerPop: { color: '#c2410c', fill: '#f97316' }, // point of presence
+    markerOther: { color: '#64748b', fill: '#94a3b8' }, // untyped
     circuit: '#0ea5e9',
   },
   scene: {
