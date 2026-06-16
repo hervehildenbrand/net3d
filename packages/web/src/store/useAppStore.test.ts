@@ -106,6 +106,43 @@ describe('highlightedRoles', () => {
   })
 })
 
+describe('backend', () => {
+  beforeEach(() => {
+    // restore the default backend + map baseline between tests
+    useAppStore.getState().setBackend('netbox')
+    useAppStore.getState().zoomToMap()
+  })
+
+  test('initializes to netbox', () => {
+    expect(useAppStore.getState().backend).toBe('netbox')
+  })
+
+  test('setBackend switches the active backend', () => {
+    useAppStore.getState().setBackend('infrahub')
+    expect(useAppStore.getState().backend).toBe('infrahub')
+  })
+
+  test('switching backend resets navigation to the map (selection may not exist in the other backend)', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().zoomToRack('rack-1')
+    useAppStore.getState().selectDevice('dev-1')
+    useAppStore.getState().setBackend('infrahub')
+    const s = useAppStore.getState()
+    expect(s.level).toBe('map')
+    expect(s.selectedSiteName).toBe(null)
+    expect(s.selectedRackId).toBe(null)
+    expect(s.selectedDeviceId).toBe(null)
+  })
+
+  test('setBackend to the same backend leaves the current view intact', () => {
+    useAppStore.getState().setBackend('infrahub')
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().setBackend('infrahub') // no change
+    expect(useAppStore.getState().level).toBe('site')
+    expect(useAppStore.getState().selectedSiteName).toBe('ams1')
+  })
+})
+
 describe('powerVisible', () => {
   beforeEach(() => {
     useAppStore.getState().zoomToMap()

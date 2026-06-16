@@ -23,6 +23,7 @@ import { SiteSearch } from './components/SiteSearch'
 import { RoleLegend } from './components/RoleLegend'
 import { PowerLegend } from './components/PowerLegend'
 import { SpecsHeatmapLegend } from './components/SpecsHeatmapLegend'
+import { BackendSwitcher } from './components/BackendSwitcher'
 import { computeSpecsRange } from './lib/specsHeatmap'
 import { tracePowerChain } from './lib/powerChain'
 import { SceneErrorBoundary } from './components/SceneErrorBoundary'
@@ -259,6 +260,10 @@ export function App() {
           )}
         </div>
       </div>
+
+      {/* Source-of-truth switch — shown on the map (switching resets to the map anyway).
+          Top-right is free here; the in-scene legends occupy it only at site/rack level. */}
+      {level === 'map' && <BackendSwitcher />}
 
       {selectedDevice && (
         <DevicePanel
