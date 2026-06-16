@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
+import { CircleMarker, MapContainer, Pane, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { computeMapBounds, type CircuitGroup } from '@net3d/shared'
 import type { Site } from '../hooks/useSites'
@@ -104,35 +104,52 @@ export function MapLayer({
       center={[30, 0]}
       zoom={3}
       zoomControl={false}
-      worldCopyJump
+      maxBounds={[[-85, -180], [85, 180]]}
+      maxBoundsViscosity={1.0}
     >
-      <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
+      <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} noWrap />
       <FitToSites sites={sites} />
       <MapNavWatcher sites={sites} />
       <MapViewRestorer />
-      <CircuitPolylines sites={sites} groups={circuitGroups} />
-      {geocoded.map((s) => {
-        const mc = markerColorsForRole(s.role)
-        return (
-        <CircleMarker
-          key={s.id}
-          center={[s.latitude!, s.longitude!]}
-          radius={7}
-          pathOptions={{ color: mc.color, weight: 2, fillColor: mc.fill, fillOpacity: 0.85 }}
-          eventHandlers={{
-            mouseover: () => prefetchSite(s.name),
-            click: () => {
-              setMapView({ center: [s.latitude!, s.longitude!], zoom: 13 })
-              onSiteSelect(s.name)
-            },
-          }}
-        >
-          <Tooltip direction="top" offset={[0, -6]}>
-            <SiteTooltip site={s} />
-          </Tooltip>
-        </CircleMarker>
-        )
-      })}
+      {/* Links sit in a lower pane so site markers (upper pane) win the click. */}
+      <Pane name="circuits" style={{ zIndex: 399 }}>
+        <CircuitPolylines sites={sites} groups={circuitGroups} />
+      </Pane>
+      <Pane name="sites" style={{ zIndex: 401 }}>
+        {geocoded.map((s) => {
+          const mc = markerColorsForRole(s.role)
+          return (
+          <CircleMarker
+            key={s.id}
+            // Visual dot only — the transparent hit circle below carries interaction.
+            center={[s.latitude!, s.longitude!]}
+            radius={7}
+            interactive={false}
+            pathOptions={{ color: mc.color, weight: 2, fillColor: mc.fill, fillOpacity: 0.85 }}
+          />
+          )
+        })}
+        {geocoded.map((s) => (
+          // Enlarged transparent click target: easy to hit, painted above the dot.
+          <CircleMarker
+            key={`hit-${s.id}`}
+            center={[s.latitude!, s.longitude!]}
+            radius={16}
+            pathOptions={{ stroke: false, fill: true, fillOpacity: 0 }}
+            eventHandlers={{
+              mouseover: () => prefetchSite(s.name),
+              click: () => {
+                setMapView({ center: [s.latitude!, s.longitude!], zoom: 13 })
+                onSiteSelect(s.name)
+              },
+            }}
+          >
+            <Tooltip direction="top" offset={[0, -6]}>
+              <SiteTooltip site={s} />
+            </Tooltip>
+          </CircleMarker>
+        ))}
+      </Pane>
     </MapContainer>
     <MapLegend />
     </>
