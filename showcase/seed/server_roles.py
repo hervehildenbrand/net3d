@@ -38,12 +38,12 @@ _CLUSTERED = {"storage-server", "db-server"}
 # type by role is what makes a rack's primary function show up as its capacity in the
 # room-view heatmap. Keep these slugs in sync with the "server" entries of that file.
 ROLE_DEVICE_TYPE = {
-    "gpu-server":       "supermicro-as4125gs-h100",
-    "db-server":        "dell-poweredge-r760-db",
-    "esx-server":       "dell-poweredge-r750-esx",
+    "gpu-server":       "supermicro-as1115gs-h100",
+    "db-server":        "dell-poweredge-r660-db",
+    "esx-server":       "dell-poweredge-r660-esx",
     "k8s-worker":       "hpe-proliant-dl360-k8s",
     "baremetal-server": "dell-poweredge-r650-bm",
-    "storage-server":   "dell-poweredge-r760xd2-stor",
+    "storage-server":   "dell-poweredge-r660-stor",
     "cache-server":     "hpe-proliant-dl325-cache",
 }
 
