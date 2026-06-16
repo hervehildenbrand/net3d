@@ -13,14 +13,17 @@ import type { SoTClient } from '../sot/client'
 import { NapalmUnreachableError } from '../sot/errors'
 import type { Site, SiteRack, SoTStatus } from '../sot/types'
 import {
-  CABLES_QUERY,
   CIRCUITS_QUERY,
   SITES_QUERY,
+  cablesByEndpointQuery,
   feedsByPanelsQuery,
+  siteInterfaceIdsQuery,
   siteRacksQuery,
   sitePanelsQuery,
 } from './queries'
 import {
+  dedupeCablesById,
+  interfaceIdsFromDevices,
   normalizeInfrahubCables,
   normalizeInfrahubCircuits,
   normalizeInfrahubPower,
@@ -28,6 +31,7 @@ import {
   normalizeInfrahubSites,
 } from './transforms'
 import type {
+  Many,
   NodeList,
   RawCable,
   RawCircuit,
@@ -98,8 +102,22 @@ export function createInfrahubClient(
 
     async getSiteCables(site: string): Promise<SiteCable[]> {
       if (!SITE_RE.test(site)) throw new Error(`invalid site name: ${site}`)
-      const data = await graphql<{ DcimCable: NodeList<RawCable> }>(CABLES_QUERY)
-      return normalizeInfrahubCables(nodes(data.DcimCable), site)
+      // Cables can't be filtered by site in one hop (cable->endpoint->device->site),
+      // so scope the fetch: resolve the site's interface ids, then pull only the
+      // cables terminating on them (either end) instead of scanning every cable.
+      const devData = await graphql<{ DcimDevice: NodeList<{ interfaces: Many<{ id: string }> }> }>(
+        siteInterfaceIdsQuery(site),
+      )
+      const ifaceIds = interfaceIdsFromDevices(nodes(devData.DcimDevice))
+      if (!ifaceIds.length) return []
+      const sides = ['endpoint_a', 'endpoint_b'] as const
+      const results = await Promise.all(
+        sides.map((side) =>
+          graphql<{ DcimCable: NodeList<RawCable> }>(cablesByEndpointQuery(side, ifaceIds)),
+        ),
+      )
+      const raw = dedupeCablesById(results.flatMap((r) => nodes(r.DcimCable)))
+      return normalizeInfrahubCables(raw, site)
     },
 
     async getSitePower(site: string): Promise<SitePower> {

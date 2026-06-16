@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
+  dedupeCablesById,
+  interfaceIdsFromDevices,
   normalizeInfrahubCables,
   normalizeInfrahubCircuits,
   normalizeInfrahubPower,
@@ -200,6 +202,29 @@ describe('normalizeInfrahubPower', () => {
       voltage: 415, amperage: 32, phase: 'three-phase', supply: 'ac',
       type: 'primary', maxUtilization: 80, panelName: 'AMS1-PWR-A', rackName: 'AMS1-SRV-01',
     })
+  })
+})
+
+describe('interfaceIdsFromDevices', () => {
+  test('flattens interface ids across devices, skipping devices with none', () => {
+    const devices = [
+      { interfaces: many([{ id: 'i1' }, { id: 'i2' }]) },
+      { interfaces: many([]) }, // e.g. a 0U PDU with no interfaces
+      { interfaces: many([{ id: 'i3' }]) },
+    ]
+    expect(interfaceIdsFromDevices(devices)).toEqual(['i1', 'i2', 'i3'])
+  })
+})
+
+describe('dedupeCablesById', () => {
+  test('drops cables with duplicate ids, keeping first occurrence', () => {
+    const mk = (id: string) => ({
+      id, cable_type: v('smf'), status: v('connected'), color: v(''),
+      endpoint_a: null, endpoint_b: null,
+    })
+    // endpoint_a / endpoint_b query results overlap on intra-site cables.
+    const out = dedupeCablesById([mk('c1'), mk('c2'), mk('c1'), mk('c3'), mk('c2')])
+    expect(out.map((c) => c.id)).toEqual(['c1', 'c2', 'c3'])
   })
 })
 

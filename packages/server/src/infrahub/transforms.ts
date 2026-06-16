@@ -123,6 +123,19 @@ function endpoint(e: RawCableEndpoint | null): CableEndpoint | null {
   return null
 }
 
+/** Flatten the interface ids of a site's devices (from DcimDevice(site){interfaces{id}}),
+ * so cables can be fetched server-side by endpoint id instead of scanning all cables. */
+export function interfaceIdsFromDevices(devices: { interfaces: Many<{ id: string }> }[]): string[] {
+  return devices.flatMap((d) => list(d.interfaces).map((i) => i.id))
+}
+
+/** Dedupe cables by id — the endpoint_a/endpoint_b filtered fetches overlap on
+ * intra-site cables (both ends in the same site), and re-seeds can duplicate ids. */
+export function dedupeCablesById(raw: RawCable[]): RawCable[] {
+  const seen = new Set<string>()
+  return raw.filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)))
+}
+
 /** Cables touching `site` (either end's device is in it), normalized like NetBox. */
 export function normalizeInfrahubCables(raw: RawCable[], site: string): SiteCable[] {
   return raw

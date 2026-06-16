@@ -78,12 +78,8 @@ const ENDPOINT_NODE = `
     circuit { node { cid { value } } }
   }`
 
-// Cables carry no site of their own; we resolve each end's device->site and filter
-// client-side. For the showcase subset this fetches all cables in one query.
-export const CABLES_QUERY = `
-query {
-  DcimCable {
-    edges { node {
+// A cable's queryable fields (id, attrs, both endpoints).
+const CABLE_NODE = `
       id
       cable_type { value }
       status { value }
@@ -91,10 +87,33 @@ query {
       endpoint_a { node {${ENDPOINT_NODE}
       } }
       endpoint_b { node {${ENDPOINT_NODE}
-      } }
+      } }`
+
+// All interface ids belonging to a site's devices. `site__name__value` is a valid
+// single-hop filter on Device, and the nested interface list returns in full — so
+// this scopes the cable fetch without scanning every cable in the instance.
+export function siteInterfaceIdsQuery(site: string): string {
+  return `
+query {
+  DcimDevice(site__name__value: "${site}") {
+    edges { node { interfaces { edges { node { id } } } } }
+  }
+}`
+}
+
+// Cables whose endpoint_a (or endpoint_b) is one of the given interface ids. Cables
+// can't be filtered by site directly (cable->endpoint->device->site is multi-hop),
+// but `endpoint_a__ids` / `endpoint_b__ids` are valid single-hop relationship filters.
+export function cablesByEndpointQuery(side: 'endpoint_a' | 'endpoint_b', ids: string[]): string {
+  const idList = ids.map((id) => `"${id}"`).join(', ')
+  return `
+query {
+  DcimCable(${side}__ids: [${idList}]) {
+    edges { node {${CABLE_NODE}
     } }
   }
 }`
+}
 
 // Panels filter directly by site. Feeds can't be filtered by rack->site (Infrahub
 // only generates single-hop relationship filters), so getSitePower resolves the
