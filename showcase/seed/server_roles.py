@@ -33,6 +33,29 @@ SERVER_ROLE_DEFS = [
 # Racks that are extra single-purpose (a smaller minority mix than compute racks).
 _CLUSTERED = {"storage-server", "db-server"}
 
+# Each server role maps to a device-type slug (defined in data/device_types.json)
+# whose hardware specs fit the role. Specs live on the device TYPE, so assigning the
+# type by role is what makes a rack's primary function show up as its capacity in the
+# room-view heatmap. Keep these slugs in sync with the "server" entries of that file.
+ROLE_DEVICE_TYPE = {
+    "gpu-server":       "supermicro-as1115gs-h100",
+    "db-server":        "dell-poweredge-r660-db",
+    "esx-server":       "dell-poweredge-r660-esx",
+    "k8s-worker":       "hpe-proliant-dl360-k8s",
+    "baremetal-server": "dell-poweredge-r650-bm",
+    "storage-server":   "dell-poweredge-r660-stor",
+    "cache-server":     "hpe-proliant-dl325-cache",
+}
+
+_FALLBACK_DEVICE_TYPE = "dell-poweredge-r650-bm"
+
+
+def server_device_type_slug(role_slug: str) -> str:
+    """Device-type slug for a server role. Specs live on the type, so this is how a
+    role gets role-appropriate hardware; unknown roles fall back to the bare-metal box."""
+    return ROLE_DEVICE_TYPE.get(role_slug, _FALLBACK_DEVICE_TYPE)
+
+
 _NAME_RE = re.compile(r"^[A-Za-z0-9]+-SRV-(\d+)-srv-(\d+)$")
 
 

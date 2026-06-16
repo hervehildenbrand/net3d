@@ -34,7 +34,7 @@ from infrahub_sdk.exceptions import ServerNotResponsiveError
 # Reuse the NetBox showcase's generation helpers + data fixtures.
 NB_SEED = Path(__file__).resolve().parents[2] / "seed"  # showcase/seed
 sys.path.insert(0, str(NB_SEED))
-from server_roles import SERVER_ROLE_DEFS, server_role  # noqa: E402
+from server_roles import SERVER_ROLE_DEFS, server_role, server_device_type_slug  # noqa: E402
 from power import FEED_ELECTRICAL, PDU_ROLE, feed_name, feed_type, panel_name, pdu_name  # noqa: E402
 
 DATA = NB_SEED / "data"
@@ -268,7 +268,6 @@ def seed_site(dc, roles, types_by_role, type_by_slug):
     racks = {n.name.value: n for n in batch_upsert(rack_specs)}
     print(f"   {len(racks)} racks", flush=True)
 
-    server_types = types_by_role["server"]
     leaf_type = types_by_role["leaf"][0]
     spine_type = types_by_role["spine"][0]
     core_type = types_by_role["core"][0]
@@ -296,12 +295,15 @@ def seed_site(dc, roles, types_by_role, type_by_slug):
         oob_by_rack[rname] = on
         u = 1
         for s in range(SERVERS_PER_RACK):
-            dt = server_types[s % len(server_types)]
+            role = server_role(i - 1, s)
+            # hardware tracks the server's role (specs live on the device type), so a
+            # rack's primary function reads as its capacity in the room-view heatmap
+            dt = type_by_slug[server_device_type_slug(role)]
             if u + dt._u_height - 1 >= OOB_SWITCH_POS:
                 break
             sn = f"{code}-SRV-{i:02d}-srv-{s + 1:02d}"
             server_seq += 1
-            dev(sn, dt, server_role(i - 1, s), rname, u, status=server_status(server_seq))
+            dev(sn, dt, role, rname, u, status=server_status(server_seq))
             server_names_by_rack[rname].append(sn)
             u += dt._u_height
 

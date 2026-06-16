@@ -34,7 +34,7 @@ import pynetbox
 import urllib3
 
 from add_power import apply_power
-from server_roles import SERVER_ROLE_DEFS, server_role
+from server_roles import SERVER_ROLE_DEFS, server_role, server_device_type_slug
 
 urllib3.disable_warnings()
 
@@ -198,6 +198,7 @@ def seed_reference():
         if specs and not (rec.custom_fields or {}).get("cpu_model"):
             rec.update({"custom_fields": specs})
         rec._u_height = dt["u_height"]
+        rec._slug = dt["slug"]
         types_by_role[dt["role"]].append(rec)
 
     providers = []
@@ -262,6 +263,7 @@ def seed_site(dc, regions, roles, types_by_role, tags):
     )
 
     server_types = types_by_role["server"]
+    server_type_by_slug = {t._slug: t for t in server_types}
     leaf_type = types_by_role["leaf"][0]
     spine_type = types_by_role["spine"][0]
     core_type = types_by_role["core"][0]
@@ -297,12 +299,15 @@ def seed_site(dc, regions, roles, types_by_role, tags):
         # servers from the bottom up (stay below the OOB switch)
         u = 1
         for s in range(SERVERS_PER_RACK):
-            dt = server_types[s % len(server_types)]
+            role = server_role(i - 1, s)
+            # hardware tracks the server's role (specs live on the device type), so a
+            # rack's primary function reads as its capacity in the room-view heatmap
+            dt = server_type_by_slug[server_device_type_slug(role)]
             if u + dt._u_height - 1 >= OOB_SWITCH_POS:
                 break
             sn = f"{code}-SRV-{i:02d}-srv-{s + 1:02d}"
             server_seq += 1
-            dev(sn, dt, server_role(i - 1, s), rid, u, status=server_status(server_seq))
+            dev(sn, dt, role, rid, u, status=server_status(server_seq))
             server_names_by_rack[rname].append(sn)
             u += dt._u_height
 
