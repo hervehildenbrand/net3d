@@ -15,7 +15,8 @@ coverage/
 *.swp
 
 # misc
-.cache/        # incl. packages/server/.cache/net3d — persisted NetBox cache (per-instance)
+# incl. packages/server/.cache/net3d — persisted SoT cache (per-instance)
+.cache/
 tmp/
 *.tgz
 
