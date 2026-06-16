@@ -69,10 +69,16 @@ export function RoomPower({
   racks,
   placements,
   power,
+  onPanelClick,
+  selectedPanel = null,
 }: {
   racks: SiteRack[]
   placements: RackPlacement[]
   power?: SitePower
+  /** Click a panel node to trace/clear the power chain it roots. */
+  onPanelClick?: (name: string) => void
+  /** Name of the panel whose chain is active; others dim. */
+  selectedPanel?: string | null
 }) {
   const strips = useMemo(() => buildRoomPduStrips(racks, placements), [racks, placements])
   const nodes = useMemo(() => panelNodes(placements, power ?? EMPTY_POWER), [placements, power])
@@ -99,19 +105,49 @@ export function RoomPower({
           ))}
         </Instances>
       ))}
-      {nodes.map((n, i) => (
-        <group key={`panel-${i}`}>
-          <mesh position={n.position} raycast={() => null}>
-            <boxGeometry args={[0.5, 1, 0.5]} />
-            <meshStandardMaterial color={n.color} emissive={n.color} emissiveIntensity={0.5} toneMapped={false} />
-          </mesh>
-          <Billboard position={[n.position[0], n.position[1] + 0.8, n.position[2]]}>
-            <Text fontSize={0.4} color={theme.text.primary} anchorX="center" anchorY="bottom">
-              {n.name}
-            </Text>
-          </Billboard>
-        </group>
-      ))}
+      {nodes.map((n, i) => {
+        const selected = selectedPanel === n.name
+        const dim = selectedPanel != null && !selected
+        return (
+          <group key={`panel-${i}`}>
+            <mesh
+              position={n.position}
+              onClick={(e) => {
+                e.stopPropagation()
+                onPanelClick?.(n.name)
+              }}
+              onPointerOver={(e) => {
+                e.stopPropagation()
+                document.body.style.cursor = 'pointer'
+              }}
+              onPointerOut={() => {
+                document.body.style.cursor = 'auto'
+              }}
+            >
+              <boxGeometry args={[0.5, 1, 0.5]} />
+              <meshStandardMaterial
+                color={n.color}
+                emissive={n.color}
+                emissiveIntensity={selected ? 1 : 0.5}
+                toneMapped={false}
+                transparent
+                opacity={dim ? 0.3 : 1}
+              />
+            </mesh>
+            <Billboard position={[n.position[0], n.position[1] + 0.8, n.position[2]]}>
+              <Text
+                fontSize={0.4}
+                color={selected ? theme.text.primary : theme.text.secondary}
+                anchorX="center"
+                anchorY="bottom"
+                fillOpacity={dim ? 0.4 : 1}
+              >
+                {n.name}
+              </Text>
+            </Billboard>
+          </group>
+        )
+      })}
     </>
   )
 }

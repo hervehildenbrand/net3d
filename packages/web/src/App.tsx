@@ -18,6 +18,7 @@ import { RoleLegend } from './components/RoleLegend'
 import { PowerLegend } from './components/PowerLegend'
 import { SpecsHeatmapLegend } from './components/SpecsHeatmapLegend'
 import { computeSpecsRange } from './lib/specsHeatmap'
+import { tracePowerChain } from './lib/powerChain'
 import { SceneErrorBoundary } from './components/SceneErrorBoundary'
 
 const hudStyle: React.CSSProperties = {
@@ -45,6 +46,8 @@ export function App() {
   const toggleConnectivity = useAppStore((s) => s.toggleConnectivity)
   const powerVisible = useAppStore((s) => s.powerVisible)
   const togglePower = useAppStore((s) => s.togglePower)
+  const selectedPowerSource = useAppStore((s) => s.selectedPowerSource)
+  const setPowerSource = useAppStore((s) => s.setPowerSource)
   const rackView = useAppStore((s) => s.rackView)
   const toggleRackView = useAppStore((s) => s.toggleRackView)
   const highlightedRoles = useAppStore((s) => s.highlightedRoles)
@@ -67,6 +70,22 @@ export function App() {
     const { min, max } = computeSpecsRange(siteDetail.racks, specsHeatmapMetric)
     return { metric: specsHeatmapMetric, min, max }
   }, [specsHeatmapMetric, siteDetail])
+
+  // Power chain: the racks + devices fed by the clicked panel/feed (null when off).
+  const powerChain = useMemo(
+    () =>
+      powerVisible && selectedPowerSource && siteDetail
+        ? tracePowerChain(siteDetail.racks, siteDetail.power, selectedPowerSource)
+        : null,
+    [powerVisible, selectedPowerSource, siteDetail],
+  )
+  // Clicking the active panel again clears the chain (toggle).
+  const onPanelClick = (name: string) =>
+    setPowerSource(
+      selectedPowerSource?.kind === 'panel' && selectedPowerSource.name === name
+        ? null
+        : { kind: 'panel', name },
+    )
 
   // LLDP discovery: activates for the rack being viewed; results accumulate site-wide.
   const allSiteDevices = useMemo(
@@ -150,6 +169,9 @@ export function App() {
                 powerVisible={powerVisible}
                 power={siteDetail.power}
                 heatmap={heatmap}
+                powerChainRackIds={powerChain?.rackIds ?? null}
+                selectedPanel={selectedPowerSource?.kind === 'panel' ? selectedPowerSource.name : null}
+                onPanelClick={onPanelClick}
               />
             )}
             {level === 'rack' && selectedRack && selectedPlacement && (
@@ -220,7 +242,20 @@ export function App() {
       )}
 
       {level === 'site' && powerVisible && !!siteDetail?.racks?.length && (
-        <PowerLegend racks={siteDetail.racks} power={siteDetail.power} />
+        <PowerLegend
+          racks={siteDetail.racks}
+          power={siteDetail.power}
+          chain={
+            powerChain && selectedPowerSource
+              ? {
+                  sourceName: selectedPowerSource.name,
+                  rackCount: powerChain.rackIds.size,
+                  deviceCount: powerChain.deviceNames.size,
+                }
+              : null
+          }
+          onClearChain={() => setPowerSource(null)}
+        />
       )}
 
       {/* Heatmap legend doubles as its on/off control. At site level it stacks

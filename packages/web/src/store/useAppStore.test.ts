@@ -139,6 +139,37 @@ describe('powerVisible', () => {
   })
 })
 
+describe('selectedPowerSource', () => {
+  beforeEach(() => {
+    useAppStore.getState().zoomToMap()
+  })
+
+  test('initializes to null', () => {
+    expect(useAppStore.getState().selectedPowerSource).toBe(null)
+  })
+
+  test('setPowerSource records and clears the source', () => {
+    useAppStore.getState().setPowerSource({ kind: 'panel', name: 'PANEL-A' })
+    expect(useAppStore.getState().selectedPowerSource).toEqual({ kind: 'panel', name: 'PANEL-A' })
+    useAppStore.getState().setPowerSource(null)
+    expect(useAppStore.getState().selectedPowerSource).toBe(null)
+  })
+
+  test('turning the power overlay off clears any selected source', () => {
+    useAppStore.getState().togglePower() // on
+    useAppStore.getState().setPowerSource({ kind: 'feed', name: 'FEED1' })
+    useAppStore.getState().togglePower() // off
+    expect(useAppStore.getState().selectedPowerSource).toBe(null)
+  })
+
+  test('zoomToMap resets it to null', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().setPowerSource({ kind: 'panel', name: 'PANEL-A' })
+    useAppStore.getState().zoomToMap()
+    expect(useAppStore.getState().selectedPowerSource).toBe(null)
+  })
+})
+
 describe('specsHeatmapMetric', () => {
   beforeEach(() => {
     useAppStore.getState().zoomToMap()

@@ -37,9 +37,21 @@ const swatch = (color: string): React.CSSProperties => ({
 
 /**
  * Room-view power legend (shown while the power overlay is on): the A/B feeds,
- * their electrical spec, and the PDU/feed/rack counts from NetBox.
+ * their electrical spec, and the PDU/feed/rack counts. When a panel is selected
+ * it also shows the traced chain's impact (racks + devices) with a clear action.
  */
-export function PowerLegend({ racks, power }: { racks: SiteRack[]; power?: SitePower }) {
+export function PowerLegend({
+  racks,
+  power,
+  chain = null,
+  onClearChain,
+}: {
+  racks: SiteRack[]
+  power?: SitePower
+  /** Active power-chain trace: the impact set of the selected panel. */
+  chain?: { sourceName: string; rackCount: number; deviceCount: number } | null
+  onClearChain?: () => void
+}) {
   const s = useMemo(() => collectSitePower(racks, power), [racks, power])
   if (s.pduCount === 0) return null
 
@@ -76,6 +88,41 @@ export function PowerLegend({ racks, power }: { racks: SiteRack[]; power?: SiteP
       <div style={row}>
         <span>vertical PDUs</span>
         <span>{s.pduCount}</span>
+      </div>
+      <div style={{ borderTop: `1px solid ${theme.hud.border}`, marginTop: 8, paddingTop: 8 }}>
+        {chain ? (
+          <>
+            <div style={{ ...row, color: theme.text.primary, fontWeight: 600 }}>
+              <span>⚡ {chain.sourceName}</span>
+              {onClearChain && (
+                <button
+                  onClick={onClearChain}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: theme.hud.accent,
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    fontFamily: 'inherit',
+                    padding: 0,
+                  }}
+                >
+                  clear
+                </button>
+              )}
+            </div>
+            <div style={row}>
+              <span>racks fed</span>
+              <span>{chain.rackCount}</span>
+            </div>
+            <div style={row}>
+              <span>devices affected</span>
+              <span>{chain.deviceCount}</span>
+            </div>
+          </>
+        ) : (
+          <div style={{ color: theme.text.muted, fontSize: 12 }}>click a panel to trace its power chain</div>
+        )}
       </div>
     </div>
   )

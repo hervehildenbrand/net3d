@@ -40,6 +40,7 @@ function Racks({
   highlightActive,
   matchedRackIds,
   heatColorByRack = null,
+  powerChainRackIds = null,
 }: {
   placements: RackPlacement[]
   onRackClick: (rackId: string) => void
@@ -50,6 +51,8 @@ function Racks({
   matchedRackIds: Set<string>
   /** When set, color each rack by its aggregate specs metric (overrides role dimming). */
   heatColorByRack?: Map<string, string> | null
+  /** When set, a power chain is active — dim racks NOT fed by the selected source. */
+  powerChainRackIds?: Set<string> | null
 }) {
   const [hovered, setHovered] = useState<string | null>(null)
   const siteViewDistance = useAppStore((s) => s.siteViewDistance)
@@ -72,11 +75,13 @@ function Racks({
             color={
               hovered === p.rackId
                 ? theme.scene.rackHover
-                : heatColorByRack
-                  ? (heatColorByRack.get(p.rackId) ?? theme.heatmap.noData)
-                  : highlightActive && !matchedRackIds.has(p.rackId)
-                    ? theme.scene.rackDimmed
-                    : theme.scene.rack
+                : powerChainRackIds && !powerChainRackIds.has(p.rackId)
+                  ? theme.scene.rackDimmed
+                  : heatColorByRack
+                    ? (heatColorByRack.get(p.rackId) ?? theme.heatmap.noData)
+                    : highlightActive && !matchedRackIds.has(p.rackId)
+                      ? theme.scene.rackDimmed
+                      : theme.scene.rack
             }
             onClick={(e) => {
               e.stopPropagation()
@@ -189,6 +194,9 @@ export function SiteLevel({
   powerVisible,
   power,
   heatmap = null,
+  powerChainRackIds = null,
+  selectedPanel = null,
+  onPanelClick,
 }: {
   racks: SiteRack[]
   cables: SiteCable[]
@@ -203,6 +211,12 @@ export function SiteLevel({
   power?: SitePower
   /** When set, color rack boxes by each rack's aggregate specs metric. */
   heatmap?: HeatmapView | null
+  /** Racks fed by the selected power source; others dim. Null = no chain active. */
+  powerChainRackIds?: Set<string> | null
+  /** Panel whose chain is active (room-view panel node emphasis). */
+  selectedPanel?: string | null
+  /** Click a room-view panel node to root/clear a power chain. */
+  onPanelClick?: (name: string) => void
 }) {
   const { placements, bounds } = useSiteLayout(racks)
   const size = {
@@ -265,10 +279,19 @@ export function SiteLevel({
           highlightActive={highlightActive}
           matchedRackIds={matchedRackIds}
           heatColorByRack={heatColorByRack}
+          powerChainRackIds={powerChainRackIds}
         />
       )}
       {visible && markers.length > 0 && <RoleMarkers markers={markers} />}
-      {visible && powerVisible && <RoomPower racks={racks} placements={placements} power={power} />}
+      {visible && powerVisible && (
+        <RoomPower
+          racks={racks}
+          placements={placements}
+          power={power}
+          onPanelClick={onPanelClick}
+          selectedPanel={selectedPanel}
+        />
+      )}
       <RoomLabels racks={racks} placements={placements} />
       <SiteCables placements={placements} cables={cables} lldpSegments={lldpSegments} />
       <Billboard position={[center.x, size.y + 0.6, center.z]}>
