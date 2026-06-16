@@ -251,7 +251,9 @@ export function SiteLevel({
     if (!heatmap) return null
     const m = new Map<string, string>()
     for (const r of racks) {
-      m.set(r.id, specsColor(rackAggregate(r, heatmap.metric), heatmap.min, heatmap.max))
+      // mean (not max) so one big device doesn't pin the whole rack to the top of
+      // the scale — the room-view color reads as the rack's capacity density
+      m.set(r.id, specsColor(rackAggregate(r, heatmap.metric, 'mean'), heatmap.min, heatmap.max))
     }
     return m
   }, [racks, heatmap])
