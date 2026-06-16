@@ -7,6 +7,7 @@ import {
 } from '@net3d/shared'
 import type { SpecMetric } from '../lib/specsHeatmap'
 import type { PowerSource } from '../lib/powerChain'
+import type { Backend } from '../lib/api'
 
 export type ViewLevel = 'map' | 'site' | 'rack'
 
@@ -19,6 +20,9 @@ export interface MapView {
 }
 
 interface AppState {
+  /** Active source of truth; switching it flips the API prefix and resets the view. */
+  backend: Backend
+  setBackend: (backend: Backend) => void
   level: ViewLevel
   selectedSiteName: string | null
   selectedRackId: string | null
@@ -73,6 +77,14 @@ interface AppState {
 let navMachine = initialNavMachine()
 
 export const useAppStore = create<AppState>((set, get) => ({
+  backend: 'netbox',
+  setBackend: (backend) => {
+    if (backend === get().backend) return
+    // A site/rack selected against one backend need not exist in the other, so
+    // return to the map. zoomToMap also clears overlays/selection cleanly.
+    get().zoomToMap()
+    set({ backend })
+  },
   level: 'map',
   selectedSiteName: null,
   selectedRackId: null,

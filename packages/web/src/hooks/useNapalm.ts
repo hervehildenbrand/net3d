@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
+import { apiUrl } from '../lib/api'
+import { useAppStore } from '../store/useAppStore'
 
 export type NapalmMethod =
   | 'get_facts'
@@ -16,10 +18,11 @@ const STALE_MS: Record<NapalmMethod, number> = {
 export class UnreachableError extends Error {}
 
 export function useNapalm<T = unknown>(deviceId: string | null, method: NapalmMethod) {
+  const backend = useAppStore((s) => s.backend)
   return useQuery<T>({
-    queryKey: ['napalm', deviceId, method],
+    queryKey: ['napalm', backend, deviceId, method],
     queryFn: async () => {
-      const res = await fetch(`/api/devices/${deviceId}/napalm/${method}`)
+      const res = await fetch(apiUrl(backend, `/devices/${deviceId}/napalm/${method}`))
       if (res.status === 503) throw new UnreachableError('device unreachable')
       if (!res.ok) throw new Error(`napalm ${method}: HTTP ${res.status}`)
       const body = await res.json()

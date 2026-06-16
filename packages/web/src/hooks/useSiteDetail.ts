@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
+import { apiUrl } from '../lib/api'
+import { useAppStore } from '../store/useAppStore'
 
 export interface DeviceSpecs {
   cpuModel?: string
@@ -87,10 +89,11 @@ export interface SiteDetailData {
 }
 
 export function useSiteDetail(siteName: string | null) {
+  const backend = useAppStore((s) => s.backend)
   return useQuery<SiteDetailData>({
-    queryKey: ['site', siteName],
+    queryKey: ['site', backend, siteName],
     queryFn: async () => {
-      const res = await fetch(`/api/sites/${encodeURIComponent(siteName!)}`)
+      const res = await fetch(apiUrl(backend, `/sites/${encodeURIComponent(siteName!)}`))
       if (!res.ok) throw new Error(`site ${siteName}: HTTP ${res.status}`)
       return res.json()
     },

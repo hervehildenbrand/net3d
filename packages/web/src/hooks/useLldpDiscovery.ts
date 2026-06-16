@@ -1,5 +1,7 @@
 import { useQueries } from '@tanstack/react-query'
 import type { LldpNeighbor } from '@net3d/shared'
+import { apiUrl } from '../lib/api'
+import { useAppStore } from '../store/useAppStore'
 import type { SiteDevice } from './useSiteDetail'
 
 /** Max NAPALM/LLDP calls in flight from this client — each is a ~25 s SSH behind NetBox. */
@@ -36,13 +38,14 @@ export interface LldpDiscovery {
  * keep flowing into `byDevice`, so the site overlay accumulates.
  */
 export function useLldpDiscovery(devices: SiteDevice[], activeIds: Set<string>): LldpDiscovery {
+  const backend = useAppStore((s) => s.backend)
   const results = useQueries({
     queries: devices.map((d) => ({
-      queryKey: ['napalm', d.id, 'get_lldp_neighbors'],
+      queryKey: ['napalm', backend, d.id, 'get_lldp_neighbors'],
       queryFn: async () => {
         await acquire()
         try {
-          const res = await fetch(`/api/devices/${d.id}/napalm/get_lldp_neighbors`)
+          const res = await fetch(apiUrl(backend, `/devices/${d.id}/napalm/get_lldp_neighbors`))
           if (!res.ok) throw new Error(`lldp ${d.name}: HTTP ${res.status}`)
           const body = await res.json()
           return body.get_lldp_neighbors as Record<string, LldpNeighbor[]>

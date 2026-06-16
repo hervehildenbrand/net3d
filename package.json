@@ -8,6 +8,7 @@
     "dev": "pnpm --parallel --filter @net3d/server --filter @net3d/web dev",
     "dev:showcase": "pnpm --parallel --filter @net3d/server --filter @net3d/web dev:showcase",
     "dev:showcase-infrahub": "pnpm --parallel --filter @net3d/server --filter @net3d/web dev:showcase-infrahub",
+    "dev:showcase-dual": "pnpm --filter @net3d/web dev & pnpm --filter @net3d/server dev:showcase & PORT=3002 pnpm --filter @net3d/server dev:showcase-infrahub & wait",
     "build": "pnpm --filter @net3d/web build",
     "start": "pnpm --filter @net3d/server start:prod",
     "test": "vitest run",
