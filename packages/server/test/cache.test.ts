@@ -47,6 +47,25 @@ describe('TtlCache', () => {
   })
 })
 
+describe('TtlCache peek', () => {
+  test('returns the value even after ttl expiry, and does not evict it', () => {
+    vi.useFakeTimers()
+    const cache = new TtlCache()
+    cache.set('k', { a: 1 }, 1000)
+    vi.advanceTimersByTime(1001)
+    // get() would enforce the TTL (evict + undefined); peek serves the stale value
+    expect(cache.peek('k')).toEqual({ a: 1 })
+    // ...and keeps it — repeated peeks still see it (no hard-TTL hole).
+    expect(cache.peek('k')).toEqual({ a: 1 })
+    vi.useRealTimers()
+  })
+
+  test('returns undefined for a missing key', () => {
+    const cache = new TtlCache()
+    expect(cache.peek('nope')).toBeUndefined()
+  })
+})
+
 describe('TtlCache stale-while-revalidate', () => {
   test('serves the stale value instantly after ttl and refreshes in background', async () => {
     vi.useFakeTimers()

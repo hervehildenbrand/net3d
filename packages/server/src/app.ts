@@ -220,7 +220,10 @@ export function buildApp({
         const sites = await cache.getOrSet('sites', CACHE_TTL.sites, () => netbox.getSites(), SWR)
         const details = new Map<string, SiteDetail>()
         for (const s of sites) {
-          const detail = cache.get<SiteDetail>(`site:${s.name}`)
+          // peek (not get): include a site as long as it's ever been warmed —
+          // its detail TTL (2 min) lapses faster than a full prewarm of a dense
+          // SoT, and get()'s eviction would oscillate sites in/out of the index.
+          const detail = cache.peek<SiteDetail>(`site:${s.name}`)
           if (detail) details.set(s.name, detail)
         }
         return buildDeviceIndex(details)

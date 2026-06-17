@@ -61,6 +61,17 @@ export class TtlCache {
     return { value: entry.value as T, fresh: Date.now() <= entry.expiresAt }
   }
 
+  /**
+   * Read a value without enforcing its TTL or triggering a refresh: returns the
+   * stored value even when stale, and never evicts. For assembling a derived
+   * view (e.g. the device index) from whatever the prewarm loop has warmed —
+   * get()'s hard-TTL eviction would punch sites out of the result between
+   * refreshes; staleness is acceptable for an index the prewarm keeps current.
+   */
+  peek<T>(key: string): T | undefined {
+    return this.getStale<T>(key)?.value
+  }
+
   set(key: string, value: unknown, ttlMs: number): void {
     const expiresAt = Date.now() + ttlMs
     this.store.set(key, { value, expiresAt })
