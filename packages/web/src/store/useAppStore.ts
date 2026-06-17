@@ -90,7 +90,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedRackId: null,
   selectedDeviceId: null,
   mapView: null,
-  zoomToSite: (siteName) =>
+  zoomToSite: (siteName) => {
+    // Arm the site exit on entry so zoom-out-to-map is always reachable. The
+    // nav-machine actions do this for zoom-driven entry; this also covers the
+    // click paths (map-marker click) that bypass the machine. See navigation.ts.
+    navMachine = { ...navMachine, exitSiteArmed: true }
     set((s) => ({
       level: 'site',
       selectedSiteName: siteName,
@@ -102,8 +106,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       // exit reuses this action); clear it when entering a different site, since
       // roles are per-site.
       highlightedRoles: siteName === s.selectedSiteName ? s.highlightedRoles : new Set<string>(),
-    })),
-  zoomToRack: (rackId) => set({ level: 'rack', selectedRackId: rackId, rackView: 'front' }),
+    }))
+  },
+  zoomToRack: (rackId) => {
+    // Arm the rack exit on entry (covers rack-click entry that bypasses the
+    // nav machine) so zoom-out-to-room is always reachable. See navigation.ts.
+    navMachine = { ...navMachine, exitRackArmed: true, enterRackArmed: false }
+    set({ level: 'rack', selectedRackId: rackId, rackView: 'front' })
+  },
   zoomToMap: () =>
     set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null }),
   selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),

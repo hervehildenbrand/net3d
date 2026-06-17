@@ -98,7 +98,11 @@ export function stepNavigation(
     if (zoom <= t.mapRearmZoom) m.enterSiteArmed = true
     if (m.enterSiteArmed && zoom >= t.mapEnterZoom && signals.siteUnderCenter) {
       m.enterSiteArmed = false
-      m.exitSiteArmed = false // require settling inside before exiting back out
+      // Arm the exit on entry: the camera settles within the exit-rearm band by
+      // construction, and the camera rig suppresses the fly-in transients, so the
+      // machine may never see an in-band signal to arm with (it's stationary at
+      // rest → no onChange). Disarming here would make zoom-out-to-map unreachable.
+      m.exitSiteArmed = true
       return { machine: m, action: { type: 'enterSite', siteName: signals.siteUnderCenter } }
     }
     return { machine: m }
@@ -119,7 +123,11 @@ export function stepNavigation(
       if (dRack >= t.rackEnterRearm) m.enterRackArmed = true
       if (m.enterRackArmed && dRack <= t.rackEnterDistance && signals.nearestRackId) {
         m.enterRackArmed = false
-        m.exitRackArmed = false
+        // Arm the exit on entry (same reasoning as enterSite): the rig suppresses
+        // the rack fly-in and the camera is stationary at its resting distance, so
+        // the machine may never see an in-band signal — disarming here would make
+        // zoom-out-to-room unreachable.
+        m.exitRackArmed = true
         return { machine: m, action: { type: 'enterRack', rackId: signals.nearestRackId } }
       }
     }
