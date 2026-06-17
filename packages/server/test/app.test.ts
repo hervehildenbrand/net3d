@@ -230,3 +230,55 @@ describe('GET /api/circuits', () => {
     expect(res.json()).toEqual({ error: 'netbox_unavailable' })
   })
 })
+
+describe('GET /api/devices', () => {
+  test('returns a flat device index across all sites', async () => {
+    const app = buildApp({ netbox: fakeNetbox() })
+    const res = await app.inject({ method: 'GET', url: '/api/devices' })
+    expect(res.statusCode).toBe(200)
+    const index = res.json() as Array<{ siteName: string }>
+    // 2 sites, each returning RACKS (one device) → 2 entries
+    expect(index).toHaveLength(2)
+    expect(index).toContainEqual({
+      id: '1771',
+      name: 'edge-router-1',
+      siteName: 'site-a',
+      rackId: '376',
+      rackName: 'C32-WAN1',
+      position: 20,
+      roleName: 'router_rtcore',
+      roleColor: '9c27b0',
+      model: 'ptx10001_36mr',
+      status: 'active',
+    })
+    expect(index.map((e) => e.siteName).sort()).toEqual(['site-a', 'site-c'])
+  })
+
+  test('serves from cache: each site is loaded at most once across requests', async () => {
+    let rackCalls = 0
+    const app = buildApp({
+      netbox: fakeNetbox({
+        getSiteRacks: async () => {
+          rackCalls++
+          return RACKS
+        },
+      }),
+    })
+    await app.inject({ method: 'GET', url: '/api/devices' })
+    await app.inject({ method: 'GET', url: '/api/devices' })
+    expect(rackCalls).toBe(2) // once per site on the first request, cached on the second
+  })
+
+  test('maps NetBox failure to 502', async () => {
+    const app = buildApp({
+      netbox: fakeNetbox({
+        getSites: async () => {
+          throw new Error('netbox down')
+        },
+      }),
+    })
+    const res = await app.inject({ method: 'GET', url: '/api/devices' })
+    expect(res.statusCode).toBe(502)
+    expect(res.json()).toEqual({ error: 'netbox_unavailable' })
+  })
+})

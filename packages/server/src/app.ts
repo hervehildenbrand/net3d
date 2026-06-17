@@ -8,7 +8,8 @@ import { TtlCache } from './cache'
 import { NapalmUnreachableError } from './netbox'
 import type { SoTClient } from './sot/client'
 import type { DiskCacheStore } from './persistence'
-import { loadSiteDetail, prewarmCaches } from './prewarm'
+import { loadSiteDetail, prewarmCaches, type SiteDetail } from './prewarm'
+import { buildDeviceIndex } from './devices'
 
 // Stale entries are served instantly and refreshed in the background, so a
 // TTL here is "how old may data get before a refresh starts", not a hard cutoff.
@@ -206,6 +207,34 @@ export function buildApp({
         }
       },
     )
+
+    // A flat, backend-agnostic device index for the search box. Assembled from
+    // the same warmed caches the prewarm loop fills (sites + per-site detail),
+    // so on a hot cache this is a microsecond flatten that never re-hits the
+    // backend. Identical code serves NetBox and Infrahub (chosen by SOT_BACKEND).
+    app.get('/api/devices', async (_req, reply) => {
+      try {
+        const sites = await cache.getOrSet('sites', CACHE_TTL.sites, () => netbox.getSites(), SWR)
+        const details = new Map<string, SiteDetail>()
+        await Promise.all(
+          sites.map(async (s) => {
+            details.set(
+              s.name,
+              await cache.getOrSet(
+                `site:${s.name}`,
+                CACHE_TTL.siteDetail,
+                () => loadSiteDetail(netbox, s.name),
+                SWR,
+              ),
+            )
+          }),
+        )
+        return buildDeviceIndex(details)
+      } catch (err) {
+        app.log.error(err)
+        return reply.code(502).send({ error: 'netbox_unavailable' })
+      }
+    })
 
     app.get('/api/circuits', async (_req, reply) => {
       try {
