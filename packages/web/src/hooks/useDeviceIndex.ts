@@ -19,6 +19,10 @@ export function useDeviceIndex() {
       if (!res.ok) throw new Error(`devices: HTTP ${res.status}`)
       return res.json()
     },
-    staleTime: 300_000,
+    // The server index is built from the warm cache, so right after a backend
+    // restart it can be partial until prewarm fills every site. A short stale
+    // time lets it converge to the full index within a minute rather than
+    // holding a partial list for the whole session.
+    staleTime: 60_000,
   })
 }

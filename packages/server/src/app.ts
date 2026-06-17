@@ -208,27 +208,21 @@ export function buildApp({
       },
     )
 
-    // A flat, backend-agnostic device index for the search box. Assembled from
-    // the same warmed caches the prewarm loop fills (sites + per-site detail),
-    // so on a hot cache this is a microsecond flatten that never re-hits the
-    // backend. Identical code serves NetBox and Infrahub (chosen by SOT_BACKEND).
+    // A flat, backend-agnostic device index for the search box. Built ONLY from
+    // per-site detail already in the cache (which the prewarm loop fills in the
+    // background) — it never loads a site on demand. That keeps the request a
+    // microsecond flatten and, crucially, non-blocking: one cold or slow site
+    // (a known failure mode for a dense SoT) must not hang the whole index. The
+    // index is complete in steady state and grows as prewarm warms sites after a
+    // restart. Identical code serves NetBox and Infrahub (chosen by SOT_BACKEND).
     app.get('/api/devices', async (_req, reply) => {
       try {
         const sites = await cache.getOrSet('sites', CACHE_TTL.sites, () => netbox.getSites(), SWR)
         const details = new Map<string, SiteDetail>()
-        await Promise.all(
-          sites.map(async (s) => {
-            details.set(
-              s.name,
-              await cache.getOrSet(
-                `site:${s.name}`,
-                CACHE_TTL.siteDetail,
-                () => loadSiteDetail(netbox, s.name),
-                SWR,
-              ),
-            )
-          }),
-        )
+        for (const s of sites) {
+          const detail = cache.get<SiteDetail>(`site:${s.name}`)
+          if (detail) details.set(s.name, detail)
+        }
         return buildDeviceIndex(details)
       } catch (err) {
         app.log.error(err)

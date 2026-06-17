@@ -232,13 +232,25 @@ describe('GET /api/circuits', () => {
 })
 
 describe('GET /api/devices', () => {
-  test('returns a flat device index across all sites', async () => {
-    const app = buildApp({ netbox: fakeNetbox() })
+  test('builds the index from already-cached site detail (no per-site backend load)', async () => {
+    let rackCalls = 0
+    const app = buildApp({
+      netbox: fakeNetbox({
+        getSiteRacks: async () => {
+          rackCalls++
+          return RACKS
+        },
+      }),
+    })
+    // Warm the per-site detail cache the way the prewarm loop / a site visit does.
+    await app.inject({ method: 'GET', url: '/api/sites/site-a' })
+    await app.inject({ method: 'GET', url: '/api/sites/site-c' })
+    const warmCalls = rackCalls // 2
+
     const res = await app.inject({ method: 'GET', url: '/api/devices' })
     expect(res.statusCode).toBe(200)
     const index = res.json() as Array<{ siteName: string }>
-    // 2 sites, each returning RACKS (one device) → 2 entries
-    expect(index).toHaveLength(2)
+    expect(index).toHaveLength(2) // one device per warmed site
     expect(index).toContainEqual({
       id: '1771',
       name: 'edge-router-1',
@@ -252,9 +264,11 @@ describe('GET /api/devices', () => {
       status: 'active',
     })
     expect(index.map((e) => e.siteName).sort()).toEqual(['site-a', 'site-c'])
+    // The index must NOT trigger any further site-detail loads — it only reads cache.
+    expect(rackCalls).toBe(warmCalls)
   })
 
-  test('serves from cache: each site is loaded at most once across requests', async () => {
+  test('cold detail cache yields an empty index without blocking on the backend', async () => {
     let rackCalls = 0
     const app = buildApp({
       netbox: fakeNetbox({
@@ -264,12 +278,14 @@ describe('GET /api/devices', () => {
         },
       }),
     })
-    await app.inject({ method: 'GET', url: '/api/devices' })
-    await app.inject({ method: 'GET', url: '/api/devices' })
-    expect(rackCalls).toBe(2) // once per site on the first request, cached on the second
+    const res = await app.inject({ method: 'GET', url: '/api/devices' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual([])
+    // Crucially: it never loads (a single slow/cold site must not hang the request).
+    expect(rackCalls).toBe(0)
   })
 
-  test('maps NetBox failure to 502', async () => {
+  test('maps a sites-list failure to 502', async () => {
     const app = buildApp({
       netbox: fakeNetbox({
         getSites: async () => {
