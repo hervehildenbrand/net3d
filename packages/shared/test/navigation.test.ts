@@ -75,6 +75,19 @@ describe('site → map', () => {
     ])
     expect(actions).toEqual([{ type: 'exitToMap' }])
   })
+
+  test('entering a site arms its exit, so a retreat to the map fires even with no in-band settle signal', () => {
+    // The camera rig suppresses the fly-in transients, and the camera is stationary
+    // at rest (no onChange) — so the machine may never see an in-band (≤ re-arm)
+    // signal to arm with. Entering must therefore leave the exit armed, or zoom-out
+    // to the map becomes unreachable.
+    let r = stepNavigation(initialNavMachine(), { level: 'map', mapZoom: 13, siteUnderCenter: 'als' }, T)
+    r = stepNavigation(r.machine, { level: 'map', mapZoom: 14.2, siteUnderCenter: 'als' }, T)
+    expect(r.action).toEqual({ type: 'enterSite', siteName: 'als' })
+    // first site-level signal the machine sees is the user already zooming out
+    r = stepNavigation(r.machine, { level: 'site', cameraDistToSite: 26 }, T)
+    expect(r.action).toEqual({ type: 'exitToMap' })
+  })
 })
 
 describe('site ↔ rack', () => {
@@ -93,6 +106,26 @@ describe('site ↔ rack', () => {
       { level: 'rack', cameraDistToRack: 3.8 },
     ])
     expect(actions).toEqual([{ type: 'exitToSite' }])
+  })
+
+  test('entering a rack arms its exit, so a retreat exits even with no in-band settle signal', () => {
+    // The camera rig suppresses the fly-in and the camera is stationary at rest
+    // (no onChange), so the machine may never see an in-band (≤ re-arm) rack signal.
+    // Entering must leave the exit armed, or zoom-out to the room becomes unreachable.
+    let r = stepNavigation(
+      initialNavMachine(),
+      { level: 'site', cameraDistToSite: 12, cameraDistToRack: 8, nearestRackId: '376' },
+      T,
+    )
+    r = stepNavigation(
+      r.machine,
+      { level: 'site', cameraDistToSite: 6, cameraDistToRack: 2.2, nearestRackId: '376' },
+      T,
+    )
+    expect(r.action).toEqual({ type: 'enterRack', rackId: '376' })
+    // first rack-level signal the machine sees is the user already zooming out
+    r = stepNavigation(r.machine, { level: 'rack', cameraDistToRack: 4.0 }, T)
+    expect(r.action).toEqual({ type: 'exitToSite' })
   })
 
   test('after exiting a rack, hovering in the hysteresis band does not re-enter', () => {
