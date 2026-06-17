@@ -197,6 +197,46 @@ describe('pendingDeviceFocus', () => {
   })
 })
 
+describe('navSuppressed', () => {
+  beforeEach(() => {
+    useAppStore.getState().zoomToMap()
+  })
+
+  test('initializes to false', () => {
+    expect(useAppStore.getState().navSuppressed).toBe(false)
+  })
+
+  test('focusDevice suppresses the distance-driven nav machine', () => {
+    useAppStore.getState().focusDevice({ siteName: 'AMS1', rackId: 'r1', deviceId: 'd1' })
+    expect(useAppStore.getState().navSuppressed).toBe(true)
+  })
+
+  test('handleCameraSignals is a no-op while suppressed (no programmatic-fly bounce)', () => {
+    useAppStore.getState().zoomToSite('AMS1')
+    useAppStore.getState().zoomToRack('r1') // level=rack, arms the rack exit
+    useAppStore.getState().setNavSuppressed(true)
+    // A far rack distance would normally fire exitToSite; suppressed it must not.
+    useAppStore.getState().handleCameraSignals(30, 30, 'r1', 20)
+    expect(useAppStore.getState().level).toBe('rack')
+  })
+
+  test('once resumed, the nav machine reacts again', () => {
+    useAppStore.getState().zoomToSite('AMS1')
+    useAppStore.getState().zoomToRack('r1')
+    useAppStore.getState().setNavSuppressed(true)
+    useAppStore.getState().handleCameraSignals(30, 30, 'r1', 20) // ignored
+    useAppStore.getState().setNavSuppressed(false)
+    useAppStore.getState().handleCameraSignals(30, 30, 'r1', 20) // now exits
+    expect(useAppStore.getState().level).toBe('site')
+  })
+
+  test('zoomToMap clears suppression', () => {
+    useAppStore.getState().focusDevice({ siteName: 'AMS1', rackId: 'r1', deviceId: 'd1' })
+    useAppStore.getState().zoomToMap()
+    expect(useAppStore.getState().navSuppressed).toBe(false)
+  })
+})
+
 describe('powerVisible', () => {
   beforeEach(() => {
     useAppStore.getState().zoomToMap()

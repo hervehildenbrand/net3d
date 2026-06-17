@@ -54,6 +54,8 @@ export function App() {
   const pendingDeviceFocus = useAppStore((s) => s.pendingDeviceFocus)
   const focusDevice = useAppStore((s) => s.focusDevice)
   const clearPendingFocus = useAppStore((s) => s.clearPendingFocus)
+  const navSuppressed = useAppStore((s) => s.navSuppressed)
+  const setNavSuppressed = useAppStore((s) => s.setNavSuppressed)
   const connectivityVisible = useAppStore((s) => s.connectivityVisible)
   const toggleConnectivity = useAppStore((s) => s.toggleConnectivity)
   const powerVisible = useAppStore((s) => s.powerVisible)
@@ -105,6 +107,15 @@ export function App() {
     selectDevice,
     clearPendingFocus,
   ])
+
+  // Resume the nav machine once the focus fly has settled. CameraRig's smoothTime
+  // is 0.6s; a generous margin covers a long map→rack hop before the camera, now
+  // at rest near the rack, starts feeding the machine again (zoom-out still works).
+  useEffect(() => {
+    if (!navSuppressed) return
+    const id = setTimeout(() => setNavSuppressed(false), 1500)
+    return () => clearTimeout(id)
+  }, [navSuppressed, setNavSuppressed])
 
   // Site-wide specs range, computed once so rack view, room view, and the legend
   // all normalize against the same min/max (null when the heatmap is off).

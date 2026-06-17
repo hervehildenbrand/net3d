@@ -50,6 +50,14 @@ interface AppState {
   focusDevice: (target: DeviceFocusTarget) => void
   /** Drop an in-flight device focus (once consumed, or on manual navigation). */
   clearPendingFocus: () => void
+  /**
+   * While true, handleCameraSignals ignores the camera so the distance-driven
+   * nav machine can't fire mid programmatic fly. focusDevice sets it; an App
+   * timer resumes it once the camera has settled. A cross-level focus fly passes
+   * through far distances that would otherwise trip exitToSite/exitToMap.
+   */
+  navSuppressed: boolean
+  setNavSuppressed: (suppressed: boolean) => void
   setMapView: (view: MapView) => void
   /** Rack view: render server↔leaf/OOB connectivity lines. */
   connectivityVisible: boolean
@@ -136,7 +144,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ level: 'rack', selectedRackId: rackId, rackView: 'front', pendingDeviceFocus: null })
   },
   zoomToMap: () =>
-    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, pendingDeviceFocus: null, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null }),
+    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, pendingDeviceFocus: null, navSuppressed: false, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null }),
   selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
   focusDevice: (target) => {
     const { level, selectedSiteName } = get()
@@ -144,9 +152,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     // first; the App effect finishes the hop (rack + select) once it loads. When
     // already viewing that site, stay put — the effect resolves it immediately.
     if (level === 'map' || selectedSiteName !== target.siteName) get().zoomToSite(target.siteName)
-    set({ pendingDeviceFocus: target })
+    // Suppress the distance-driven nav machine for the whole programmatic fly:
+    // a map/site → rack hop sweeps through far distances that would otherwise
+    // trip exitToSite/exitToMap. An App timer resumes it once the camera settles.
+    set({ pendingDeviceFocus: target, navSuppressed: true })
   },
   clearPendingFocus: () => set({ pendingDeviceFocus: null }),
+  navSuppressed: false,
+  setNavSuppressed: (suppressed) => set({ navSuppressed: suppressed }),
   setMapView: (view) => set({ mapView: view }),
   connectivityVisible: true,
   toggleConnectivity: () => set({ connectivityVisible: !get().connectivityVisible }),
@@ -192,7 +205,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   handleCameraSignals: (distToSite, distToRack, nearestRackId, siteSpan = null) => {
-    const { level, selectedSiteName, zoomToSite, zoomToRack, zoomToMap } = get()
+    const { level, selectedSiteName, zoomToSite, zoomToRack, zoomToMap, navSuppressed } = get()
+    // A programmatic fly (e.g. zoom-to-device) is in flight: ignore the camera so
+    // the machine can't bounce levels on a mid-flight far-distance reading.
+    if (navSuppressed) return
     if (level === 'map') return
     // record camera distance only at site level — drives rack-label LOD
     if (level === 'site') set({ siteViewDistance: distToSite })
