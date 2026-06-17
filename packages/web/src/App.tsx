@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
 import {
   commitRateToSpeedBucket,
@@ -17,9 +17,11 @@ import { useSites } from './hooks/useSites'
 import { connectionErrorMessage } from './connectionError'
 import { useCircuits } from './hooks/useCircuits'
 import { useSiteDetail } from './hooks/useSiteDetail'
+import { useDeviceIndex } from './hooks/useDeviceIndex'
 import { useAppStore } from './store/useAppStore'
 import { DevicePanel } from './components/DevicePanel'
 import { SiteSearch } from './components/SiteSearch'
+import { DeviceSearch } from './components/DeviceSearch'
 import { RoleLegend } from './components/RoleLegend'
 import { PowerLegend } from './components/PowerLegend'
 import { SpecsHeatmapLegend } from './components/SpecsHeatmapLegend'
@@ -49,6 +51,9 @@ export function App() {
   const selectedRackId = useAppStore((s) => s.selectedRackId)
   const selectedDeviceId = useAppStore((s) => s.selectedDeviceId)
   const selectDevice = useAppStore((s) => s.selectDevice)
+  const pendingDeviceFocus = useAppStore((s) => s.pendingDeviceFocus)
+  const focusDevice = useAppStore((s) => s.focusDevice)
+  const clearPendingFocus = useAppStore((s) => s.clearPendingFocus)
   const connectivityVisible = useAppStore((s) => s.connectivityVisible)
   const toggleConnectivity = useAppStore((s) => s.toggleConnectivity)
   const powerVisible = useAppStore((s) => s.powerVisible)
@@ -71,6 +76,35 @@ export function App() {
   const selectedRack = siteDetail?.racks.find((r) => r.id === selectedRackId)
   const selectedPlacement = placements.find((p) => p.rackId === selectedRackId)
   const selectedDevice = selectedRack?.devices.find((d) => d.id === selectedDeviceId)
+
+  // Global device search index (backend-agnostic; refetched per backend).
+  const { data: deviceIndex } = useDeviceIndex()
+
+  // Staged zoom-to-device from the search box. The searched device may live in a
+  // different site, whose racks only exist once its detail has loaded — so once
+  // the target site is loaded, hop into the rack and select the device. This
+  // reuses the normal rack fly-in (CameraRig), so there's no bespoke camera or
+  // nav-machine code. Idempotent: zoomToRack clears the pending focus, and the
+  // same-rack / device-gone paths fall through to clearPendingFocus.
+  useEffect(() => {
+    if (!pendingDeviceFocus || !siteDetail) return
+    if (selectedSiteName !== pendingDeviceFocus.siteName) return
+    const { rackId, deviceId } = pendingDeviceFocus
+    const rack = siteDetail.racks.find((r) => r.id === rackId)
+    if (rack) {
+      if (selectedRackId !== rackId) zoomToRack(rackId)
+      if (rack.devices.some((d) => d.id === deviceId)) selectDevice(deviceId)
+    }
+    clearPendingFocus()
+  }, [
+    pendingDeviceFocus,
+    siteDetail,
+    selectedSiteName,
+    selectedRackId,
+    zoomToRack,
+    selectDevice,
+    clearPendingFocus,
+  ])
 
   // Site-wide specs range, computed once so rack view, room view, and the legend
   // all normalize against the same min/max (null when the heatmap is off).
@@ -264,6 +298,15 @@ export function App() {
       {/* Source-of-truth switch — shown on the map (switching resets to the map anyway).
           Top-right is free here; the in-scene legends occupy it only at site/rack level. */}
       {level === 'map' && <BackendSwitcher />}
+
+      {/* Global device finder — persistent (top-center) so any device is reachable
+          from any level. Selecting one stages a zoom to its rack. */}
+      {deviceIndex && deviceIndex.length > 0 && (
+        <DeviceSearch
+          devices={deviceIndex}
+          onSelect={(e) => focusDevice({ siteName: e.siteName, rackId: e.rackId, deviceId: e.id })}
+        />
+      )}
 
       {selectedDevice && (
         <DevicePanel

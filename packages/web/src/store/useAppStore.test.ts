@@ -143,6 +143,60 @@ describe('backend', () => {
   })
 })
 
+describe('pendingDeviceFocus', () => {
+  beforeEach(() => {
+    useAppStore.getState().zoomToMap()
+  })
+
+  const target = { siteName: 'lon1', rackId: 'r5', deviceId: 'd42' }
+
+  test('initializes to null', () => {
+    expect(useAppStore.getState().pendingDeviceFocus).toBe(null)
+  })
+
+  test('focusDevice from the map navigates to the site and records the pending focus', () => {
+    useAppStore.getState().focusDevice(target)
+    const s = useAppStore.getState()
+    expect(s.pendingDeviceFocus).toEqual(target)
+    expect(s.level).toBe('site')
+    expect(s.selectedSiteName).toBe('lon1')
+  })
+
+  test('focusDevice for the site already in view does not leave that view', () => {
+    useAppStore.getState().zoomToSite('lon1')
+    useAppStore.getState().zoomToRack('r1') // already inside lon1, in a rack
+    useAppStore.getState().focusDevice(target)
+    const s = useAppStore.getState()
+    expect(s.pendingDeviceFocus).toEqual(target)
+    expect(s.selectedSiteName).toBe('lon1')
+    expect(s.level).toBe('rack') // not bounced back out to site level
+  })
+
+  test('clearPendingFocus clears it', () => {
+    useAppStore.getState().focusDevice(target)
+    useAppStore.getState().clearPendingFocus()
+    expect(useAppStore.getState().pendingDeviceFocus).toBe(null)
+  })
+
+  test('zoomToMap clears a pending focus (manual navigation cancels it)', () => {
+    useAppStore.getState().focusDevice(target)
+    useAppStore.getState().zoomToMap()
+    expect(useAppStore.getState().pendingDeviceFocus).toBe(null)
+  })
+
+  test('zoomToRack clears a pending focus', () => {
+    useAppStore.getState().focusDevice(target)
+    useAppStore.getState().zoomToRack('r5')
+    expect(useAppStore.getState().pendingDeviceFocus).toBe(null)
+  })
+
+  test('a manual zoomToSite to a different site clears a pending focus', () => {
+    useAppStore.getState().focusDevice(target) // pending for lon1, now at lon1
+    useAppStore.getState().zoomToSite('fra1')
+    expect(useAppStore.getState().pendingDeviceFocus).toBe(null)
+  })
+})
+
 describe('powerVisible', () => {
   beforeEach(() => {
     useAppStore.getState().zoomToMap()

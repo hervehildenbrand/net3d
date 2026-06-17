@@ -19,6 +19,13 @@ export interface MapView {
   zoom: number
 }
 
+/** A device the user asked to zoom to, resolved to its location in the index. */
+export interface DeviceFocusTarget {
+  siteName: string
+  rackId: string
+  deviceId: string
+}
+
 interface AppState {
   /** Active source of truth; switching it flips the API prefix and resets the view. */
   backend: Backend
@@ -27,12 +34,22 @@ interface AppState {
   selectedSiteName: string | null
   selectedRackId: string | null
   selectedDeviceId: string | null
+  /**
+   * In-flight request to zoom to a searched device. Set by focusDevice; an
+   * effect in App consumes it once the target site's detail has loaded (the
+   * rack/device only exist then). Manual navigation clears it.
+   */
+  pendingDeviceFocus: DeviceFocusTarget | null
   /** Last map position, restored when zooming back out of a site. */
   mapView: MapView | null
   zoomToSite: (siteName: string) => void
   zoomToRack: (rackId: string) => void
   zoomToMap: () => void
   selectDevice: (deviceId: string | null) => void
+  /** Begin staged navigation to a device: site → (await load) → rack → select. */
+  focusDevice: (target: DeviceFocusTarget) => void
+  /** Drop an in-flight device focus (once consumed, or on manual navigation). */
+  clearPendingFocus: () => void
   setMapView: (view: MapView) => void
   /** Rack view: render server↔leaf/OOB connectivity lines. */
   connectivityVisible: boolean
@@ -89,6 +106,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedSiteName: null,
   selectedRackId: null,
   selectedDeviceId: null,
+  pendingDeviceFocus: null,
   mapView: null,
   zoomToSite: (siteName) => {
     // Arm the site exit on entry so zoom-out-to-map is always reachable. The
@@ -100,6 +118,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       selectedSiteName: siteName,
       selectedRackId: null,
       selectedDeviceId: null,
+      // A user-initiated site jump cancels any in-flight device focus. focusDevice
+      // sets pendingDeviceFocus *after* calling this, so its own focus survives.
+      pendingDeviceFocus: null,
       rackView: 'front',
       siteViewDistance: null,
       // Keep the legend selection when bouncing back to the same room (rack->site
@@ -112,11 +133,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Arm the rack exit on entry (covers rack-click entry that bypasses the
     // nav machine) so zoom-out-to-room is always reachable. See navigation.ts.
     navMachine = { ...navMachine, exitRackArmed: true, enterRackArmed: false }
-    set({ level: 'rack', selectedRackId: rackId, rackView: 'front' })
+    set({ level: 'rack', selectedRackId: rackId, rackView: 'front', pendingDeviceFocus: null })
   },
   zoomToMap: () =>
-    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null }),
+    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, pendingDeviceFocus: null, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null }),
   selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
+  focusDevice: (target) => {
+    const { level, selectedSiteName } = get()
+    // From the map, or when the device lives in another site, fly to its site
+    // first; the App effect finishes the hop (rack + select) once it loads. When
+    // already viewing that site, stay put — the effect resolves it immediately.
+    if (level === 'map' || selectedSiteName !== target.siteName) get().zoomToSite(target.siteName)
+    set({ pendingDeviceFocus: target })
+  },
+  clearPendingFocus: () => set({ pendingDeviceFocus: null }),
   setMapView: (view) => set({ mapView: view }),
   connectivityVisible: true,
   toggleConnectivity: () => set({ connectivityVisible: !get().connectivityVisible }),
