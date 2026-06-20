@@ -19,6 +19,7 @@ import { theme } from '../theme'
 import { useAppStore } from '../store/useAppStore'
 import { specsColor, type SpecMetric } from '../lib/specsHeatmap'
 import { statusColor } from '../lib/statusColors'
+import { deviceSubnet, subnetColor } from '../lib/subnetColoring'
 import { findEmptySlots } from '../lib/rackCapacity'
 import { RackCables } from './cables'
 import { RackPower } from './power'
@@ -133,6 +134,7 @@ export function RackLevel({
   visible,
   heatmap = null,
   highlightedRoles,
+  siteSubnets = [],
 }: {
   rack: SiteRack
   placement: RackPlacement
@@ -146,6 +148,8 @@ export function RackLevel({
   heatmap?: HeatmapView | null
   /** NetBox role names to highlight; empty = no highlight (plain front/rear view). */
   highlightedRoles: Set<string>
+  /** Site-wide subnet list, so 'Color by: Subnet' assigns stable colors across racks. */
+  siteSubnets?: string[]
 }) {
   const [hovered, setHovered] = useState<string | null>(null)
   const connectivityVisible = useAppStore((s) => s.connectivityVisible)
@@ -154,6 +158,7 @@ export function RackLevel({
   const setHoveredDevice = useAppStore((s) => s.setHoveredDevice)
   const colorMode = useAppStore((s) => s.colorMode)
   const hiddenStatuses = useAppStore((s) => s.hiddenStatuses)
+  const ipLabelsVisible = useAppStore((s) => s.ipLabelsVisible)
 
   // live cable coloring follows the selected device's interface states
   const selectedDevice = rack.devices.find((d) => d.id === selectedDeviceId)
@@ -243,14 +248,16 @@ export function RackLevel({
         const dimmed =
           !active && !hover && (highlightActive ? !roleMatch : !matchesView)
         const emphasized = highlightActive && roleMatch && !active && !hover
-        // box color follows the active 'Color by': status hue, specs heatmap, or
-        // the device's role color (orthogonal to the role-highlight dim/emphasis).
+        // box color follows the active 'Color by': status hue, subnet, specs heatmap,
+        // or the device's role color (orthogonal to the role-highlight dim/emphasis).
         const boxColor =
           colorMode === 'status'
             ? statusColor(device.status)
-            : heatmap
-              ? specsColor(device.specs?.[heatmap.metric], heatmap.min, heatmap.max)
-              : `#${device.roleColor}`
+            : colorMode === 'subnet'
+              ? subnetColor(deviceSubnet(device) ?? '', siteSubnets)
+              : heatmap
+                ? specsColor(device.specs?.[heatmap.metric], heatmap.min, heatmap.max)
+                : `#${device.roleColor}`
         return (
           <group key={device.id}>
             <mesh
@@ -297,6 +304,14 @@ export function RackLevel({
                 {`${device.name} · U${device.position} · ${faceLabel(device.face, device.isFullDepth)}`}
               </Text>
             </Billboard>
+            {/* IP labels overlay: the device's primary IP on its left side */}
+            {ipLabelsVisible && device.primaryIp && (
+              <Billboard position={[box.x - box.w / 2 - 0.06, box.y, box.z]}>
+                <Text fontSize={0.03} color={theme.hud.accent} anchorX="right" anchorY="middle">
+                  {device.primaryIp.split('/')[0]}
+                </Text>
+              </Billboard>
+            )}
           </group>
         )
       })}

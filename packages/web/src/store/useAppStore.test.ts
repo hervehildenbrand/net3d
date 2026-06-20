@@ -342,6 +342,30 @@ describe('colorMode', () => {
   })
 })
 
+describe('ipLabelsVisible', () => {
+  beforeEach(() => {
+    useAppStore.getState().zoomToMap()
+  })
+
+  test('initializes to false', () => {
+    expect(useAppStore.getState().ipLabelsVisible).toBe(false)
+  })
+
+  test('toggleIpLabels flips the flag', () => {
+    useAppStore.getState().toggleIpLabels()
+    expect(useAppStore.getState().ipLabelsVisible).toBe(true)
+    useAppStore.getState().toggleIpLabels()
+    expect(useAppStore.getState().ipLabelsVisible).toBe(false)
+  })
+
+  test('zoomToMap resets it to false', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().toggleIpLabels()
+    useAppStore.getState().zoomToMap()
+    expect(useAppStore.getState().ipLabelsVisible).toBe(false)
+  })
+})
+
 describe('cableColorMode', () => {
   beforeEach(() => {
     useAppStore.getState().zoomToMap()

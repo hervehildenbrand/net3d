@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { availableMetrics, type SpecMetric } from '../lib/specsHeatmap'
 import { collectSiteRoles } from '../lib/roleHighlight'
 import { collectStatuses, statusColor } from '../lib/statusColors'
+import { subnetColor } from '../lib/subnetColoring'
 import type { SiteRack } from '../hooks/useSiteDetail'
 import type { CableColorMode, ColorMode, ViewLevel } from '../store/useAppStore'
 import { theme } from '../theme'
@@ -127,6 +128,7 @@ export function LayersPanel({
   onSpecsMetric,
   hiddenStatuses,
   onToggleHiddenStatus,
+  subnets,
   cableColorMode,
   onCableColorMode,
   powerVisible,
@@ -135,6 +137,8 @@ export function LayersPanel({
   onToggleConnectivity,
   dcLinksVisible,
   onToggleDcLinks,
+  ipLabelsVisible,
+  onToggleIpLabels,
 }: {
   level: ViewLevel
   /** Role-list scope: the rack(s) currently in view (per-level). */
@@ -150,6 +154,8 @@ export function LayersPanel({
   onSpecsMetric: (metric: SpecMetric | null) => void
   hiddenStatuses: Set<string>
   onToggleHiddenStatus: (status: string) => void
+  /** Site-wide subnets (network/prefix) present, for the Subnet color mode + legend. */
+  subnets: string[]
   cableColorMode: CableColorMode
   onCableColorMode: (mode: CableColorMode) => void
   powerVisible: boolean
@@ -158,6 +164,8 @@ export function LayersPanel({
   onToggleConnectivity: () => void
   dcLinksVisible: boolean
   onToggleDcLinks: () => void
+  ipLabelsVisible: boolean
+  onToggleIpLabels: () => void
 }) {
   const specsRacks = metricRacks ?? racks
   const roles = useMemo(() => collectSiteRoles(racks), [racks])
@@ -169,8 +177,10 @@ export function LayersPanel({
   if (roles.length > 0) colorOptions.push({ mode: 'role', label: 'Role' })
   if (metrics.length > 0) colorOptions.push({ mode: 'specs', label: 'Specs' })
   colorOptions.push({ mode: 'capacity', label: 'Capacity' })
-  // Status is per-device, so it only colors the rack view's device boxes.
+  // Status is per-device (rack view only); Subnet works at both levels (room view
+  // tints racks by their dominant subnet, rack view tints each device box).
   if (level === 'rack' && statuses.length > 0) colorOptions.push({ mode: 'status', label: 'Status' })
+  if (subnets.length > 0) colorOptions.push({ mode: 'subnet', label: 'Subnet' })
 
   const selectColor = (mode: ColorMode) => {
     // Entering Specs with no metric chosen yet lands on the first available one,
@@ -247,6 +257,16 @@ export function LayersPanel({
           })}
         </div>
       )}
+      {colorMode === 'subnet' && (
+        <div style={{ marginTop: 6, maxHeight: 180, overflowY: 'auto' }}>
+          {subnets.map((s) => (
+            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px' }}>
+              <span style={{ ...swatchBox, background: subnetColor(s, subnets) }} />
+              <span style={{ flex: 1, color: theme.text.primary }}>{s}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={divider} />
       <div style={sectionLabel}>Overlays</div>
@@ -264,6 +284,12 @@ export function LayersPanel({
         <button onClick={onToggleDcLinks} style={optionRow} title="labelled inter-DC circuit links toward peer sites">
           <span style={check(dcLinksVisible)} />
           <span style={{ flex: 1, color: theme.text.primary }}>DC links</span>
+        </button>
+      )}
+      {level === 'rack' && (
+        <button onClick={onToggleIpLabels} style={optionRow} title="label each device with its primary IP">
+          <span style={check(ipLabelsVisible)} />
+          <span style={{ flex: 1, color: theme.text.primary }}>IP labels</span>
         </button>
       )}
       {level === 'rack' && (

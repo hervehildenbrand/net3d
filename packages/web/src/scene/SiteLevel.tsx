@@ -16,6 +16,7 @@ import { SiteDcLinks, type DcLink } from './dclinks'
 import { buildRoleMarkers, racksWithRole, type RoleMarker } from '../lib/roleHighlight'
 import { rackAggregate, specsColor } from '../lib/specsHeatmap'
 import { computeRackCapacity } from '../lib/rackCapacity'
+import { collectSubnets, rackDominantSubnet, subnetColor } from '../lib/subnetColoring'
 import type { HeatmapView } from './RackLevel'
 
 /** Hide individual rack labels once the camera is farther than span * this. */
@@ -267,7 +268,18 @@ export function SiteLevel({
     for (const r of racks) m.set(r.id, specsColor(computeRackCapacity(r).fill * 100, 0, 100))
     return m
   }, [colorMode, racks])
-  const rackColors = heatColorByRack ?? capacityColorByRack
+  // Subnet: tint each rack by its dominant subnet (categorical, site-wide palette).
+  const subnetColorByRack = useMemo(() => {
+    if (colorMode !== 'subnet') return null
+    const subnets = collectSubnets(racks)
+    const m = new Map<string, string>()
+    for (const r of racks) {
+      const s = rackDominantSubnet(r)
+      if (s) m.set(r.id, subnetColor(s, subnets))
+    }
+    return m
+  }, [colorMode, racks])
+  const rackColors = heatColorByRack ?? capacityColorByRack ?? subnetColorByRack
 
   return (
     <group visible={visible}>

@@ -26,6 +26,7 @@ import { LayersPanel } from './components/LayersPanel'
 import { PowerLegend } from './components/PowerLegend'
 import { BackendSwitcher } from './components/BackendSwitcher'
 import { computeSpecsRange } from './lib/specsHeatmap'
+import { collectSubnets } from './lib/subnetColoring'
 import { tracePowerChain } from './lib/powerChain'
 import { SceneErrorBoundary } from './components/SceneErrorBoundary'
 
@@ -74,6 +75,8 @@ export function App() {
   const toggleHiddenStatus = useAppStore((s) => s.toggleHiddenStatus)
   const cableColorMode = useAppStore((s) => s.cableColorMode)
   const setCableColorMode = useAppStore((s) => s.setCableColorMode)
+  const ipLabelsVisible = useAppStore((s) => s.ipLabelsVisible)
+  const toggleIpLabels = useAppStore((s) => s.toggleIpLabels)
   const highlightedRoles = useAppStore((s) => s.highlightedRoles)
   const toggleHighlightedRole = useAppStore((s) => s.toggleHighlightedRole)
   const clearHighlightedRoles = useAppStore((s) => s.clearHighlightedRoles)
@@ -136,6 +139,9 @@ export function App() {
   // Role highlighting drives the scene only while 'Color by: Role' is active; a
   // stable empty set otherwise keeps the scene prop identity constant.
   const sceneRoles = colorMode === 'role' ? highlightedRoles : NO_ROLES
+
+  // Site-wide subnet list so 'Color by: Subnet' assigns each /24 a stable color.
+  const siteSubnets = useMemo(() => (siteDetail ? collectSubnets(siteDetail.racks) : []), [siteDetail])
 
   // Power chain: the racks + devices fed by the clicked panel/feed (null when off).
   const powerChain = useMemo(
@@ -284,6 +290,7 @@ export function App() {
                 visible
                 heatmap={heatmap}
                 highlightedRoles={sceneRoles}
+                siteSubnets={siteSubnets}
               />
             )}
             <CameraRig />
@@ -363,6 +370,7 @@ export function App() {
           onSpecsMetric={setSpecsMetric}
           hiddenStatuses={hiddenStatuses}
           onToggleHiddenStatus={toggleHiddenStatus}
+          subnets={siteSubnets}
           cableColorMode={cableColorMode}
           onCableColorMode={setCableColorMode}
           powerVisible={powerVisible}
@@ -371,6 +379,8 @@ export function App() {
           onToggleConnectivity={toggleConnectivity}
           dcLinksVisible={dcLinksVisible}
           onToggleDcLinks={toggleDcLinks}
+          ipLabelsVisible={ipLabelsVisible}
+          onToggleIpLabels={toggleIpLabels}
         />
       )}
 

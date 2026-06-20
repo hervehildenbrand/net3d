@@ -16,7 +16,7 @@ export type ViewLevel = 'map' | 'site' | 'rack'
  * at a time (the unified Layers panel is single-select); each dimension keeps its
  * own sub-state (highlightedRoles for 'role', specsHeatmapMetric for 'specs', …).
  */
-export type ColorMode = 'none' | 'role' | 'specs' | 'capacity' | 'status' | 'vlan'
+export type ColorMode = 'none' | 'role' | 'specs' | 'capacity' | 'status' | 'subnet'
 
 /** How rack-view cables are colored: by physical medium (fiber/copper/…) or by line rate. */
 export type CableColorMode = 'medium' | 'speed'
@@ -103,6 +103,9 @@ interface AppState {
   /** Rack-view cable coloring: by physical medium (default) or by interface line rate. */
   cableColorMode: CableColorMode
   setCableColorMode: (mode: CableColorMode) => void
+  /** Rack view: render each device's primary IP as a label. */
+  ipLabelsVisible: boolean
+  toggleIpLabels: () => void
   /** Specs heatmap: recolor devices (rack) and racks (room) by this metric; null = off. */
   specsHeatmapMetric: SpecMetric | null
   setSpecsMetric: (metric: SpecMetric | null) => void
@@ -163,7 +166,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ level: 'rack', selectedRackId: rackId, rackView: 'front', pendingDeviceFocus: null })
   },
   zoomToMap: () =>
-    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, pendingDeviceFocus: null, navSuppressed: false, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null, colorMode: 'none', hiddenStatuses: new Set<string>(), cableColorMode: 'medium' }),
+    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, pendingDeviceFocus: null, navSuppressed: false, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null, colorMode: 'none', hiddenStatuses: new Set<string>(), cableColorMode: 'medium', ipLabelsVisible: false }),
   selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
   focusDevice: (target) => {
     const { level, selectedSiteName } = get()
@@ -217,6 +220,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
   cableColorMode: 'medium',
   setCableColorMode: (mode) => set({ cableColorMode: mode }),
+  ipLabelsVisible: false,
+  toggleIpLabels: () => set((s) => ({ ipLabelsVisible: !s.ipLabelsVisible })),
   specsHeatmapMetric: null,
   setSpecsMetric: (metric) => set({ specsHeatmapMetric: metric }),
 
