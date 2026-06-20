@@ -68,8 +68,8 @@ const CABLES: SiteCable[] = [
     type: 'cat6',
     status: 'CONNECTED',
     color: '',
-    a: { kind: 'device', name: 'eth1', deviceName: 'cn12001', rackName: 'compute_6' },
-    b: { kind: 'device', name: 'Te0/1', deviceName: 'swm1001', rackName: 'compute_6' },
+    a: { kind: 'device', name: 'eth1', deviceName: 'cn12001', rackName: 'compute_6', ifaceType: '25gbase-x-sfp28' },
+    b: { kind: 'device', name: 'Te0/1', deviceName: 'swm1001', rackName: 'compute_6', ifaceType: '25gbase-x-sfp28' },
   },
 ]
 

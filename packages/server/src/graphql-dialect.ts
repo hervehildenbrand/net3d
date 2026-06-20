@@ -47,8 +47,10 @@ export function siteRacksQuery(site: string, version: NetBoxMajor): string {
 const DEVICE_TERM = `name device { name rack { name } }`
 // Note: CircuitTerminationType.site exists in 3.7 but was removed in 4.x (scope).
 // cables.ts only needs circuit.cid, so we never select site here — valid on both.
+// `type` (interface form factor, e.g. "100gbase-x-qsfp28") drives bandwidth coloring;
+// only InterfaceType carries it — patch-panel/console/power ports have no line rate.
 const TERMINATION_FRAGMENTS = `__typename
-      ... on InterfaceType { ${DEVICE_TERM} }
+      ... on InterfaceType { ${DEVICE_TERM} type }
       ... on FrontPortType { ${DEVICE_TERM} }
       ... on RearPortType { ${DEVICE_TERM} }
       ... on ConsolePortType { ${DEVICE_TERM} }

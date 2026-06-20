@@ -68,6 +68,7 @@ const ENDPOINT_NODE = `
   __typename
   ... on DcimInterface {
     name { value }
+    interface_type { value }
     device { node { name { value }
       site { node { name { value } } }
       rack { node { name { value } } }

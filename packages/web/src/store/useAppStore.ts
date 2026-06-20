@@ -18,6 +18,9 @@ export type ViewLevel = 'map' | 'site' | 'rack'
  */
 export type ColorMode = 'none' | 'role' | 'specs' | 'capacity' | 'status' | 'vlan'
 
+/** How rack-view cables are colored: by physical medium (fiber/copper/…) or by line rate. */
+export type CableColorMode = 'medium' | 'speed'
+
 /** Map zoom to land on when exiting a site — just below the re-arm threshold. */
 const MAP_RETURN_ZOOM = 13
 
@@ -97,6 +100,9 @@ interface AppState {
   /** Status filter (rack view): device statuses to hide. Empty = show all. */
   hiddenStatuses: Set<string>
   toggleHiddenStatus: (status: string) => void
+  /** Rack-view cable coloring: by physical medium (default) or by interface line rate. */
+  cableColorMode: CableColorMode
+  setCableColorMode: (mode: CableColorMode) => void
   /** Specs heatmap: recolor devices (rack) and racks (room) by this metric; null = off. */
   specsHeatmapMetric: SpecMetric | null
   setSpecsMetric: (metric: SpecMetric | null) => void
@@ -157,7 +163,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ level: 'rack', selectedRackId: rackId, rackView: 'front', pendingDeviceFocus: null })
   },
   zoomToMap: () =>
-    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, pendingDeviceFocus: null, navSuppressed: false, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null, colorMode: 'none', hiddenStatuses: new Set<string>() }),
+    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, pendingDeviceFocus: null, navSuppressed: false, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null, colorMode: 'none', hiddenStatuses: new Set<string>(), cableColorMode: 'medium' }),
   selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
   focusDevice: (target) => {
     const { level, selectedSiteName } = get()
@@ -209,6 +215,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       else next.add(status)
       return { hiddenStatuses: next }
     }),
+  cableColorMode: 'medium',
+  setCableColorMode: (mode) => set({ cableColorMode: mode }),
   specsHeatmapMetric: null,
   setSpecsMetric: (metric) => set({ specsHeatmapMetric: metric }),
 

@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'vitest'
 import { normalizeRawCables, type RawCable } from '../src/cables'
 
-const ifaceTerm = (device: string, rack: string | null, name = 'eth0') => ({
+const ifaceTerm = (device: string, rack: string | null, name = 'eth0', type = '25gbase-x-sfp28') => ({
   __typename: 'InterfaceType',
   name,
+  type,
   device: { name: device, rack: rack ? { name: rack } : null },
 })
 
@@ -18,19 +19,19 @@ const cable = (over: Partial<RawCable> = {}): RawCable => ({
 })
 
 describe('normalizeRawCables', () => {
-  test('maps interface terminations to device/rack endpoints', () => {
+  test('maps interface terminations to device/rack endpoints, capturing the interface type', () => {
     const [c] = normalizeRawCables([cable()])
     expect(c).toEqual({
       id: '1',
       type: 'cat6',
       status: 'CONNECTED',
       color: '',
-      a: { kind: 'device', name: 'eth1', deviceName: 'cn12001', rackName: 'compute_6' },
-      b: { kind: 'device', name: 'Te0/1', deviceName: 'swm1001', rackName: 'compute_6' },
+      a: { kind: 'device', name: 'eth1', deviceName: 'cn12001', rackName: 'compute_6', ifaceType: '25gbase-x-sfp28' },
+      b: { kind: 'device', name: 'Te0/1', deviceName: 'swm1001', rackName: 'compute_6', ifaceType: '25gbase-x-sfp28' },
     })
   })
 
-  test('handles front/rear/console/power port types as device endpoints', () => {
+  test('only InterfaceType carries a line rate — front/rear/console/power ports drop the type', () => {
     for (const tn of [
       'FrontPortType',
       'RearPortType',
@@ -42,7 +43,7 @@ describe('normalizeRawCables', () => {
       const [c] = normalizeRawCables([
         cable({ a_terminations: [{ ...ifaceTerm('d1', 'r1', 'p1'), __typename: tn }] }),
       ])
-      expect(c!.a).toEqual({ kind: 'device', name: 'p1', deviceName: 'd1', rackName: 'r1' })
+      expect(c!.a).toEqual({ kind: 'device', name: 'p1', deviceName: 'd1', rackName: 'r1', ifaceType: null })
     }
   })
 
@@ -52,7 +53,7 @@ describe('normalizeRawCables', () => {
         a_terminations: [{ __typename: 'PowerFeedType', name: 'feed-A', rack: { name: 'r9' } }],
       }),
     ])
-    expect(c!.a).toEqual({ kind: 'powerfeed', name: 'feed-A', deviceName: null, rackName: 'r9' })
+    expect(c!.a).toEqual({ kind: 'powerfeed', name: 'feed-A', deviceName: null, rackName: 'r9', ifaceType: null })
   })
 
   test('circuit terminations resolve to the circuit cid', () => {
@@ -63,7 +64,7 @@ describe('normalizeRawCables', () => {
         ],
       }),
     ])
-    expect(c!.b).toEqual({ kind: 'circuit', name: 'CID-7', deviceName: null, rackName: null })
+    expect(c!.b).toEqual({ kind: 'circuit', name: 'CID-7', deviceName: null, rackName: null, ifaceType: null })
   })
 
   test('normalizes NetBox 4.x lowercase status to uppercase (app compares CONNECTED)', () => {

@@ -45,6 +45,8 @@ export interface CableEndpoint {
   name: string
   deviceName: string | null
   rackName: string | null
+  /** Interface form factor at this end (e.g. "100gbase-x-qsfp28"); null for non-interface ends. */
+  ifaceType: string | null
 }
 
 export interface SiteCable {

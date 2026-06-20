@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { faceLabel, getCablesForDevice, lldpDiff, type LldpNeighbor } from '@net3d/shared'
+import { faceLabel, getCablesForDevice, interfaceSpeedBucket, lldpDiff, type LldpNeighbor } from '@net3d/shared'
 import { UnreachableError, useNapalm } from '../hooks/useNapalm'
 import type { SiteCable, SiteDevice } from '../hooks/useSiteDetail'
 import { theme } from '../theme'
@@ -175,6 +175,16 @@ export function DevicePanel({
   const env = useNapalm<Environment>(liveId, 'get_environment')
   const ifaces = useNapalm<Record<string, NapalmInterface>>(liveId, 'get_interfaces')
   const ports = useMemo(() => getCablesForDevice(cables, device.name), [cables, device.name])
+  // cableId -> this device's interface line rate, so the port list can show speeds
+  const speedByCable = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const c of cables) {
+      const local = c.a?.deviceName === device.name ? c.a : c.b?.deviceName === device.name ? c.b : null
+      const bucket = interfaceSpeedBucket(local?.ifaceType ?? null)
+      if (bucket) m.set(c.id, bucket)
+    }
+    return m
+  }, [cables, device.name])
   const active = device.status === 'active'
 
   return (
@@ -232,6 +242,9 @@ export function DevicePanel({
             k={
               <span style={{ color: p.kind === 'mgmt' ? theme.cable.mgmt : '#64748b' }}>
                 {p.interfaceName}
+                {speedByCable.has(p.cableId) && (
+                  <span style={{ color: '#94a3b8', marginLeft: 6 }}>{speedByCable.get(p.cableId)}</span>
+                )}
               </span>
             }
             v={`→ ${p.remoteRackName ? `${p.remoteRackName} / ` : ''}${p.remoteDeviceName ?? '?'} : ${p.remoteInterfaceName ?? '?'}`}

@@ -72,6 +72,8 @@ export function App() {
   const setColorMode = useAppStore((s) => s.setColorMode)
   const hiddenStatuses = useAppStore((s) => s.hiddenStatuses)
   const toggleHiddenStatus = useAppStore((s) => s.toggleHiddenStatus)
+  const cableColorMode = useAppStore((s) => s.cableColorMode)
+  const setCableColorMode = useAppStore((s) => s.setCableColorMode)
   const highlightedRoles = useAppStore((s) => s.highlightedRoles)
   const toggleHighlightedRole = useAppStore((s) => s.toggleHighlightedRole)
   const clearHighlightedRoles = useAppStore((s) => s.clearHighlightedRoles)
@@ -360,6 +362,8 @@ export function App() {
           onSpecsMetric={setSpecsMetric}
           hiddenStatuses={hiddenStatuses}
           onToggleHiddenStatus={toggleHiddenStatus}
+          cableColorMode={cableColorMode}
+          onCableColorMode={setCableColorMode}
           powerVisible={powerVisible}
           onTogglePower={togglePower}
           connectivityVisible={connectivityVisible}

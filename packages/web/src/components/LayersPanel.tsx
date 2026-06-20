@@ -3,7 +3,7 @@ import { availableMetrics, type SpecMetric } from '../lib/specsHeatmap'
 import { collectSiteRoles } from '../lib/roleHighlight'
 import { collectStatuses, statusColor } from '../lib/statusColors'
 import type { SiteRack } from '../hooks/useSiteDetail'
-import type { ColorMode, ViewLevel } from '../store/useAppStore'
+import type { CableColorMode, ColorMode, ViewLevel } from '../store/useAppStore'
 import { theme } from '../theme'
 import { RoleLegend } from './RoleLegend'
 import { SpecsHeatmapLegend } from './SpecsHeatmapLegend'
@@ -86,6 +86,23 @@ const swatchBox: React.CSSProperties = {
   display: 'inline-block',
 }
 
+const segBtn: React.CSSProperties = {
+  background: '#ffffff',
+  border: `1px solid ${theme.hud.border}`,
+  borderRadius: 6,
+  color: theme.text.secondary,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  fontSize: 12,
+  padding: '2px 8px',
+}
+
+const segOn: React.CSSProperties = {
+  background: theme.hud.accent,
+  color: '#ffffff',
+  borderColor: theme.hud.accent,
+}
+
 interface ColorOption {
   mode: ColorMode
   label: string
@@ -110,6 +127,8 @@ export function LayersPanel({
   onSpecsMetric,
   hiddenStatuses,
   onToggleHiddenStatus,
+  cableColorMode,
+  onCableColorMode,
   powerVisible,
   onTogglePower,
   connectivityVisible,
@@ -131,6 +150,8 @@ export function LayersPanel({
   onSpecsMetric: (metric: SpecMetric | null) => void
   hiddenStatuses: Set<string>
   onToggleHiddenStatus: (status: string) => void
+  cableColorMode: CableColorMode
+  onCableColorMode: (mode: CableColorMode) => void
   powerVisible: boolean
   onTogglePower: () => void
   connectivityVisible: boolean
@@ -244,6 +265,22 @@ export function LayersPanel({
           <span style={check(dcLinksVisible)} />
           <span style={{ flex: 1, color: theme.text.primary }}>DC links</span>
         </button>
+      )}
+      {level === 'rack' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, padding: '3px 2px' }}>
+          <span style={{ color: theme.text.primary }}>Cables</span>
+          <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }} title="color rack cables by physical medium or by interface line rate">
+            {(['medium', 'speed'] as CableColorMode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => onCableColorMode(m)}
+                style={{ ...segBtn, ...(cableColorMode === m ? segOn : {}) }}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )

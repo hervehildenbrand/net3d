@@ -67,5 +67,14 @@ export const theme = {
       power: '#b45309', // dark amber
       other: '#64748b', // slate
     },
+    // grouping by interface line rate (bandwidth coloring), cool low → warm/bright high
+    speed: {
+      '1G': '#94a3b8', // slate
+      '10G': '#0ea5e9', // sky
+      '25G': '#14b8a6', // teal
+      '40G': '#22c55e', // green
+      '100G': '#8b5cf6', // violet
+      '400G': '#ec4899', // magenta
+    },
   },
 } as const

@@ -114,11 +114,12 @@ function endpoint(e: RawCableEndpoint | null): CableEndpoint | null {
       name: val(e.name) ?? '',
       deviceName: val(dev?.name) ?? null,
       rackName: val(node(dev?.rack)?.name) ?? null,
+      ifaceType: val(e.interface_type) ?? null,
     }
   }
   const circuit = node(e.circuit)
   if (e.__typename === 'CircuitEndpoint' || circuit) {
-    return { kind: 'circuit', name: val(circuit?.cid) ?? val(e.name) ?? '', deviceName: null, rackName: null }
+    return { kind: 'circuit', name: val(circuit?.cid) ?? val(e.name) ?? '', deviceName: null, rackName: null, ifaceType: null }
   }
   return null
 }

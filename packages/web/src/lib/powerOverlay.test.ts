@@ -57,7 +57,7 @@ function end(
   kind: CableEndpoint['kind'] = 'device',
   rackName: string | null = 'AMS1-SRV-01',
 ): CableEndpoint {
-  return { kind, name, deviceName, rackName }
+  return { kind, name, deviceName, rackName, ifaceType: null }
 }
 
 function cable(a: CableEndpoint | null, b: CableEndpoint | null, id = 'c1'): SiteCable {

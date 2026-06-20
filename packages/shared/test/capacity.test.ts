@@ -2,9 +2,35 @@ import { describe, expect, test } from 'vitest'
 import {
   commitRateToSpeedBucket,
   formatCommitRate,
+  interfaceSpeedBucket,
   speedBucketToLabel,
   speedBucketToWidth,
 } from '../src/capacity'
+
+describe('interfaceSpeedBucket', () => {
+  test('buckets the four seeded interface types', () => {
+    expect(interfaceSpeedBucket('1000base-t')).toBe('1G')
+    expect(interfaceSpeedBucket('10gbase-x-sfpp')).toBe('10G')
+    expect(interfaceSpeedBucket('25gbase-x-sfp28')).toBe('25G')
+    expect(interfaceSpeedBucket('100gbase-x-qsfp28')).toBe('100G')
+  })
+
+  test('handles 40G and 400G form factors', () => {
+    expect(interfaceSpeedBucket('40gbase-x-qsfpp')).toBe('40G')
+    expect(interfaceSpeedBucket('400gbase-x-qsfpdd')).toBe('400G')
+  })
+
+  test('is case-insensitive', () => {
+    expect(interfaceSpeedBucket('100GBASE-X-QSFP28')).toBe('100G')
+  })
+
+  test('non-ethernet / unknown / null types have no bucket', () => {
+    expect(interfaceSpeedBucket('virtual')).toBe(null)
+    expect(interfaceSpeedBucket('lag')).toBe(null)
+    expect(interfaceSpeedBucket(null)).toBe(null)
+    expect(interfaceSpeedBucket(undefined)).toBe(null)
+  })
+})
 
 describe('commitRateToSpeedBucket', () => {
   test('buckets the three seeded rates', () => {

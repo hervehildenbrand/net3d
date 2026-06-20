@@ -137,10 +137,11 @@ describe('normalizeInfrahubRacks', () => {
 })
 
 describe('normalizeInfrahubCables', () => {
-  const ifaceEnd = (iface: string, device: string, site: string, rack: string) =>
+  const ifaceEnd = (iface: string, device: string, site: string, rack: string, type = '100gbase-x-qsfp28') =>
     one({
       __typename: 'DcimInterface',
       name: v(iface),
+      interface_type: v(type),
       device: one({ name: v(device), site: one({ name: v(site) }), rack: one({ name: v(rack) }) }),
     })
 
@@ -164,8 +165,8 @@ describe('normalizeInfrahubCables', () => {
       type: 'smf',
       status: 'CONNECTED',
       color: '',
-      a: { kind: 'device', name: 'Ethernet1', deviceName: 'AMS1-SRV-01-leaf-1', rackName: 'AMS1-SRV-01' },
-      b: { kind: 'device', name: 'leaf1-1', deviceName: 'AMS1-spine-01', rackName: 'AMS1-NET-01' },
+      a: { kind: 'device', name: 'Ethernet1', deviceName: 'AMS1-SRV-01-leaf-1', rackName: 'AMS1-SRV-01', ifaceType: '100gbase-x-qsfp28' },
+      b: { kind: 'device', name: 'leaf1-1', deviceName: 'AMS1-spine-01', rackName: 'AMS1-NET-01', ifaceType: '100gbase-x-qsfp28' },
     })
   })
 
@@ -179,7 +180,7 @@ describe('normalizeInfrahubCables', () => {
     ]
     const cable = normalizeInfrahubCables(raw, 'AMS1')[0]!
     expect(cable.color).toBe('ff0000')
-    expect(cable.b).toEqual({ kind: 'circuit', name: 'LUMEN-AMS1-FRA1-001', deviceName: null, rackName: null })
+    expect(cable.b).toEqual({ kind: 'circuit', name: 'LUMEN-AMS1-FRA1-001', deviceName: null, rackName: null, ifaceType: null })
   })
 })
 

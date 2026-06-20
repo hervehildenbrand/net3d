@@ -70,6 +70,7 @@ export interface RawRack {
 export interface RawCableEndpoint {
   __typename?: string
   name?: Val<string>
+  interface_type?: Val<string>
   device?: One<{
     name: Val<string>
     site: One<{ name: Val<string> }>

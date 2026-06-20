@@ -342,6 +342,30 @@ describe('colorMode', () => {
   })
 })
 
+describe('cableColorMode', () => {
+  beforeEach(() => {
+    useAppStore.getState().zoomToMap()
+  })
+
+  test('defaults to medium (color cables by physical medium)', () => {
+    expect(useAppStore.getState().cableColorMode).toBe('medium')
+  })
+
+  test('setCableColorMode switches to speed and back', () => {
+    useAppStore.getState().setCableColorMode('speed')
+    expect(useAppStore.getState().cableColorMode).toBe('speed')
+    useAppStore.getState().setCableColorMode('medium')
+    expect(useAppStore.getState().cableColorMode).toBe('medium')
+  })
+
+  test('zoomToMap resets it to medium', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().setCableColorMode('speed')
+    useAppStore.getState().zoomToMap()
+    expect(useAppStore.getState().cableColorMode).toBe('medium')
+  })
+})
+
 describe('hiddenStatuses', () => {
   beforeEach(() => {
     useAppStore.getState().zoomToMap()

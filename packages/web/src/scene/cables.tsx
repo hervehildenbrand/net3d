@@ -8,6 +8,7 @@ import {
   classifyCableKind,
   deviceTransform,
   getCablesForDevice,
+  interfaceSpeedBucket,
   interRackCablePath,
   intraRackCablePath,
   LANE_PITCH_M,
@@ -16,12 +17,14 @@ import {
   STUB_LENGTH_M,
   summarizeDestinations,
   type CableMedium,
+  type EthSpeedBucket,
   type DeviceBox,
   type LldpCableSegment,
   type RackPlacement,
   type Vec3,
 } from '@net3d/shared'
 import type { CableEndpoint, SiteCable, SiteRack } from '../hooks/useSiteDetail'
+import { useAppStore, type CableColorMode } from '../store/useAppStore'
 import { theme } from '../theme'
 
 export const CABLE_FALLBACK = '#0ea5e9'
@@ -34,8 +37,18 @@ const BUNDLE_LANE_OFFSET = 0.1
 
 const shortName = (n: string) => n.split('.')[0]!.toLowerCase()
 
-export function cableColor(c: SiteCable): string {
+/** Interface line rate carried by a cable (from either interface end); null if neither end is an interface. */
+function cableSpeedBucket(c: SiteCable) {
+  return interfaceSpeedBucket(c.a?.ifaceType ?? c.b?.ifaceType ?? null)
+}
+
+export function cableColor(c: SiteCable, mode: CableColorMode = 'medium'): string {
   if (c.status !== 'CONNECTED') return '#dc2626'
+  if (mode === 'speed') {
+    const bucket = cableSpeedBucket(c)
+    if (bucket) return theme.cable.speed[bucket]
+    // no line rate on this cable (power/console) — fall back to the medium grouping
+  }
   // honor an explicit NetBox color, else group by physical medium
   if (c.color) return `#${c.color}`
   return theme.cable.medium[cableMedium(c.type)]
@@ -62,6 +75,7 @@ export function RackCables({
   /** Device whose links get full emphasis while everything else dims. */
   highlightDeviceName?: string | null
 }) {
+  const cableColorMode = useAppStore((s) => s.cableColorMode)
   // cabling runs along the rear of the rack, as in reality (front faces +z),
   // and just inside the right rail so the device boxes occlude it from the front
   const rearZ = placement.z - placement.depth / 2 + 0.06
@@ -142,7 +156,8 @@ export function RackCables({
       const mgmt = classifyCableKind(c.a!.name) === 'mgmt' || classifyCableKind(c.b!.name) === 'mgmt'
       return {
         id: c.id,
-        color: mgmt ? theme.cable.mgmt : cableColor(c),
+        // in speed mode color even mgmt links by their line rate (1G); medium mode keeps the amber mgmt hue
+        color: mgmt && cableColorMode === 'medium' ? theme.cable.mgmt : cableColor(c, cableColorMode),
         mgmt,
         devices: [c.a!.deviceName!, c.b!.deviceName!],
         points: intraRackCablePath(a, b, {
@@ -170,6 +185,7 @@ export function RackCables({
       const box = boxByDevice.get(deviceName)!
       const exitY = box.y
       const medTally = new Map<CableMedium, number>()
+      const speedTally = new Map<EthSpeedBucket, number>()
       let mgmtCount = 0
       const lines = items.map((o) => {
         const localAttach = attach.get(`${o.cable.id}:${deviceName}`)!
@@ -177,15 +193,23 @@ export function RackCables({
         if (isMgmt) mgmtCount++
         const med = cableMedium(o.cable.type)
         medTally.set(med, (medTally.get(med) ?? 0) + 1)
+        const bucket = interfaceSpeedBucket(o.cable.a?.ifaceType ?? o.cable.b?.ifaceType ?? null)
+        if (bucket) speedTally.set(bucket, (speedTally.get(bucket) ?? 0) + 1)
         return {
-          color: isMgmt ? theme.cable.mgmt : cableColor(o.cable),
+          color: isMgmt && cableColorMode === 'medium' ? theme.cable.mgmt : cableColor(o.cable, cableColorMode),
           points: bundleConvergencePath(localAttach, { bundleX, rearZ, exitY, exitZ }).map(
             (p) => [p.x, p.y, p.z] as [number, number, number],
           ),
         }
       })
       const dominant = [...medTally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'other'
-      const nodeColor = mgmtCount === items.length ? theme.cable.mgmt : theme.cable.medium[dominant]
+      const dominantSpeed = [...speedTally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+      const nodeColor =
+        cableColorMode === 'speed' && dominantSpeed
+          ? theme.cable.speed[dominantSpeed]
+          : mgmtCount === items.length
+            ? theme.cable.mgmt
+            : theme.cable.medium[dominant]
       const summary = summarizeDestinations(items.map((o) => o.remote?.rackName ?? null), 2)
       const hint =
         summary.top.length > 0
@@ -205,7 +229,7 @@ export function RackCables({
     })
 
     return { intraLines, outgoingBundles }
-  }, [rack, placement, cables, showConnectivity, rearZ, channelBaseX])
+  }, [rack, placement, cables, showConnectivity, rearZ, channelBaseX, cableColorMode])
 
   return (
     <>

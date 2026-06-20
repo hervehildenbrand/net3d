@@ -1,6 +1,8 @@
 export interface RawTermination {
   __typename: string
   name?: string
+  /** Interface form factor (e.g. "100gbase-x-qsfp28"); only present on InterfaceType. */
+  type?: string | null
   device?: { name: string; rack: { name: string } | null } | null
   rack?: { name: string } | null
   circuit?: { cid: string } | null
@@ -21,6 +23,8 @@ export interface CableEndpoint {
   name: string
   deviceName: string | null
   rackName: string | null
+  /** Interface form factor at this end (drives bandwidth coloring); null for non-interface ends. */
+  ifaceType: string | null
 }
 
 export interface SiteCable {
@@ -52,13 +56,15 @@ function normalizeTermination(t: RawTermination | undefined): CableEndpoint | nu
       name: t.name ?? '',
       deviceName: t.device?.name ?? null,
       rackName: t.device?.rack?.name ?? null,
+      // only real interfaces have a line rate; front/rear/console/power ports don't
+      ifaceType: t.__typename === 'InterfaceType' ? (t.type ?? null) : null,
     }
   }
   if (t.__typename === 'PowerFeedType') {
-    return { kind: 'powerfeed', name: t.name ?? '', deviceName: null, rackName: t.rack?.name ?? null }
+    return { kind: 'powerfeed', name: t.name ?? '', deviceName: null, rackName: t.rack?.name ?? null, ifaceType: null }
   }
   if (t.__typename === 'CircuitTerminationType') {
-    return { kind: 'circuit', name: t.circuit?.cid ?? '', deviceName: null, rackName: null }
+    return { kind: 'circuit', name: t.circuit?.cid ?? '', deviceName: null, rackName: null, ifaceType: null }
   }
   if (!unknownTypes.has(t.__typename)) {
     unknownTypes.add(t.__typename)
