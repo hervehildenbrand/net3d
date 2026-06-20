@@ -378,6 +378,7 @@ export function App() {
         <PowerLegend
           racks={siteDetail.racks}
           power={siteDetail.power}
+          cables={siteDetail.cables}
           chain={
             powerChain && selectedPowerSource
               ? {

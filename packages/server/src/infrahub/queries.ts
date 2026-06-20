@@ -44,6 +44,7 @@ const DEVICE_NODE = `
     cpu_cores { value }
     ram_gb { value }
     storage_tb { value }
+    power_draw_w { value }
     manufacturer { node { name { value } } }
   } }`
 

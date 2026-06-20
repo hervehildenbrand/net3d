@@ -36,7 +36,7 @@ def ensure_device_types() -> dict:
             "is_full_depth": dt["is_full_depth"],
             "manufacturer": manufacturers[man],
         }
-        for k in ("cpu_model", "cpu_cores", "ram_gb", "storage_tb"):
+        for k in ("cpu_model", "cpu_cores", "ram_gb", "storage_tb", "power_draw_w"):
             if dt.get("specs", {}).get(k) is not None:
                 # storage_tb is Text (decimal); the rest are ints/text as-is.
                 data[k] = str(dt["specs"][k]) if k == "storage_tb" else dt["specs"][k]

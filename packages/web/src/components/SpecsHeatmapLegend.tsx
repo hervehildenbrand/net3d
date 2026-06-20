@@ -7,6 +7,7 @@ const METRIC_LABEL: Record<SpecMetric, { label: string; unit: string }> = {
   cpuCores: { label: 'CPU cores', unit: '' },
   ramGb: { label: 'RAM', unit: ' GB' },
   storageTb: { label: 'Storage', unit: ' TB' },
+  powerDrawW: { label: 'Power', unit: ' W' },
 }
 
 const panelStyle: React.CSSProperties = {

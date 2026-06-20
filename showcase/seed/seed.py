@@ -72,6 +72,7 @@ SPEC_CUSTOM_FIELDS = [
     {"name": "cpu_cores", "label": "CPU cores", "type": "integer"},
     {"name": "ram_gb", "label": "RAM (GB)", "type": "integer"},
     {"name": "storage_tb", "label": "Storage (TB)", "type": "decimal"},
+    {"name": "power_draw_w", "label": "Power draw (W)", "type": "integer"},
 ]
 
 # Deterministic non-active sprinkling for servers (per-site counter).
@@ -195,7 +196,9 @@ def seed_reference():
             },
         )
         specs = dt.get("specs")
-        if specs and not (rec.custom_fields or {}).get("cpu_model"):
+        # Guard on power_draw_w (the newest field) so re-seeding backfills it onto
+        # device types that were created before it existed (cpu_model would skip them).
+        if specs and not (rec.custom_fields or {}).get("power_draw_w"):
             rec.update({"custom_fields": specs})
         rec._u_height = dt["u_height"]
         rec._slug = dt["slug"]

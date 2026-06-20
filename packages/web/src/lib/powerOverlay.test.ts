@@ -8,6 +8,8 @@ import {
   buildRoomPduStrips,
   collectSitePower,
   deriveRedundancy,
+  rackPowerLoad,
+  sitePowerLoad,
   isPdu,
   isPowerCable,
   panelNodes,
@@ -106,6 +108,53 @@ describe('deriveRedundancy', () => {
   test('ignores data cables (only PDU-bound power cords count)', () => {
     const cables = [cable(end('srv1', 'eth0'), end('AMS1-SRV-01-leaf-1', 'Server-1'), 'c1')]
     expect(deriveRedundancy('srv1', r, cables)).toBe('none')
+  })
+})
+
+describe('rackPowerLoad', () => {
+  const dual = (name: string, w: number) => cable(end(name, 'PSU1'), end('AMS1-SRV-01-pdu-A', 'O1'), `${name}-a`)
+  const toB = (name: string) => cable(end(name, 'PSU2'), end('AMS1-SRV-01-pdu-B', 'O1'), `${name}-b`)
+
+  test('a dual-fed device splits its draw evenly across the A and B legs', () => {
+    const srv = dev({ name: 'srv1', specs: { powerDrawW: 800 } })
+    const r = rack([srv, PDU_A, PDU_B])
+    const load = rackPowerLoad(r, [dual('srv1', 800), toB('srv1')])
+    expect(load).toEqual({ totalW: 800, legA: 400, legB: 400, imbalance: 0 })
+  })
+
+  test('a single-fed device loads only its one leg (full imbalance)', () => {
+    const srv = dev({ name: 'srv1', specs: { powerDrawW: 800 } })
+    const r = rack([srv, PDU_A, PDU_B])
+    const load = rackPowerLoad(r, [dual('srv1', 800)]) // only the A cord
+    expect(load).toEqual({ totalW: 800, legA: 800, legB: 0, imbalance: 1 })
+  })
+
+  test('sums draw across devices and reports leg imbalance', () => {
+    const a = dev({ id: 'a', name: 'srv1', specs: { powerDrawW: 800 } })
+    const b = dev({ id: 'b', name: 'srv2', position: 2, specs: { powerDrawW: 200 } })
+    const r = rack([a, b, PDU_A, PDU_B])
+    // srv1 dual (400/400), srv2 single-A (200/0) -> A=600, B=400, total=1000
+    const load = rackPowerLoad(r, [dual('srv1', 800), toB('srv1'), dual('srv2', 200)])
+    expect(load.totalW).toBe(1000)
+    expect(load.legA).toBe(600)
+    expect(load.legB).toBe(400)
+    expect(load.imbalance).toBeCloseTo(0.2)
+  })
+
+  test('devices without a power draw contribute nothing', () => {
+    const r = rack([dev({ name: 'srv1' }), PDU_A, PDU_B])
+    expect(rackPowerLoad(r, [dual('srv1', 0)])).toEqual({ totalW: 0, legA: 0, legB: 0, imbalance: 0 })
+  })
+
+  test('sitePowerLoad aggregates legs across racks and recomputes imbalance', () => {
+    const r1 = rack([dev({ name: 'srv1', specs: { powerDrawW: 800 } }), PDU_A, PDU_B], 'r1')
+    const r2 = rack([dev({ name: 'srv2', position: 2, specs: { powerDrawW: 200 } }), PDU_A, PDU_B], 'r2')
+    // srv1 dual (400/400), srv2 single-A (200/0): total 1000, A=600, B=400
+    const load = sitePowerLoad([r1, r2], [dual('srv1', 800), toB('srv1'), dual('srv2', 200)])
+    expect(load.totalW).toBe(1000)
+    expect(load.legA).toBe(600)
+    expect(load.legB).toBe(400)
+    expect(load.imbalance).toBeCloseTo(0.2)
   })
 })
 

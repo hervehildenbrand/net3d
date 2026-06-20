@@ -101,6 +101,55 @@ export function deriveRedundancy(deviceName: string, rack: SiteRack, cables: Sit
   return sides.has('A') && sides.has('B') ? 'dual' : 'single'
 }
 
+export interface RackPowerLoad {
+  /** Sum of every device's typical draw (W), including any without a documented feed. */
+  totalW: number
+  /** Watts carried by the A feed (dual-fed devices split their draw across legs). */
+  legA: number
+  /** Watts carried by the B feed. */
+  legB: number
+  /** |A−B| / (A+B): 0 = perfectly balanced, 1 = entirely on one leg. */
+  imbalance: number
+}
+
+/**
+ * Rack power load and A/B leg balance from device draws (specs.powerDrawW) and
+ * each device's feed sides. A dual-fed device splits its draw evenly across both
+ * legs; a single-fed device loads only its one leg.
+ */
+export function rackPowerLoad(rack: SiteRack, cables: SiteCable[]): RackPowerLoad {
+  let totalW = 0
+  let legA = 0
+  let legB = 0
+  for (const d of rack.devices) {
+    const w = d.specs?.powerDrawW ?? 0
+    if (w <= 0) continue
+    totalW += w
+    const sides = deviceFeedSides(d.name, rack, cables)
+    if (sides.size === 0) continue
+    const per = w / sides.size
+    if (sides.has('A')) legA += per
+    if (sides.has('B')) legB += per
+  }
+  const sum = legA + legB
+  return { totalW, legA, legB, imbalance: sum > 0 ? Math.abs(legA - legB) / sum : 0 }
+}
+
+/** Site-wide power load: rackPowerLoad summed across racks, with overall A/B imbalance. */
+export function sitePowerLoad(racks: SiteRack[], cables: SiteCable[]): RackPowerLoad {
+  let totalW = 0
+  let legA = 0
+  let legB = 0
+  for (const r of racks) {
+    const l = rackPowerLoad(r, cables)
+    totalW += l.totalW
+    legA += l.legA
+    legB += l.legB
+  }
+  const sum = legA + legB
+  return { totalW, legA, legB, imbalance: sum > 0 ? Math.abs(legA - legB) / sum : 0 }
+}
+
 /** Rear-corner (x,z) of the side's PDU rail in world space. */
 function railXZ(p: RackPlacement, side: FeedSide): { x: number; z: number } {
   const x = side === 'A' ? p.x - p.width / 2 + RAIL_INSET : p.x + p.width / 2 - RAIL_INSET

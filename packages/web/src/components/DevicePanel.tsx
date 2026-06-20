@@ -241,6 +241,7 @@ export function DevicePanel({
           {device.specs.cpuCores !== undefined && <Row k="cores" v={device.specs.cpuCores} />}
           {device.specs.ramGb !== undefined && <Row k="memory" v={`${device.specs.ramGb} GB`} />}
           {device.specs.storageTb !== undefined && <Row k="storage" v={`${device.specs.storageTb} TB`} />}
+          {device.specs.powerDrawW !== undefined && <Row k="power draw" v={`${device.specs.powerDrawW} W`} />}
         </Section>
       )}
 

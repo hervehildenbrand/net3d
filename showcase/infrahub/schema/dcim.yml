@@ -186,6 +186,10 @@ nodes:
         kind: Text
         optional: true
         order_weight: 1600
+      - name: power_draw_w
+        kind: Number
+        optional: true
+        order_weight: 1700
     relationships:
       - name: manufacturer
         peer: DcimManufacturer

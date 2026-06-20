@@ -35,6 +35,7 @@ export interface RawDeviceType {
   ram_gb: Val<number>
   // Text in the schema (decimal TB); parsed to number.
   storage_tb: Val<string>
+  power_draw_w: Val<number>
   manufacturer: One<RawManufacturer>
 }
 

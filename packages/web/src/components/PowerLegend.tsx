@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
-import { collectSitePower, railColor } from '../lib/powerOverlay'
-import type { SitePower, SiteRack } from '../hooks/useSiteDetail'
+import { collectSitePower, railColor, sitePowerLoad } from '../lib/powerOverlay'
+import type { SiteCable, SitePower, SiteRack } from '../hooks/useSiteDetail'
 import { theme } from '../theme'
 
 const panelStyle: React.CSSProperties = {
@@ -43,17 +43,24 @@ const swatch = (color: string): React.CSSProperties => ({
 export function PowerLegend({
   racks,
   power,
+  cables = [],
   chain = null,
   onClearChain,
 }: {
   racks: SiteRack[]
   power?: SitePower
+  /** Site cables — used to compute load + A/B leg balance from device power cords. */
+  cables?: SiteCable[]
   /** Active power-chain trace: the impact set of the selected panel. */
   chain?: { sourceName: string; rackCount: number; deviceCount: number } | null
   onClearChain?: () => void
 }) {
   const s = useMemo(() => collectSitePower(racks, power), [racks, power])
+  const load = useMemo(() => sitePowerLoad(racks, cables), [racks, cables])
   if (s.pduCount === 0) return null
+
+  const legSum = load.legA + load.legB
+  const aPct = legSum > 0 ? Math.round((load.legA / legSum) * 100) : 50
 
   const spec =
     s.voltage != null
@@ -89,6 +96,26 @@ export function PowerLegend({
         <span>vertical PDUs</span>
         <span>{s.pduCount}</span>
       </div>
+      {load.totalW > 0 && (
+        <div style={{ borderTop: `1px solid ${theme.hud.border}`, marginTop: 8, paddingTop: 8 }}>
+          <div style={{ ...row, color: theme.text.primary }}>
+            <span>load</span>
+            <span>{`${(load.totalW / 1000).toFixed(1)} kW`}</span>
+          </div>
+          {/* A/B leg balance: bar split by each leg's share, labelled with the split */}
+          <div style={{ display: 'flex', height: 8, borderRadius: 3, overflow: 'hidden', margin: '4px 0 2px' }}>
+            <div style={{ width: `${aPct}%`, background: railColor('A') }} />
+            <div style={{ width: `${100 - aPct}%`, background: railColor('B') }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: theme.text.muted, fontSize: 11 }}>
+            <span>{`A ${aPct}%`}</span>
+            <span style={{ color: load.imbalance > 0.15 ? '#b45309' : theme.text.muted }}>
+              {load.imbalance > 0.15 ? `⚠ ${Math.round(load.imbalance * 100)}% skew` : 'balanced'}
+            </span>
+            <span>{`B ${100 - aPct}%`}</span>
+          </div>
+        </div>
+      )}
       <div style={{ borderTop: `1px solid ${theme.hud.border}`, marginTop: 8, paddingTop: 8 }}>
         {chain ? (
           <>

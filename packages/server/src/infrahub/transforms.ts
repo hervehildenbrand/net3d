@@ -66,6 +66,8 @@ function normalizeDevice(d: RawDevice): SiteDevice {
   if (ramGb != null) specs.ramGb = ramGb
   const storageTb = num(dt?.storage_tb)
   if (storageTb != null) specs.storageTb = storageTb
+  const powerDrawW = val(dt?.power_draw_w)
+  if (powerDrawW != null) specs.powerDrawW = powerDrawW
   return {
     id: d.id,
     name: val(d.name) ?? '',

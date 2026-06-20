@@ -85,6 +85,8 @@ function parseSpecs(cf: Record<string, unknown> | null | undefined): DeviceSpecs
   if (ram !== undefined) specs.ramGb = ram
   const storage = num(cf.storage_tb)
   if (storage !== undefined) specs.storageTb = storage
+  const power = num(cf.power_draw_w)
+  if (power !== undefined) specs.powerDrawW = power
   return Object.keys(specs).length ? specs : undefined
 }
 

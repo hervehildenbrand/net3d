@@ -2,10 +2,10 @@ import type { DeviceSpecs, SiteRack } from '../hooks/useSiteDetail'
 import { theme } from '../theme'
 
 /** Numeric hardware-capacity metrics that can drive the heatmap (cpuModel is excluded — it's text). */
-export type SpecMetric = 'cpuCores' | 'ramGb' | 'storageTb'
+export type SpecMetric = 'cpuCores' | 'ramGb' | 'storageTb' | 'powerDrawW'
 
 /** Canonical metric order, used by the legend selector and availableMetrics. */
-const METRIC_ORDER: SpecMetric[] = ['cpuCores', 'ramGb', 'storageTb']
+const METRIC_ORDER: SpecMetric[] = ['cpuCores', 'ramGb', 'storageTb', 'powerDrawW']
 
 export interface SpecsRange {
   min: number

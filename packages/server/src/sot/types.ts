@@ -23,6 +23,8 @@ export interface DeviceSpecs {
   cpuCores?: number
   ramGb?: number
   storageTb?: number
+  /** Typical/allocated power draw in watts (from the device type); drives rack load. */
+  powerDrawW?: number
 }
 
 export interface SiteDevice {

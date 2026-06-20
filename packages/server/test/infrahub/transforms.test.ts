@@ -68,7 +68,7 @@ describe('normalizeInfrahubSites', () => {
 describe('normalizeInfrahubRacks', () => {
   const deviceType = one({
     model: v('PowerEdge R650'), u_height: v(1), is_full_depth: v(true),
-    cpu_model: v('2x Xeon'), cpu_cores: v(64), ram_gb: v(512), storage_tb: v('7.68'),
+    cpu_model: v('2x Xeon'), cpu_cores: v(64), ram_gb: v(512), storage_tb: v('7.68'), power_draw_w: v(550),
     manufacturer: one({ name: v('Dell') }),
   })
 
@@ -105,7 +105,7 @@ describe('normalizeInfrahubRacks', () => {
       primaryIp: '10.0.0.5/24',
       oobIp: null,
     })
-    expect(d.specs).toEqual({ cpuModel: '2x Xeon', cpuCores: 64, ramGb: 512, storageTb: 7.68 })
+    expect(d.specs).toEqual({ cpuModel: '2x Xeon', cpuCores: 64, ramGb: 512, storageTb: 7.68, powerDrawW: 550 })
   })
 
   test('0U device with null position/face and no specs', () => {
@@ -121,7 +121,7 @@ describe('normalizeInfrahubRacks', () => {
             platform: one(null),
             device_type: one({
               model: v('Rack PDU AP8853'), u_height: v(0), is_full_depth: v(false),
-              cpu_model: v(null), cpu_cores: v(null), ram_gb: v(null), storage_tb: v(null),
+              cpu_model: v(null), cpu_cores: v(null), ram_gb: v(null), storage_tb: v(null), power_draw_w: v(null),
               manufacturer: one({ name: v('APC') }),
             }),
           },
