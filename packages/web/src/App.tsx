@@ -335,6 +335,7 @@ export function App() {
         <DevicePanel
           device={selectedDevice}
           cables={siteDetail?.cables ?? []}
+          rack={selectedRack}
           napalmAvailable={capabilities.napalmAvailable}
           onClose={() => selectDevice(null)}
         />

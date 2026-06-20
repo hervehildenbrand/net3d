@@ -7,6 +7,7 @@ import {
   buildPowerCords,
   buildRoomPduStrips,
   collectSitePower,
+  deriveRedundancy,
   isPdu,
   isPowerCable,
   panelNodes,
@@ -78,6 +79,33 @@ describe('isPdu / pduSide', () => {
     expect(pduSide('AMS1-SRV-01-pdu-A')).toBe('A')
     expect(pduSide('AMS1-SRV-01-pdu-B')).toBe('B')
     expect(pduSide('AMS1-SRV-01-leaf-1')).toBe(null)
+  })
+})
+
+describe('deriveRedundancy', () => {
+  const server = dev({ id: 's1', name: 'srv1', position: 1 })
+  const r = rack([server, PDU_A, PDU_B])
+
+  test('dual when the device draws from both the A and B PDUs', () => {
+    const cables = [
+      cable(end('srv1', 'PSU1'), end('AMS1-SRV-01-pdu-A', 'Outlet-1'), 'c1'),
+      cable(end('srv1', 'PSU2'), end('AMS1-SRV-01-pdu-B', 'Outlet-1'), 'c2'),
+    ]
+    expect(deriveRedundancy('srv1', r, cables)).toBe('dual')
+  })
+
+  test('single when only one feed side is connected', () => {
+    const cables = [cable(end('srv1', 'PSU1'), end('AMS1-SRV-01-pdu-A', 'Outlet-1'), 'c1')]
+    expect(deriveRedundancy('srv1', r, cables)).toBe('single')
+  })
+
+  test('none when the device has no power cabling', () => {
+    expect(deriveRedundancy('srv1', r, [])).toBe('none')
+  })
+
+  test('ignores data cables (only PDU-bound power cords count)', () => {
+    const cables = [cable(end('srv1', 'eth0'), end('AMS1-SRV-01-leaf-1', 'Server-1'), 'c1')]
+    expect(deriveRedundancy('srv1', r, cables)).toBe('none')
   })
 })
 

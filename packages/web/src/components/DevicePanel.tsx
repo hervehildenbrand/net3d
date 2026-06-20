@@ -1,7 +1,8 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { faceLabel, getCablesForDevice, interfaceSpeedBucket, lldpDiff, type LldpNeighbor } from '@net3d/shared'
 import { UnreachableError, useNapalm } from '../hooks/useNapalm'
-import type { SiteCable, SiteDevice } from '../hooks/useSiteDetail'
+import type { SiteCable, SiteDevice, SiteRack } from '../hooks/useSiteDetail'
+import { deriveRedundancy, deviceFeedSides } from '../lib/powerOverlay'
 import { theme } from '../theme'
 
 interface Facts {
@@ -161,11 +162,14 @@ function LldpAudit({ device, cables }: { device: SiteDevice; cables: SiteCable[]
 export function DevicePanel({
   device,
   cables,
+  rack,
   napalmAvailable = true,
   onClose,
 }: {
   device: SiteDevice
   cables: SiteCable[]
+  /** The device's rack, used to derive A/B power redundancy from its power cords. */
+  rack?: SiteRack
   /** When the NetBox NAPALM plugin is absent, only the NetBox section renders. */
   napalmAvailable?: boolean
   onClose: () => void
@@ -185,6 +189,12 @@ export function DevicePanel({
     }
     return m
   }, [cables, device.name])
+  // A/B power redundancy from the device's power cords (needs the rack for its PDUs).
+  const redundancy = useMemo(() => (rack ? deriveRedundancy(device.name, rack, cables) : 'none'), [rack, device.name, cables])
+  const feedSides = useMemo(
+    () => (rack ? [...deviceFeedSides(device.name, rack, cables)].sort() : []),
+    [rack, device.name, cables],
+  )
   const active = device.status === 'active'
 
   return (
@@ -231,6 +241,21 @@ export function DevicePanel({
           {device.specs.cpuCores !== undefined && <Row k="cores" v={device.specs.cpuCores} />}
           {device.specs.ramGb !== undefined && <Row k="memory" v={`${device.specs.ramGb} GB`} />}
           {device.specs.storageTb !== undefined && <Row k="storage" v={`${device.specs.storageTb} TB`} />}
+        </Section>
+      )}
+
+      {redundancy !== 'none' && (
+        <Section title="Power">
+          <Row
+            k="redundancy"
+            v={
+              <span style={{ color: redundancy === 'dual' ? '#166534' : '#b45309', fontWeight: 600 }}>
+                {redundancy === 'dual'
+                  ? '⚡ A + B redundant'
+                  : `⚠ single feed (${feedSides.join('')} only)`}
+              </span>
+            }
+          />
         </Section>
       )}
 

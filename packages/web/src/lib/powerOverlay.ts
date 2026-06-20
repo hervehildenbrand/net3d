@@ -67,6 +67,40 @@ export function isPowerCable(cable: SiteCable, pduNames: Set<string>): boolean {
   return false
 }
 
+export type Redundancy = 'dual' | 'single' | 'none'
+
+/** Feed sides (A/B) a device draws from, via its power cords to the rack's PDUs. */
+export function deviceFeedSides(
+  deviceName: string,
+  rack: SiteRack,
+  cables: SiteCable[],
+): Set<FeedSide> {
+  const pdus = pduDevices(rack)
+  const sideByPdu = new Map(pdus.map((p) => [p.device.name, p.side]))
+  const pduNames = new Set(pdus.map((p) => p.device.name))
+  const sides = new Set<FeedSide>()
+  for (const c of cables) {
+    if (!isPowerCable(c, pduNames)) continue
+    const ends = [c.a, c.b]
+    const pduEnd = ends.find((e) => e?.deviceName && pduNames.has(e.deviceName))
+    const devEnd = ends.find((e) => e?.deviceName && !pduNames.has(e.deviceName))
+    if (!pduEnd?.deviceName || devEnd?.deviceName !== deviceName) continue
+    const side = sideByPdu.get(pduEnd.deviceName)
+    if (side) sides.add(side)
+  }
+  return sides
+}
+
+/**
+ * Power redundancy of a device: 'dual' (fed by both A and B), 'single' (one side
+ * only — a redundancy risk), or 'none' (no power cords documented).
+ */
+export function deriveRedundancy(deviceName: string, rack: SiteRack, cables: SiteCable[]): Redundancy {
+  const sides = deviceFeedSides(deviceName, rack, cables)
+  if (sides.size === 0) return 'none'
+  return sides.has('A') && sides.has('B') ? 'dual' : 'single'
+}
+
 /** Rear-corner (x,z) of the side's PDU rail in world space. */
 function railXZ(p: RackPlacement, side: FeedSide): { x: number; z: number } {
   const x = side === 'A' ? p.x - p.width / 2 + RAIL_INSET : p.x + p.width / 2 - RAIL_INSET
