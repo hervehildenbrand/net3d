@@ -18,6 +18,12 @@ const panelStyle: React.CSSProperties = {
   fontSize: 13,
 }
 
+/** Embedded inside the Layers panel: inherit the host panel's chrome, just flow. */
+const embeddedStyle: React.CSSProperties = {
+  fontFamily: 'ui-monospace, monospace',
+  fontSize: 13,
+}
+
 const headerRow: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
@@ -67,17 +73,20 @@ export function RoleLegend({
   highlighted,
   onToggle,
   onClear,
+  embedded = false,
 }: {
   racks: SiteRack[]
   highlighted: Set<string>
   onToggle: (name: string) => void
   onClear: () => void
+  /** Render inline (no absolute panel chrome) for hosting inside the Layers panel. */
+  embedded?: boolean
 }) {
   const roles = useMemo(() => collectSiteRoles(racks), [racks])
   if (roles.length === 0) return null
 
   return (
-    <div style={panelStyle}>
+    <div style={embedded ? embeddedStyle : panelStyle}>
       <div style={headerRow}>
         <span style={{ fontWeight: 600, color: theme.text.primary }}>Highlight role</span>
         {highlighted.size > 0 && (

@@ -22,9 +22,8 @@ import { useAppStore } from './store/useAppStore'
 import { DevicePanel } from './components/DevicePanel'
 import { SiteSearch } from './components/SiteSearch'
 import { DeviceSearch } from './components/DeviceSearch'
-import { RoleLegend } from './components/RoleLegend'
+import { LayersPanel } from './components/LayersPanel'
 import { PowerLegend } from './components/PowerLegend'
-import { SpecsHeatmapLegend } from './components/SpecsHeatmapLegend'
 import { BackendSwitcher } from './components/BackendSwitcher'
 import { computeSpecsRange } from './lib/specsHeatmap'
 import { tracePowerChain } from './lib/powerChain'
@@ -39,6 +38,9 @@ const hudStyle: React.CSSProperties = {
   fontSize: 13,
   zIndex: 20,
 }
+
+/** Stable empty set so the scene's role prop keeps a constant identity when role-coloring is off. */
+const NO_ROLES: Set<string> = new Set<string>()
 
 export function App() {
   const { data: sites, isLoading, error } = useSites()
@@ -66,6 +68,8 @@ export function App() {
   const toggleDcLinks = useAppStore((s) => s.toggleDcLinks)
   const rackView = useAppStore((s) => s.rackView)
   const toggleRackView = useAppStore((s) => s.toggleRackView)
+  const colorMode = useAppStore((s) => s.colorMode)
+  const setColorMode = useAppStore((s) => s.setColorMode)
   const highlightedRoles = useAppStore((s) => s.highlightedRoles)
   const toggleHighlightedRole = useAppStore((s) => s.toggleHighlightedRole)
   const clearHighlightedRoles = useAppStore((s) => s.clearHighlightedRoles)
@@ -118,12 +122,16 @@ export function App() {
   }, [navSuppressed, setNavSuppressed])
 
   // Site-wide specs range, computed once so rack view, room view, and the legend
-  // all normalize against the same min/max (null when the heatmap is off).
+  // all normalize against the same min/max (null unless 'Color by: Specs' is active).
   const heatmap = useMemo(() => {
-    if (!specsHeatmapMetric || !siteDetail) return null
+    if (colorMode !== 'specs' || !specsHeatmapMetric || !siteDetail) return null
     const { min, max } = computeSpecsRange(siteDetail.racks, specsHeatmapMetric)
     return { metric: specsHeatmapMetric, min, max }
-  }, [specsHeatmapMetric, siteDetail])
+  }, [colorMode, specsHeatmapMetric, siteDetail])
+
+  // Role highlighting drives the scene only while 'Color by: Role' is active; a
+  // stable empty set otherwise keeps the scene prop identity constant.
+  const sceneRoles = colorMode === 'role' ? highlightedRoles : NO_ROLES
 
   // Power chain: the racks + devices fed by the clicked panel/feed (null when off).
   const powerChain = useMemo(
@@ -249,7 +257,7 @@ export function App() {
                 siteName={selectedSiteName}
                 onRackClick={zoomToRack}
                 visible={level === 'site'}
-                highlightedRoles={highlightedRoles}
+                highlightedRoles={sceneRoles}
                 powerVisible={powerVisible}
                 power={siteDetail.power}
                 heatmap={heatmap}
@@ -271,7 +279,7 @@ export function App() {
                 selectedDeviceId={selectedDeviceId}
                 visible
                 heatmap={heatmap}
-                highlightedRoles={highlightedRoles}
+                highlightedRoles={sceneRoles}
               />
             )}
             <CameraRig />
@@ -332,23 +340,28 @@ export function App() {
         <SiteSearch sites={sites} onSelect={zoomToSite} />
       )}
 
-      {level === 'site' && !!siteDetail?.racks?.length && (
-        <RoleLegend
-          racks={siteDetail.racks}
-          highlighted={highlightedRoles}
-          onToggle={toggleHighlightedRole}
-          onClear={clearHighlightedRoles}
-        />
-      )}
-
-      {/* Rack view: same interactive role legend as the room view, scoped to this
-          rack — toggle one or more roles to highlight matching devices. */}
-      {level === 'rack' && selectedRack && !selectedDevice && (
-        <RoleLegend
-          racks={[selectedRack]}
-          highlighted={highlightedRoles}
-          onToggle={toggleHighlightedRole}
-          onClear={clearHighlightedRoles}
+      {/* Unified Layers control (top-right): single-select "Color by" + overlay
+          toggles. Role list is scoped to the rack(s) in view; the specs gradient
+          stays site-wide. Hidden while a device is selected — the 380px DevicePanel
+          occupies the same corner. */}
+      {level !== 'map' && !selectedDevice && !!siteDetail?.racks?.length && (
+        <LayersPanel
+          level={level}
+          racks={level === 'rack' && selectedRack ? [selectedRack] : siteDetail.racks}
+          metricRacks={siteDetail.racks}
+          colorMode={colorMode}
+          onColorMode={setColorMode}
+          highlightedRoles={highlightedRoles}
+          onToggleRole={toggleHighlightedRole}
+          onClearRoles={clearHighlightedRoles}
+          specsMetric={specsHeatmapMetric}
+          onSpecsMetric={setSpecsMetric}
+          powerVisible={powerVisible}
+          onTogglePower={togglePower}
+          connectivityVisible={connectivityVisible}
+          onToggleConnectivity={toggleConnectivity}
+          dcLinksVisible={dcLinksVisible}
+          onToggleDcLinks={toggleDcLinks}
         />
       )}
 
@@ -366,17 +379,6 @@ export function App() {
               : null
           }
           onClearChain={() => setPowerSource(null)}
-        />
-      )}
-
-      {/* Heatmap legend doubles as its on/off control. It stacks below the role
-          legend (top-right), which is now shown at both site and rack level. */}
-      {level !== 'map' && !!siteDetail?.racks?.length && (
-        <SpecsHeatmapLegend
-          racks={siteDetail.racks}
-          metric={specsHeatmapMetric}
-          onSelect={setSpecsMetric}
-          top={320}
         />
       )}
 
@@ -403,71 +405,11 @@ export function App() {
 
       {level === 'rack' && (
         <button
-          onClick={toggleConnectivity}
-          title="show/hide server↔leaf and OOB cabling"
-          style={{
-            ...hudStyle,
-            top: 96,
-            background: connectivityVisible ? '#0891b2' : '#ffffff',
-            color: connectivityVisible ? '#ffffff' : '#1e293b',
-            border: '1px solid #cbd5e1',
-            borderRadius: 6,
-            padding: '6px 12px',
-            cursor: 'pointer',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-          }}
-        >
-          {connectivityVisible ? '◉ connectivity' : '○ connectivity'}
-        </button>
-      )}
-
-      {level !== 'map' && (
-        <button
-          onClick={togglePower}
-          title="show/hide A/B power: PDU rails + power cords (rack), per-rack strips + panels (room)"
-          style={{
-            ...hudStyle,
-            top: level === 'rack' ? 176 : 96,
-            background: powerVisible ? '#b45309' : '#ffffff',
-            color: powerVisible ? '#ffffff' : '#1e293b',
-            border: '1px solid #cbd5e1',
-            borderRadius: 6,
-            padding: '6px 12px',
-            cursor: 'pointer',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-          }}
-        >
-          {powerVisible ? '◉ power' : '○ power'}
-        </button>
-      )}
-
-      {level === 'site' && (
-        <button
-          onClick={toggleDcLinks}
-          title="show/hide labelled inter-DC circuit links radiating toward peer sites"
-          style={{
-            ...hudStyle,
-            top: 136,
-            background: dcLinksVisible ? '#0ea5e9' : '#ffffff',
-            color: dcLinksVisible ? '#ffffff' : '#1e293b',
-            border: '1px solid #cbd5e1',
-            borderRadius: 6,
-            padding: '6px 12px',
-            cursor: 'pointer',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-          }}
-        >
-          {dcLinksVisible ? '◉ DC links' : '○ DC links'}
-        </button>
-      )}
-
-      {level === 'rack' && (
-        <button
           onClick={toggleRackView}
           title="flip the rack camera between the device faces (front) and the cabling (rear)"
           style={{
             ...hudStyle,
-            top: 136,
+            top: 96,
             background: rackView === 'rear' ? '#0891b2' : '#ffffff',
             color: rackView === 'rear' ? '#ffffff' : '#1e293b',
             border: '1px solid #cbd5e1',

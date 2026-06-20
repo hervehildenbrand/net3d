@@ -23,6 +23,12 @@ const panelStyle: React.CSSProperties = {
   fontSize: 13,
 }
 
+/** Embedded inside the Layers panel: inherit the host panel's chrome, just flow. */
+const embeddedStyle: React.CSSProperties = {
+  fontFamily: 'ui-monospace, monospace',
+  fontSize: 13,
+}
+
 const headerRow: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
@@ -62,12 +68,15 @@ export function SpecsHeatmapLegend({
   metric,
   onSelect,
   top = 16,
+  embedded = false,
 }: {
   racks: SiteRack[]
   metric: SpecMetric | null
   onSelect: (metric: SpecMetric | null) => void
   /** Top offset (px) so it can stack below the role legend at site level. */
   top?: number
+  /** Render inline (no absolute panel chrome) for hosting inside the Layers panel. */
+  embedded?: boolean
 }) {
   const metrics = useMemo(() => availableMetrics(racks), [racks])
   const range = useMemo(() => (metric ? computeSpecsRange(racks, metric) : null), [racks, metric])
@@ -76,7 +85,7 @@ export function SpecsHeatmapLegend({
   const unit = metric ? METRIC_LABEL[metric].unit : ''
 
   return (
-    <div style={{ ...panelStyle, top }}>
+    <div style={embedded ? embeddedStyle : { ...panelStyle, top }}>
       <div style={headerRow}>
         <span style={{ fontWeight: 600, color: theme.text.primary }}>Specs heatmap</span>
         {metric && (

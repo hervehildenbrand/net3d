@@ -11,6 +11,13 @@ import type { Backend } from '../lib/api'
 
 export type ViewLevel = 'map' | 'site' | 'rack'
 
+/**
+ * The single active "color by" dimension for device/rack boxes. Only one is live
+ * at a time (the unified Layers panel is single-select); each dimension keeps its
+ * own sub-state (highlightedRoles for 'role', specsHeatmapMetric for 'specs', …).
+ */
+export type ColorMode = 'none' | 'role' | 'specs' | 'capacity' | 'status' | 'vlan'
+
 /** Map zoom to land on when exiting a site — just below the re-arm threshold. */
 const MAP_RETURN_ZOOM = 13
 
@@ -84,6 +91,9 @@ interface AppState {
   highlightedRoles: Set<string>
   toggleHighlightedRole: (name: string) => void
   clearHighlightedRoles: () => void
+  /** Active "color by" dimension (unified Layers panel; single-select). 'none' = default box colors. */
+  colorMode: ColorMode
+  setColorMode: (mode: ColorMode) => void
   /** Specs heatmap: recolor devices (rack) and racks (room) by this metric; null = off. */
   specsHeatmapMetric: SpecMetric | null
   setSpecsMetric: (metric: SpecMetric | null) => void
@@ -144,7 +154,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ level: 'rack', selectedRackId: rackId, rackView: 'front', pendingDeviceFocus: null })
   },
   zoomToMap: () =>
-    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, pendingDeviceFocus: null, navSuppressed: false, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null }),
+    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, pendingDeviceFocus: null, navSuppressed: false, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null, colorMode: 'none' }),
   selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
   focusDevice: (target) => {
     const { level, selectedSiteName } = get()
@@ -186,6 +196,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { highlightedRoles: next }
     }),
   clearHighlightedRoles: () => set({ highlightedRoles: new Set<string>() }),
+  colorMode: 'none',
+  setColorMode: (mode) => set({ colorMode: mode }),
   specsHeatmapMetric: null,
   setSpecsMetric: (metric) => set({ specsHeatmapMetric: metric }),
 

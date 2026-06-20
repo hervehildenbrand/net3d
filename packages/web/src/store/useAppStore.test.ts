@@ -301,6 +301,47 @@ describe('selectedPowerSource', () => {
   })
 })
 
+describe('colorMode', () => {
+  beforeEach(() => {
+    useAppStore.getState().zoomToMap()
+  })
+
+  test('initializes to none (no box coloring)', () => {
+    expect(useAppStore.getState().colorMode).toBe('none')
+  })
+
+  test('setColorMode selects a dimension', () => {
+    useAppStore.getState().setColorMode('specs')
+    expect(useAppStore.getState().colorMode).toBe('specs')
+  })
+
+  test('is single-select: setting a new dimension replaces the previous one', () => {
+    useAppStore.getState().setColorMode('specs')
+    useAppStore.getState().setColorMode('role')
+    expect(useAppStore.getState().colorMode).toBe('role')
+  })
+
+  test('setColorMode("none") turns box coloring off', () => {
+    useAppStore.getState().setColorMode('role')
+    useAppStore.getState().setColorMode('none')
+    expect(useAppStore.getState().colorMode).toBe('none')
+  })
+
+  test('persists across site<->rack navigation', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().setColorMode('specs')
+    useAppStore.getState().zoomToRack('rack-1')
+    expect(useAppStore.getState().colorMode).toBe('specs')
+  })
+
+  test('zoomToMap resets it to none', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().setColorMode('role')
+    useAppStore.getState().zoomToMap()
+    expect(useAppStore.getState().colorMode).toBe('none')
+  })
+})
+
 describe('specsHeatmapMetric', () => {
   beforeEach(() => {
     useAppStore.getState().zoomToMap()
