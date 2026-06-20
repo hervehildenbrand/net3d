@@ -94,6 +94,9 @@ interface AppState {
   /** Active "color by" dimension (unified Layers panel; single-select). 'none' = default box colors. */
   colorMode: ColorMode
   setColorMode: (mode: ColorMode) => void
+  /** Status filter (rack view): device statuses to hide. Empty = show all. */
+  hiddenStatuses: Set<string>
+  toggleHiddenStatus: (status: string) => void
   /** Specs heatmap: recolor devices (rack) and racks (room) by this metric; null = off. */
   specsHeatmapMetric: SpecMetric | null
   setSpecsMetric: (metric: SpecMetric | null) => void
@@ -154,7 +157,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ level: 'rack', selectedRackId: rackId, rackView: 'front', pendingDeviceFocus: null })
   },
   zoomToMap: () =>
-    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, pendingDeviceFocus: null, navSuppressed: false, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null, colorMode: 'none' }),
+    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, pendingDeviceFocus: null, navSuppressed: false, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null, colorMode: 'none', hiddenStatuses: new Set<string>() }),
   selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
   focusDevice: (target) => {
     const { level, selectedSiteName } = get()
@@ -198,6 +201,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearHighlightedRoles: () => set({ highlightedRoles: new Set<string>() }),
   colorMode: 'none',
   setColorMode: (mode) => set({ colorMode: mode }),
+  hiddenStatuses: new Set<string>(),
+  toggleHiddenStatus: (status) =>
+    set((s) => {
+      const next = new Set(s.hiddenStatuses)
+      if (next.has(status)) next.delete(status)
+      else next.add(status)
+      return { hiddenStatuses: next }
+    }),
   specsHeatmapMetric: null,
   setSpecsMetric: (metric) => set({ specsHeatmapMetric: metric }),
 

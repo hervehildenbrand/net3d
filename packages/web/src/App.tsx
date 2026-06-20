@@ -70,6 +70,8 @@ export function App() {
   const toggleRackView = useAppStore((s) => s.toggleRackView)
   const colorMode = useAppStore((s) => s.colorMode)
   const setColorMode = useAppStore((s) => s.setColorMode)
+  const hiddenStatuses = useAppStore((s) => s.hiddenStatuses)
+  const toggleHiddenStatus = useAppStore((s) => s.toggleHiddenStatus)
   const highlightedRoles = useAppStore((s) => s.highlightedRoles)
   const toggleHighlightedRole = useAppStore((s) => s.toggleHighlightedRole)
   const clearHighlightedRoles = useAppStore((s) => s.clearHighlightedRoles)
@@ -356,6 +358,8 @@ export function App() {
           onClearRoles={clearHighlightedRoles}
           specsMetric={specsHeatmapMetric}
           onSpecsMetric={setSpecsMetric}
+          hiddenStatuses={hiddenStatuses}
+          onToggleHiddenStatus={toggleHiddenStatus}
           powerVisible={powerVisible}
           onTogglePower={togglePower}
           connectivityVisible={connectivityVisible}

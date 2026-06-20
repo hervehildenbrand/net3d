@@ -342,6 +342,36 @@ describe('colorMode', () => {
   })
 })
 
+describe('hiddenStatuses', () => {
+  beforeEach(() => {
+    useAppStore.getState().zoomToMap()
+  })
+
+  test('initializes to an empty set (nothing filtered out)', () => {
+    expect(useAppStore.getState().hiddenStatuses.size).toBe(0)
+  })
+
+  test('toggleHiddenStatus hides a status, then shows it again', () => {
+    useAppStore.getState().toggleHiddenStatus('offline')
+    expect([...useAppStore.getState().hiddenStatuses]).toEqual(['offline'])
+    useAppStore.getState().toggleHiddenStatus('offline')
+    expect(useAppStore.getState().hiddenStatuses.size).toBe(0)
+  })
+
+  test('toggleHiddenStatus replaces the Set instance (immutable update)', () => {
+    const before = useAppStore.getState().hiddenStatuses
+    useAppStore.getState().toggleHiddenStatus('planned')
+    expect(useAppStore.getState().hiddenStatuses).not.toBe(before)
+  })
+
+  test('zoomToMap clears the filter', () => {
+    useAppStore.getState().zoomToSite('ams1')
+    useAppStore.getState().toggleHiddenStatus('offline')
+    useAppStore.getState().zoomToMap()
+    expect(useAppStore.getState().hiddenStatuses.size).toBe(0)
+  })
+})
+
 describe('specsHeatmapMetric', () => {
   beforeEach(() => {
     useAppStore.getState().zoomToMap()

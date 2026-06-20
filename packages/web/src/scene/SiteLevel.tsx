@@ -15,6 +15,7 @@ import { RoomPower } from './power'
 import { SiteDcLinks, type DcLink } from './dclinks'
 import { buildRoleMarkers, racksWithRole, type RoleMarker } from '../lib/roleHighlight'
 import { rackAggregate, specsColor } from '../lib/specsHeatmap'
+import { computeRackCapacity } from '../lib/rackCapacity'
 import type { HeatmapView } from './RackLevel'
 
 /** Hide individual rack labels once the camera is farther than span * this. */
@@ -227,6 +228,7 @@ export function SiteLevel({
   /** DC-links overlay on: render the labelled peer links radiating from the roof. */
   dcLinksVisible?: boolean
 }) {
+  const colorMode = useAppStore((s) => s.colorMode)
   const { placements, bounds } = useSiteLayout(racks)
   const size = {
     x: bounds.max.x - bounds.min.x,
@@ -257,6 +259,15 @@ export function SiteLevel({
     }
     return m
   }, [racks, heatmap])
+  // Capacity coloring reuses the same gradient/precedence slot: each rack tinted by
+  // its U-fill % (0→100). Mutually exclusive with the specs heatmap (single-select).
+  const capacityColorByRack = useMemo(() => {
+    if (colorMode !== 'capacity') return null
+    const m = new Map<string, string>()
+    for (const r of racks) m.set(r.id, specsColor(computeRackCapacity(r).fill * 100, 0, 100))
+    return m
+  }, [colorMode, racks])
+  const rackColors = heatColorByRack ?? capacityColorByRack
 
   return (
     <group visible={visible}>
@@ -289,7 +300,7 @@ export function SiteLevel({
           span={Math.max(size.x, size.z, 4)}
           highlightActive={highlightActive}
           matchedRackIds={matchedRackIds}
-          heatColorByRack={heatColorByRack}
+          heatColorByRack={rackColors}
           powerChainRackIds={powerChainRackIds}
         />
       )}

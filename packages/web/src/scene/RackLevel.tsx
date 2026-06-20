@@ -18,6 +18,8 @@ import type { NapalmInterface } from '../components/DevicePanel'
 import { theme } from '../theme'
 import { useAppStore } from '../store/useAppStore'
 import { specsColor, type SpecMetric } from '../lib/specsHeatmap'
+import { statusColor } from '../lib/statusColors'
+import { findEmptySlots } from '../lib/rackCapacity'
 import { RackCables } from './cables'
 import { RackPower } from './power'
 
@@ -67,6 +69,45 @@ function PortMarkers({ markers }: { markers: PortMarker[] }) {
   )
 }
 
+/** Translucent green boxes over the rack's free U spans, each labelled "NU free". */
+function CapacityMarkers({ rack, placement }: { rack: SiteRack; placement: RackPlacement }) {
+  const slots = useMemo(() => findEmptySlots(rack), [rack])
+  if (slots.length === 0) return null
+  return (
+    <>
+      {slots.map((slot) => {
+        const box = deviceTransform(placement, {
+          position: slot.start,
+          face: null,
+          uHeight: slot.size,
+          isFullDepth: true,
+        })
+        if (!box) return null
+        return (
+          <group key={slot.start}>
+            <mesh position={[box.x, box.y, box.z]} raycast={() => null}>
+              <boxGeometry args={[box.w, box.h, box.d]} />
+              <meshStandardMaterial
+                color="#16a34a"
+                emissive="#16a34a"
+                emissiveIntensity={0.25}
+                transparent
+                opacity={0.16}
+                depthWrite={false}
+              />
+            </mesh>
+            <Billboard position={[box.x + box.w / 2 + 0.06, box.y, box.z]}>
+              <Text fontSize={0.045} color="#15803d" anchorX="left" anchorY="middle">
+                {`${slot.size}U free`}
+              </Text>
+            </Billboard>
+          </group>
+        )
+      })}
+    </>
+  )
+}
+
 const tooltipStyle: React.CSSProperties = {
   pointerEvents: 'none',
   whiteSpace: 'nowrap',
@@ -111,6 +152,8 @@ export function RackLevel({
   const powerVisible = useAppStore((s) => s.powerVisible)
   const rackView = useAppStore((s) => s.rackView)
   const setHoveredDevice = useAppStore((s) => s.setHoveredDevice)
+  const colorMode = useAppStore((s) => s.colorMode)
+  const hiddenStatuses = useAppStore((s) => s.hiddenStatuses)
 
   // live cable coloring follows the selected device's interface states
   const selectedDevice = rack.devices.find((d) => d.id === selectedDeviceId)
@@ -137,6 +180,13 @@ export function RackLevel({
     [rack, placement],
   )
 
+  // Status filter (only while 'Color by: Status' is active): drop devices whose
+  // status the user has hidden, so other modes never have devices silently vanish.
+  const visibleDevices = useMemo<PlacedDevice[]>(() => {
+    if (colorMode !== 'status' || hiddenStatuses.size === 0) return placed
+    return placed.filter((p) => !hiddenStatuses.has(p.device.status.toLowerCase()))
+  }, [placed, colorMode, hiddenStatuses])
+
   // Port studs sit on the rear face where cabling lands, so they only read in the
   // rear (cabling) view; skip them in front view to avoid overhead and z-fighting.
   // Each device's slots come from the same helper the cables use, so they align.
@@ -144,7 +194,7 @@ export function RackLevel({
     if (rackView !== 'rear' || powerVisible) return []
     const cableById = new Map(cables.map((c) => [c.id, c]))
     const out: PortMarker[] = []
-    for (const { device, box } of placed) {
+    for (const { device, box } of visibleDevices) {
       const links = getCablesForDevice(cables, device.name)
       const slots = portSlotLayout(box, portNamesFromLinks(links))
       const mediumByIface = new Map<string, string>()
@@ -161,7 +211,7 @@ export function RackLevel({
       }
     }
     return out
-  }, [placed, cables, rackView, powerVisible])
+  }, [visibleDevices, cables, rackView, powerVisible])
 
   return (
     <group visible={visible}>
@@ -180,7 +230,7 @@ export function RackLevel({
         <Edges color={theme.scene.rackShellEdges} />
       </mesh>
 
-      {placed.map(({ device, box }) => {
+      {visibleDevices.map(({ device, box }) => {
         const active = device.id === selectedDeviceId
         const hover = device.id === hovered
         // emphasize the devices facing the current camera side; dim the rest,
@@ -193,10 +243,14 @@ export function RackLevel({
         const dimmed =
           !active && !hover && (highlightActive ? !roleMatch : !matchesView)
         const emphasized = highlightActive && roleMatch && !active && !hover
-        // heatmap recolors the box (orthogonal to the role-highlight dim/emphasis)
-        const boxColor = heatmap
-          ? specsColor(device.specs?.[heatmap.metric], heatmap.min, heatmap.max)
-          : `#${device.roleColor}`
+        // box color follows the active 'Color by': status hue, specs heatmap, or
+        // the device's role color (orthogonal to the role-highlight dim/emphasis).
+        const boxColor =
+          colorMode === 'status'
+            ? statusColor(device.status)
+            : heatmap
+              ? specsColor(device.specs?.[heatmap.metric], heatmap.min, heatmap.max)
+              : `#${device.roleColor}`
         return (
           <group key={device.id}>
             <mesh
@@ -248,7 +302,7 @@ export function RackLevel({
       })}
 
       {(() => {
-        const hp = placed.find((p) => p.device.id === hovered)
+        const hp = visibleDevices.find((p) => p.device.id === hovered)
         if (!hp) return null
         const d = hp.device
         return (
@@ -271,6 +325,8 @@ export function RackLevel({
       })()}
 
       {portMarkers.length > 0 && <PortMarkers markers={portMarkers} />}
+
+      {colorMode === 'capacity' && <CapacityMarkers rack={rack} placement={placement} />}
 
       <RackCables
         rack={rack}

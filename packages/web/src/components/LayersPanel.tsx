@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { availableMetrics, type SpecMetric } from '../lib/specsHeatmap'
 import { collectSiteRoles } from '../lib/roleHighlight'
+import { collectStatuses, statusColor } from '../lib/statusColors'
 import type { SiteRack } from '../hooks/useSiteDetail'
 import type { ColorMode, ViewLevel } from '../store/useAppStore'
 import { theme } from '../theme'
@@ -67,6 +68,24 @@ const divider: React.CSSProperties = {
   margin: '8px 0',
 }
 
+const clearBtn: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  color: theme.hud.accent,
+  cursor: 'pointer',
+  fontSize: 12,
+  fontFamily: 'inherit',
+  padding: 0,
+}
+
+const swatchBox: React.CSSProperties = {
+  width: 12,
+  height: 12,
+  borderRadius: 3,
+  flexShrink: 0,
+  display: 'inline-block',
+}
+
 interface ColorOption {
   mode: ColorMode
   label: string
@@ -89,6 +108,8 @@ export function LayersPanel({
   onClearRoles,
   specsMetric,
   onSpecsMetric,
+  hiddenStatuses,
+  onToggleHiddenStatus,
   powerVisible,
   onTogglePower,
   connectivityVisible,
@@ -108,6 +129,8 @@ export function LayersPanel({
   onClearRoles: () => void
   specsMetric: SpecMetric | null
   onSpecsMetric: (metric: SpecMetric | null) => void
+  hiddenStatuses: Set<string>
+  onToggleHiddenStatus: (status: string) => void
   powerVisible: boolean
   onTogglePower: () => void
   connectivityVisible: boolean
@@ -118,11 +141,15 @@ export function LayersPanel({
   const specsRacks = metricRacks ?? racks
   const roles = useMemo(() => collectSiteRoles(racks), [racks])
   const metrics = useMemo(() => availableMetrics(specsRacks), [specsRacks])
+  const statuses = useMemo(() => collectStatuses(racks), [racks])
 
-  // Only offer dimensions whose data is present in this site.
+  // Only offer dimensions whose data is present at this level.
   const colorOptions: ColorOption[] = [{ mode: 'none', label: 'None' }]
   if (roles.length > 0) colorOptions.push({ mode: 'role', label: 'Role' })
   if (metrics.length > 0) colorOptions.push({ mode: 'specs', label: 'Specs' })
+  colorOptions.push({ mode: 'capacity', label: 'Capacity' })
+  // Status is per-device, so it only colors the rack view's device boxes.
+  if (level === 'rack' && statuses.length > 0) colorOptions.push({ mode: 'status', label: 'Status' })
 
   const selectColor = (mode: ColorMode) => {
     // Entering Specs with no metric chosen yet lands on the first available one,
@@ -158,6 +185,45 @@ export function LayersPanel({
       {colorMode === 'specs' && (
         <div style={{ marginTop: 6 }}>
           <SpecsHeatmapLegend racks={specsRacks} metric={specsMetric} onSelect={onSpecsMetric} embedded />
+        </div>
+      )}
+      {colorMode === 'capacity' && (
+        <div style={{ marginTop: 8 }}>
+          <div
+            style={{
+              height: 10,
+              borderRadius: 3,
+              background: `linear-gradient(to right, ${theme.heatmap.low}, ${theme.heatmap.mid}, ${theme.heatmap.high})`,
+            }}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: theme.text.muted, fontSize: 11, marginTop: 2 }}>
+            <span>empty</span>
+            <span>full</span>
+          </div>
+          <div style={{ color: theme.text.muted, fontSize: 11, marginTop: 6 }}>
+            {level === 'rack' ? 'free U spans marked in the rack' : 'racks tinted by U-fill'}
+          </div>
+        </div>
+      )}
+      {colorMode === 'status' && (
+        <div style={{ marginTop: 6 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <span style={{ color: theme.text.muted, fontSize: 11 }}>click to hide a status</span>
+            {hiddenStatuses.size > 0 && (
+              <button onClick={() => statuses.forEach((s) => hiddenStatuses.has(s) && onToggleHiddenStatus(s))} style={clearBtn}>
+                show all
+              </button>
+            )}
+          </div>
+          {statuses.map((s) => {
+            const hidden = hiddenStatuses.has(s)
+            return (
+              <button key={s} onClick={() => onToggleHiddenStatus(s)} style={{ ...optionRow, opacity: hidden ? 0.4 : 1 }}>
+                <span style={{ ...swatchBox, background: statusColor(s) }} />
+                <span style={{ flex: 1, color: theme.text.primary, textDecoration: hidden ? 'line-through' : 'none' }}>{s}</span>
+              </button>
+            )
+          })}
         </div>
       )}
 
