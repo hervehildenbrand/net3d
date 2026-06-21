@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import {
   SITE_LAYOUT_VERSION,
+  validateLayoutInput,
   type FloorDimensions,
   type LayoutRoom,
   type RackPlacement,
@@ -160,13 +161,22 @@ export function EditToolbar({
     if (!file) return
     try {
       const parsed = JSON.parse(await file.text()) as Partial<SiteLayout>
-      if (!Array.isArray(parsed.racks) || !Array.isArray(parsed.rooms)) throw new Error('shape')
-      importLayout({
-        version: SITE_LAYOUT_VERSION,
-        updatedAt: parsed.updatedAt ?? new Date().toISOString(),
+      const payload = {
         racks: parsed.racks,
         rooms: parsed.rooms,
         floor: parsed.floor ?? null,
+      }
+      const invalid = validateLayoutInput(payload)
+      if (invalid) {
+        window.alert(`Could not import: ${invalid}.`)
+        return
+      }
+      importLayout({
+        version: SITE_LAYOUT_VERSION,
+        updatedAt: parsed.updatedAt ?? new Date().toISOString(),
+        racks: payload.racks!,
+        rooms: payload.rooms!,
+        floor: payload.floor,
       })
     } catch {
       window.alert('Could not import: not a valid layout JSON file.')

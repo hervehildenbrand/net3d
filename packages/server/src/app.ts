@@ -3,7 +3,7 @@ import fastifyStatic from '@fastify/static'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import { timingSafeEqual } from 'node:crypto'
-import { groupCircuitsBySitePair, SITE_LAYOUT_VERSION, type SiteLayout } from '@net3d/shared'
+import { groupCircuitsBySitePair, SITE_LAYOUT_VERSION, validateLayoutInput, type SiteLayout } from '@net3d/shared'
 import { TtlCache } from './cache'
 import { NapalmUnreachableError } from './netbox'
 import type { SoTClient } from './sot/client'
@@ -52,37 +52,6 @@ export interface AppDeps {
   layoutStore?: LayoutStore
   /** Gate for layout writes. Off (default) keeps the read-only posture: PUT/DELETE → 403. */
   layoutEditable?: boolean
-}
-
-/** Hand-validate a PUT /api/layouts body (no extra deps, matching the repo style). */
-function validateLayoutBody(body: unknown): string | null {
-  if (typeof body !== 'object' || body === null) return 'body must be an object'
-  const b = body as Record<string, unknown>
-  if (!Array.isArray(b.racks)) return 'racks must be an array'
-  for (const r of b.racks) {
-    if (typeof r !== 'object' || r === null) return 'each rack must be an object'
-    const rk = r as Record<string, unknown>
-    if (typeof rk.rackId !== 'string') return 'rack.rackId must be a string'
-    if (typeof rk.x !== 'number' || typeof rk.z !== 'number') return 'rack.x and rack.z must be numbers'
-    if (![0, 90, 180, 270].includes(rk.rotationDeg as number)) return 'rack.rotationDeg must be 0/90/180/270'
-  }
-  if (!Array.isArray(b.rooms)) return 'rooms must be an array'
-  for (const room of b.rooms) {
-    if (typeof room !== 'object' || room === null) return 'each room must be an object'
-    const rm = room as Record<string, unknown>
-    if (typeof rm.id !== 'string' || typeof rm.name !== 'string') return 'room.id and room.name must be strings'
-    if (typeof rm.bounds !== 'object' || rm.bounds === null) return 'room.bounds must be an object'
-    const bd = rm.bounds as Record<string, unknown>
-    if (['x', 'z', 'width', 'depth'].some((k) => typeof bd[k] !== 'number')) {
-      return 'room.bounds needs numeric x/z/width/depth'
-    }
-  }
-  if (b.floor !== null && b.floor !== undefined) {
-    if (typeof b.floor !== 'object') return 'floor must be an object or null'
-    const f = b.floor as Record<string, unknown>
-    if (typeof f.width !== 'number' || typeof f.depth !== 'number') return 'floor.width and floor.depth must be numbers'
-  }
-  return null
 }
 
 // SWR-served payloads worth persisting. napalm:* is live device state with a short
@@ -298,7 +267,7 @@ export function buildApp({
 
       app.put<{ Params: { site: string }; Body: unknown }>('/api/layouts/:site', async (req, reply) => {
         if (!layoutEditable) return reply.code(403).send({ error: 'layout_readonly' })
-        const invalid = validateLayoutBody(req.body)
+        const invalid = validateLayoutInput(req.body)
         if (invalid) return reply.code(400).send({ error: 'invalid_payload', detail: invalid })
         const body = req.body as Pick<SiteLayout, 'racks' | 'rooms' | 'floor'>
         // Server stamps version + updatedAt authoritatively.

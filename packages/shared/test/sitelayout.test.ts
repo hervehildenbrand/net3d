@@ -3,6 +3,7 @@ import { computeRackLayout, RACK_DEPTH_M, RACK_WIDTH_M, type RackForLayout } fro
 import {
   applyLayoutOverrides,
   SITE_LAYOUT_VERSION,
+  validateLayoutInput,
   type SiteLayout,
 } from '../src/sitelayout'
 
@@ -94,5 +95,54 @@ describe('applyLayoutOverrides', () => {
     expect(result.bounds.min.x).toBeCloseTo(-25, 6)
     expect(result.bounds.max.z).toBeCloseTo(15, 6)
     expect(result.bounds.min.z).toBeCloseTo(-15, 6)
+  })
+
+  test('a floor with no racks still produces a non-degenerate height', () => {
+    const result = applyLayoutOverrides([], layout({ floor: { width: 10, depth: 10 } }))
+    expect(result.bounds.max.y).toBeGreaterThan(result.bounds.min.y)
+    expect(result.bounds.max.y).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('validateLayoutInput', () => {
+  const ok = { racks: [{ rackId: 'A1', x: 1, z: 2, rotationDeg: 90 }], rooms: [], floor: null }
+
+  test('accepts a well-formed payload', () => {
+    expect(validateLayoutInput(ok)).toBeNull()
+    expect(validateLayoutInput({ ...ok, floor: { width: 10, depth: 5 } })).toBeNull()
+    expect(
+      validateLayoutInput({
+        ...ok,
+        rooms: [{ id: 'r', name: 'R', bounds: { x: 0, z: 0, width: 2, depth: 2 } }],
+      }),
+    ).toBeNull()
+  })
+
+  test('rejects non-objects and missing arrays', () => {
+    expect(validateLayoutInput(null)).not.toBeNull()
+    expect(validateLayoutInput({ racks: 'no', rooms: [], floor: null })).not.toBeNull()
+    expect(validateLayoutInput({ racks: [], rooms: 'no', floor: null })).not.toBeNull()
+  })
+
+  test('rejects rack overrides with non-finite coordinates', () => {
+    expect(validateLayoutInput({ ...ok, racks: [{ rackId: 'A1', x: NaN, z: 0, rotationDeg: 0 }] })).not.toBeNull()
+    expect(validateLayoutInput({ ...ok, racks: [{ rackId: 'A1', x: Infinity, z: 0, rotationDeg: 0 }] })).not.toBeNull()
+    expect(validateLayoutInput({ ...ok, racks: [{ rackId: 'A1', z: 0, rotationDeg: 0 }] })).not.toBeNull()
+  })
+
+  test('rejects invalid rotationDeg', () => {
+    expect(validateLayoutInput({ ...ok, racks: [{ rackId: 'A1', x: 0, z: 0, rotationDeg: 45 }] })).not.toBeNull()
+  })
+
+  test('rejects rooms with non-finite bounds', () => {
+    expect(
+      validateLayoutInput({ ...ok, rooms: [{ id: 'r', name: 'R', bounds: { x: NaN, z: 0, width: 1, depth: 1 } }] }),
+    ).not.toBeNull()
+  })
+
+  test('rejects floors that are not positive and finite', () => {
+    expect(validateLayoutInput({ ...ok, floor: { width: 0, depth: 5 } })).not.toBeNull()
+    expect(validateLayoutInput({ ...ok, floor: { width: -1, depth: 5 } })).not.toBeNull()
+    expect(validateLayoutInput({ ...ok, floor: { width: Infinity, depth: 5 } })).not.toBeNull()
   })
 })

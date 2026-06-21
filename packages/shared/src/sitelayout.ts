@@ -69,8 +69,50 @@ export interface AppliedLayout {
 function boundsFromFloor(floor: FloorDimensions, placements: RackPlacement[]): Bounds {
   const hw = floor.width / 2
   const hd = floor.depth / 2
+  // Keep a sane shell height even when a floor is saved for a site with no racks.
   const maxH = placements.reduce((m, p) => Math.max(m, p.height), 0)
-  return { min: { x: -hw, y: 0, z: -hd }, max: { x: hw, y: maxH + 1, z: hd } }
+  return { min: { x: -hw, y: 0, z: -hd }, max: { x: hw, y: Math.max(maxH + 1, 2), z: hd } }
+}
+
+/**
+ * Validate an untrusted layout payload (the editable {racks, rooms, floor} shape)
+ * before persisting or applying it. Returns an error string, or null if valid.
+ * Shared by the server PUT handler and the client JSON-import path so both reject
+ * the same malformed input (NaN/Infinity coordinates, bad rotation, etc.).
+ */
+export function validateLayoutInput(body: unknown): string | null {
+  if (typeof body !== 'object' || body === null) return 'body must be an object'
+  const b = body as Record<string, unknown>
+
+  if (!Array.isArray(b.racks)) return 'racks must be an array'
+  for (const r of b.racks) {
+    if (typeof r !== 'object' || r === null) return 'each rack must be an object'
+    const rk = r as Record<string, unknown>
+    if (typeof rk.rackId !== 'string') return 'rack.rackId must be a string'
+    if (!Number.isFinite(rk.x) || !Number.isFinite(rk.z)) return 'rack.x and rack.z must be finite numbers'
+    if (![0, 90, 180, 270].includes(rk.rotationDeg as number)) return 'rack.rotationDeg must be 0/90/180/270'
+  }
+
+  if (!Array.isArray(b.rooms)) return 'rooms must be an array'
+  for (const room of b.rooms) {
+    if (typeof room !== 'object' || room === null) return 'each room must be an object'
+    const rm = room as Record<string, unknown>
+    if (typeof rm.id !== 'string' || typeof rm.name !== 'string') return 'room.id and room.name must be strings'
+    if (typeof rm.bounds !== 'object' || rm.bounds === null) return 'room.bounds must be an object'
+    const bd = rm.bounds as Record<string, unknown>
+    if (!['x', 'z', 'width', 'depth'].every((k) => Number.isFinite(bd[k]))) {
+      return 'room.bounds needs finite x/z/width/depth'
+    }
+  }
+
+  if (b.floor !== null && b.floor !== undefined) {
+    if (typeof b.floor !== 'object') return 'floor must be an object or null'
+    const f = b.floor as Record<string, unknown>
+    if (!Number.isFinite(f.width) || (f.width as number) <= 0) return 'floor.width must be a positive number'
+    if (!Number.isFinite(f.depth) || (f.depth as number) <= 0) return 'floor.depth must be a positive number'
+  }
+
+  return null
 }
 
 function expandBoundsForRooms(bounds: Bounds, rooms: LayoutRoom[]): Bounds {
