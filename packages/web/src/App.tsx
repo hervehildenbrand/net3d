@@ -92,6 +92,7 @@ export function App() {
   // Raw saved layout (rooms + floor) to seed the editor when entering edit mode.
   const { data: savedLayout } = useSiteLayoutQuery(level !== 'map' ? selectedSiteName : null)
   const editModeActive = useEditStore((s) => s.editModeActive)
+  const editDirty = useEditStore((s) => s.dirty)
   const exitEditMode = useEditStore((s) => s.exitEditMode)
   const selectedRack = siteDetail?.racks.find((r) => r.id === selectedRackId)
   const selectedPlacement = placements.find((p) => p.rackId === selectedRackId)
@@ -429,9 +430,11 @@ export function App() {
 
       {level !== 'map' && (
         <button
-          onClick={() =>
+          onClick={() => {
+            // Guard against silently dropping unsaved layout edits on navigate-away.
+            if (editModeActive && editDirty && !window.confirm('Discard unsaved layout changes?')) return
             level === 'rack' && selectedSiteName ? zoomToSite(selectedSiteName) : zoomToMap()
-          }
+          }}
           style={{
             ...hudStyle,
             top: 56,

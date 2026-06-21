@@ -1,5 +1,11 @@
-import { useEffect } from 'react'
-import type { FloorDimensions, LayoutRoom, RackPlacement } from '@net3d/shared'
+import { useEffect, useRef } from 'react'
+import {
+  SITE_LAYOUT_VERSION,
+  type FloorDimensions,
+  type LayoutRoom,
+  type RackPlacement,
+  type SiteLayout,
+} from '@net3d/shared'
 import { useEditStore } from '../store/useEditStore'
 import { useLayoutEditable, useSaveLayout } from '../hooks/useSiteLayout'
 
@@ -74,7 +80,10 @@ export function EditToolbar({
   const setFloor = useEditStore((s) => s.setFloor)
   const buildLayoutPayload = useEditStore((s) => s.buildLayoutPayload)
   const markSaved = useEditStore((s) => s.markSaved)
+  const revert = useEditStore((s) => s.revert)
+  const importLayout = useEditStore((s) => s.importLayout)
   const save = useSaveLayout()
+  const fileInput = useRef<HTMLInputElement>(null)
 
   // 'R' rotates the selected rack while editing (ignored in text inputs).
   useEffect(() => {
@@ -88,6 +97,17 @@ export function EditToolbar({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [editModeActive, rotateSelected])
+
+  // Warn before a tab close / reload drops unsaved layout edits.
+  useEffect(() => {
+    if (!editModeActive || !dirty) return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [editModeActive, dirty])
 
   if (!editable) return null
 
@@ -108,6 +128,50 @@ export function EditToolbar({
 
   const onSave = () =>
     save.mutate({ siteName, layout: buildLayoutPayload() }, { onSuccess: () => markSaved() })
+
+  const onDone = () => {
+    if (dirty && !window.confirm('Discard unsaved layout changes?')) return
+    exitEditMode()
+  }
+
+  const onRevert = () => {
+    if (!dirty || !window.confirm('Discard unsaved layout changes?')) return
+    revert()
+  }
+
+  const onExport = () => {
+    const layout: SiteLayout = {
+      version: SITE_LAYOUT_VERSION,
+      updatedAt: new Date().toISOString(),
+      ...buildLayoutPayload(),
+    }
+    const blob = new Blob([JSON.stringify(layout, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${siteName}-layout.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-importing the same file
+    if (!file) return
+    try {
+      const parsed = JSON.parse(await file.text()) as Partial<SiteLayout>
+      if (!Array.isArray(parsed.racks) || !Array.isArray(parsed.rooms)) throw new Error('shape')
+      importLayout({
+        version: SITE_LAYOUT_VERSION,
+        updatedAt: parsed.updatedAt ?? new Date().toISOString(),
+        racks: parsed.racks,
+        rooms: parsed.rooms,
+        floor: parsed.floor ?? null,
+      })
+    } catch {
+      window.alert('Could not import: not a valid layout JSON file.')
+    }
+  }
 
   return (
     <div style={bar}>
@@ -179,7 +243,23 @@ export function EditToolbar({
       <button style={{ ...btn, opacity: !dirty || save.isPending ? 0.5 : 1 }} onClick={onSave} disabled={!dirty || save.isPending}>
         {save.isPending ? 'saving…' : 'save'}
       </button>
-      <button style={btn} onClick={exitEditMode}>
+      <button style={{ ...btn, opacity: dirty ? 1 : 0.5 }} onClick={onRevert} disabled={!dirty} title="Discard unsaved changes">
+        revert
+      </button>
+      <button style={btn} onClick={onExport} title="Download this layout as JSON">
+        export
+      </button>
+      <button style={btn} onClick={() => fileInput.current?.click()} title="Load a layout from a JSON file">
+        import
+      </button>
+      <input
+        ref={fileInput}
+        type="file"
+        accept="application/json,.json"
+        onChange={onImportFile}
+        style={{ display: 'none' }}
+      />
+      <button style={btn} onClick={onDone}>
         done
       </button>
       {save.isError && <span style={{ color: '#b91c1c' }}>save failed</span>}

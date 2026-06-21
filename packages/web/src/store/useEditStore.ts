@@ -38,6 +38,8 @@ interface EditState {
   floor: FloorDimensions | null
   /** Live CameraControls handle so a drag can disable orbit while moving a rack. */
   cameraControlsRef: { current: CameraControls | null } | null
+  /** Snapshot of the last-saved (or seeded) state that revert() restores. */
+  seed: { placements: RackPlacement[]; rooms: LayoutRoom[]; floor: FloorDimensions | null }
 
   enterEditMode: (placements: RackPlacement[], rooms?: LayoutRoom[], floor?: FloorDimensions | null) => void
   exitEditMode: () => void
@@ -58,6 +60,10 @@ interface EditState {
   markDirty: () => void
   /** Clear dirty after a successful save (working copy becomes the new baseline). */
   markSaved: () => void
+  /** Discard unsaved edits, restoring the last-saved/seeded working copy. */
+  revert: () => void
+  /** Replace the working copy from an imported layout, overlaid on current racks. */
+  importLayout: (layout: SiteLayout) => void
   /** Build the PUT payload from the current working copy. */
   buildLayoutPayload: () => LayoutPayload
 }
@@ -77,6 +83,7 @@ export const useEditStore = create<EditState>((set, get) => ({
   workingRooms: [],
   floor: null,
   cameraControlsRef: null,
+  seed: { placements: [], rooms: [], floor: null },
 
   enterEditMode: (placements, rooms = [], floor = null) => {
     // Freeze the distance-driven nav machine for the whole edit session so drags
@@ -88,6 +95,7 @@ export const useEditStore = create<EditState>((set, get) => ({
       workingPlacements: placements.map((p) => ({ ...p })),
       workingRooms: rooms.map((r) => ({ ...r })),
       floor,
+      seed: { placements: placements.map((p) => ({ ...p })), rooms: rooms.map((r) => ({ ...r })), floor },
       dirty: false,
       selectedRackId: null,
       selectedRoomId: null,
@@ -167,7 +175,49 @@ export const useEditStore = create<EditState>((set, get) => ({
   toggleTopDownView: () => set((s) => ({ topDownView: !s.topDownView })),
   setCameraControlsRef: (ref) => set({ cameraControlsRef: ref }),
   markDirty: () => set({ dirty: true }),
-  markSaved: () => set({ dirty: false }),
+  markSaved: () =>
+    set((s) => ({
+      dirty: false,
+      // the saved working copy becomes the new revert baseline
+      seed: {
+        placements: s.workingPlacements.map((p) => ({ ...p })),
+        rooms: s.workingRooms.map((r) => ({ ...r })),
+        floor: s.floor,
+      },
+    })),
+  revert: () =>
+    set((s) => ({
+      workingPlacements: s.seed.placements.map((p) => ({ ...p })),
+      workingRooms: s.seed.rooms.map((r) => ({ ...r })),
+      floor: s.seed.floor,
+      dirty: false,
+      selectedRackId: null,
+      selectedRoomId: null,
+      addRoomMode: false,
+    })),
+  importLayout: (layout) =>
+    set((s) => {
+      const overrides = new Map(layout.racks.map((o) => [o.rackId, o]))
+      const workingPlacements = s.workingPlacements.map((p) => {
+        const o = overrides.get(p.rackId)
+        if (!o) return p
+        const fp = rotatedFootprint(
+          p.rotationDeg === 90 || p.rotationDeg === 270 ? p.depth : p.width,
+          p.rotationDeg === 90 || p.rotationDeg === 270 ? p.width : p.depth,
+          o.rotationDeg,
+        )
+        return { ...p, x: o.x, z: o.z, rotationDeg: o.rotationDeg, width: fp.width, depth: fp.depth }
+      })
+      return {
+        workingPlacements,
+        workingRooms: layout.rooms.map((r) => ({ ...r })),
+        floor: layout.floor,
+        dirty: true,
+        selectedRackId: null,
+        selectedRoomId: null,
+        addRoomMode: false,
+      }
+    }),
 
   buildLayoutPayload: () => {
     const { workingPlacements, workingRooms, floor } = get()

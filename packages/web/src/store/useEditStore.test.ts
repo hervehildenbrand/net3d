@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest'
-import type { RackPlacement } from '@net3d/shared'
+import { SITE_LAYOUT_VERSION, type RackPlacement } from '@net3d/shared'
 import { useEditStore } from './useEditStore'
 import { useAppStore } from './useAppStore'
 
@@ -174,6 +174,51 @@ describe('useEditStore', () => {
       )
     expect(useEditStore.getState().workingRooms).toHaveLength(1)
     expect(useEditStore.getState().floor).toEqual({ width: 40, depth: 25 })
+  })
+
+  test('revert restores the working copy to the seed and clears dirty', () => {
+    useEditStore.getState().enterEditMode([placement('A1', 0, 0)])
+    useEditStore.getState().updateRackPosition('A1', 5, 5)
+    useEditStore.getState().commitRoom({ x: 0, z: 0, width: 2, depth: 2 })
+    useEditStore.getState().setFloor({ width: 9, depth: 9 })
+    useEditStore.getState().revert()
+    const p = useEditStore.getState().workingPlacements.find((p) => p.rackId === 'A1')!
+    expect(p.x).toBeCloseTo(0, 6)
+    expect(p.z).toBeCloseTo(0, 6)
+    expect(useEditStore.getState().workingRooms).toEqual([])
+    expect(useEditStore.getState().floor).toBeNull()
+    expect(useEditStore.getState().dirty).toBe(false)
+  })
+
+  test('revert returns to the last saved baseline, not the original', () => {
+    useEditStore.getState().enterEditMode([placement('A1', 0, 0)])
+    useEditStore.getState().updateRackPosition('A1', 5, 5)
+    useEditStore.getState().markSaved()
+    useEditStore.getState().updateRackPosition('A1', 7, 7)
+    useEditStore.getState().revert()
+    const p = useEditStore.getState().workingPlacements.find((p) => p.rackId === 'A1')!
+    expect(p.x).toBeCloseTo(5, 6)
+    expect(useEditStore.getState().dirty).toBe(false)
+  })
+
+  test('importLayout overlays imported overrides onto the current racks', () => {
+    useEditStore.getState().enterEditMode([placement('A1', 1, 1), placement('A2', 2, 2)])
+    useEditStore.getState().importLayout({
+      version: SITE_LAYOUT_VERSION,
+      updatedAt: '2026-06-21T00:00:00.000Z',
+      racks: [{ rackId: 'A1', x: 9, z: 9, rotationDeg: 90 }],
+      rooms: [{ id: 'r', name: 'R', bounds: { x: 0, z: 0, width: 2, depth: 2 } }],
+      floor: { width: 10, depth: 10 },
+    })
+    const a1 = useEditStore.getState().workingPlacements.find((p) => p.rackId === 'A1')!
+    const a2 = useEditStore.getState().workingPlacements.find((p) => p.rackId === 'A2')!
+    expect(a1.x).toBeCloseTo(9, 6)
+    expect(a1.rotationDeg).toBe(90)
+    expect(a1.width).toBeCloseTo(1.2, 6) // footprint swapped
+    expect(a2.x).toBeCloseTo(2, 6) // not in import → unchanged
+    expect(useEditStore.getState().workingRooms).toHaveLength(1)
+    expect(useEditStore.getState().floor).toEqual({ width: 10, depth: 10 })
+    expect(useEditStore.getState().dirty).toBe(true)
   })
 
   test('exitEditMode clears room and floor working state', () => {
