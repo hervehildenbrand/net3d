@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import type { RackPlacement } from '@net3d/shared'
+import type { FloorDimensions, LayoutRoom, RackPlacement } from '@net3d/shared'
 import { useEditStore } from '../store/useEditStore'
 import { useLayoutEditable, useSaveLayout } from '../hooks/useSiteLayout'
 
@@ -44,7 +44,17 @@ const GRID_OPTIONS = [
  * Floor-plan editor toolbar (site level). Hidden entirely unless the server
  * advertises layoutEditable, so the default read-only deploy shows nothing.
  */
-export function EditToolbar({ siteName, placements }: { siteName: string; placements: RackPlacement[] }) {
+export function EditToolbar({
+  siteName,
+  placements,
+  rooms,
+  floor,
+}: {
+  siteName: string
+  placements: RackPlacement[]
+  rooms: LayoutRoom[]
+  floor: FloorDimensions | null
+}) {
   const editable = useLayoutEditable()
   const editModeActive = useEditStore((s) => s.editModeActive)
   const enterEditMode = useEditStore((s) => s.enterEditMode)
@@ -56,6 +66,12 @@ export function EditToolbar({ siteName, placements }: { siteName: string; placem
   const toggleTopDownView = useEditStore((s) => s.toggleTopDownView)
   const selectedRackId = useEditStore((s) => s.selectedRackId)
   const rotateSelected = useEditStore((s) => s.rotateSelected)
+  const addRoomMode = useEditStore((s) => s.addRoomMode)
+  const setAddRoomMode = useEditStore((s) => s.setAddRoomMode)
+  const selectedRoomId = useEditStore((s) => s.selectedRoomId)
+  const deleteSelectedRoom = useEditStore((s) => s.deleteSelectedRoom)
+  const workingFloor = useEditStore((s) => s.floor)
+  const setFloor = useEditStore((s) => s.setFloor)
   const buildLayoutPayload = useEditStore((s) => s.buildLayoutPayload)
   const markSaved = useEditStore((s) => s.markSaved)
   const save = useSaveLayout()
@@ -77,10 +93,17 @@ export function EditToolbar({ siteName, placements }: { siteName: string; placem
 
   if (!editModeActive) {
     return (
-      <button style={{ ...bar, ...btn }} onClick={() => enterEditMode(placements)}>
+      <button style={{ ...bar, ...btn }} onClick={() => enterEditMode(placements, rooms, floor)}>
         ✎ Edit layout
       </button>
     )
+  }
+
+  const onFloorChange = (key: 'width' | 'depth', raw: string) => {
+    const v = parseFloat(raw)
+    const base = workingFloor ?? { width: 20, depth: 20 }
+    if (!Number.isFinite(v) || v <= 0) return
+    setFloor({ ...base, [key]: v })
   }
 
   const onSave = () =>
@@ -111,6 +134,45 @@ export function EditToolbar({ siteName, placements }: { siteName: string; placem
       >
         rotate
       </button>
+      <button
+        style={addRoomMode ? activeBtn : btn}
+        onClick={() => setAddRoomMode(!addRoomMode)}
+        title="Draw a room/zone rectangle on the floor"
+      >
+        {addRoomMode ? 'drawing…' : 'add room'}
+      </button>
+      {selectedRoomId && (
+        <button style={btn} onClick={deleteSelectedRoom} title="Delete the selected room">
+          delete room
+        </button>
+      )}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="Explicit floor size (blank = auto-fit)">
+        floor
+        <input
+          type="number"
+          min={1}
+          step={1}
+          placeholder="W"
+          value={workingFloor?.width ?? ''}
+          onChange={(e) => onFloorChange('width', e.target.value)}
+          style={{ ...btn, width: 52, padding: '4px 6px' }}
+        />
+        ×
+        <input
+          type="number"
+          min={1}
+          step={1}
+          placeholder="D"
+          value={workingFloor?.depth ?? ''}
+          onChange={(e) => onFloorChange('depth', e.target.value)}
+          style={{ ...btn, width: 52, padding: '4px 6px' }}
+        />
+        {workingFloor && (
+          <button style={{ ...btn, padding: '4px 6px' }} onClick={() => setFloor(null)} title="Auto-fit floor">
+            auto
+          </button>
+        )}
+      </label>
       <button style={topDownView ? activeBtn : btn} onClick={toggleTopDownView}>
         {topDownView ? 'top-down ✓' : 'top-down'}
       </button>

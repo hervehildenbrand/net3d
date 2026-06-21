@@ -6,6 +6,7 @@ import {
   type FloorDimensions,
   type LayoutRoom,
   type RackPlacement,
+  type RoomRect,
   type Rotation,
   type SiteLayout,
 } from '@net3d/shared'
@@ -19,6 +20,10 @@ interface EditState {
   editModeActive: boolean
   /** Rack selected for manipulation (rotate/inspect); null = none. */
   selectedRackId: string | null
+  /** Drawing a room rectangle (clicks on the floor rubber-band a zone). */
+  addRoomMode: boolean
+  /** Room selected for deletion; null = none. */
+  selectedRoomId: string | null
   /** Snap pitch in meters; 0 = free placement. */
   gridSnap: number
   /** Look straight down for 2D-style placement. */
@@ -40,6 +45,13 @@ interface EditState {
   updateRackPosition: (rackId: string, x: number, z: number) => void
   /** Rotate the selected rack +90deg, swapping its footprint for 90/270. */
   rotateSelected: () => void
+  setAddRoomMode: (on: boolean) => void
+  selectRoom: (roomId: string | null) => void
+  /** Add a room from a drawn rectangle and leave add-room mode. */
+  commitRoom: (bounds: RoomRect) => void
+  deleteSelectedRoom: () => void
+  /** Set explicit floor dimensions, or null to auto-fit to racks + rooms. */
+  setFloor: (floor: FloorDimensions | null) => void
   setGridSnap: (meters: number) => void
   toggleTopDownView: () => void
   setCameraControlsRef: (ref: { current: CameraControls | null } | null) => void
@@ -50,9 +62,14 @@ interface EditState {
   buildLayoutPayload: () => LayoutPayload
 }
 
+// Monotonic id source for drawn rooms (unique within a session is enough).
+let roomSeq = 0
+
 export const useEditStore = create<EditState>((set, get) => ({
   editModeActive: false,
   selectedRackId: null,
+  addRoomMode: false,
+  selectedRoomId: null,
   gridSnap: 0.25,
   topDownView: false,
   dirty: false,
@@ -73,6 +90,8 @@ export const useEditStore = create<EditState>((set, get) => ({
       floor,
       dirty: false,
       selectedRackId: null,
+      selectedRoomId: null,
+      addRoomMode: false,
       topDownView: false,
     })
   },
@@ -86,11 +105,13 @@ export const useEditStore = create<EditState>((set, get) => ({
       floor: null,
       dirty: false,
       selectedRackId: null,
+      selectedRoomId: null,
+      addRoomMode: false,
       topDownView: false,
     })
   },
 
-  selectRack: (rackId) => set({ selectedRackId: rackId }),
+  selectRack: (rackId) => set({ selectedRackId: rackId, selectedRoomId: null }),
 
   updateRackPosition: (rackId, x, z) => {
     const { gridSnap } = get()
@@ -123,6 +144,24 @@ export const useEditStore = create<EditState>((set, get) => ({
         }),
       }
     }),
+
+  setAddRoomMode: (on) => set({ addRoomMode: on, selectedRoomId: null }),
+  selectRoom: (roomId) => set({ selectedRoomId: roomId, selectedRackId: null }),
+  commitRoom: (bounds) =>
+    set((s) => {
+      const room: LayoutRoom = { id: `room-${++roomSeq}`, name: `Room ${s.workingRooms.length + 1}`, bounds }
+      return { workingRooms: [...s.workingRooms, room], addRoomMode: false, dirty: true }
+    }),
+  deleteSelectedRoom: () =>
+    set((s) => {
+      if (!s.selectedRoomId) return s
+      return {
+        workingRooms: s.workingRooms.filter((r) => r.id !== s.selectedRoomId),
+        selectedRoomId: null,
+        dirty: true,
+      }
+    }),
+  setFloor: (floor) => set({ floor, dirty: true }),
 
   setGridSnap: (meters) => set({ gridSnap: meters }),
   toggleTopDownView: () => set((s) => ({ topDownView: !s.topDownView })),

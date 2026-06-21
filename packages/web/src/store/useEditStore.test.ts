@@ -131,4 +131,59 @@ describe('useEditStore', () => {
     expect(payload.rooms).toEqual([])
     expect(payload.floor).toBeNull()
   })
+
+  test('commitRoom adds a named room, exits add-room mode, and marks dirty', () => {
+    useEditStore.getState().enterEditMode([placement('A1')])
+    useEditStore.getState().setAddRoomMode(true)
+    useEditStore.getState().commitRoom({ x: 2, z: 3, width: 4, depth: 5 })
+    const rooms = useEditStore.getState().workingRooms
+    expect(rooms).toHaveLength(1)
+    expect(rooms[0]!.bounds).toEqual({ x: 2, z: 3, width: 4, depth: 5 })
+    expect(typeof rooms[0]!.id).toBe('string')
+    expect(rooms[0]!.name.length).toBeGreaterThan(0)
+    expect(useEditStore.getState().addRoomMode).toBe(false)
+    expect(useEditStore.getState().dirty).toBe(true)
+  })
+
+  test('deleteSelectedRoom removes the selected room', () => {
+    useEditStore.getState().enterEditMode([placement('A1')])
+    useEditStore.getState().commitRoom({ x: 0, z: 0, width: 2, depth: 2 })
+    const id = useEditStore.getState().workingRooms[0]!.id
+    useEditStore.getState().selectRoom(id)
+    useEditStore.getState().deleteSelectedRoom()
+    expect(useEditStore.getState().workingRooms).toHaveLength(0)
+    expect(useEditStore.getState().selectedRoomId).toBeNull()
+  })
+
+  test('setFloor sets and clears explicit floor dimensions', () => {
+    useEditStore.getState().enterEditMode([placement('A1')])
+    useEditStore.getState().setFloor({ width: 30, depth: 20 })
+    expect(useEditStore.getState().floor).toEqual({ width: 30, depth: 20 })
+    expect(useEditStore.getState().buildLayoutPayload().floor).toEqual({ width: 30, depth: 20 })
+    useEditStore.getState().setFloor(null)
+    expect(useEditStore.getState().floor).toBeNull()
+  })
+
+  test('enterEditMode seeds rooms and floor from an existing layout', () => {
+    useEditStore
+      .getState()
+      .enterEditMode(
+        [placement('A1')],
+        [{ id: 'r1', name: 'Cage', bounds: { x: 1, z: 1, width: 2, depth: 2 } }],
+        { width: 40, depth: 25 },
+      )
+    expect(useEditStore.getState().workingRooms).toHaveLength(1)
+    expect(useEditStore.getState().floor).toEqual({ width: 40, depth: 25 })
+  })
+
+  test('exitEditMode clears room and floor working state', () => {
+    useEditStore.getState().enterEditMode([placement('A1')])
+    useEditStore.getState().commitRoom({ x: 0, z: 0, width: 2, depth: 2 })
+    useEditStore.getState().setFloor({ width: 10, depth: 10 })
+    useEditStore.getState().exitEditMode()
+    expect(useEditStore.getState().workingRooms).toEqual([])
+    expect(useEditStore.getState().floor).toBeNull()
+    expect(useEditStore.getState().addRoomMode).toBe(false)
+    expect(useEditStore.getState().selectedRoomId).toBeNull()
+  })
 })

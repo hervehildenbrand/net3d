@@ -12,6 +12,8 @@ import { theme } from '../theme'
 import { useAppStore } from '../store/useAppStore'
 import { useEditStore } from '../store/useEditStore'
 import { EditableRacks } from './EditableRacks'
+import { Rooms } from './Rooms'
+import { RoomDrawer } from './RoomDrawer'
 import { SiteCables } from './cables'
 import { RoomPower } from './power'
 import { SiteDcLinks, type DcLink } from './dclinks'
@@ -241,7 +243,12 @@ export function SiteLevel({
   // In edit mode the live working copy (mutated during a drag) drives the racks.
   const editModeActive = useEditStore((s) => s.editModeActive)
   const workingPlacements = useEditStore((s) => s.workingPlacements)
-  const { placements, bounds } = useSiteLayout(racks)
+  const workingRooms = useEditStore((s) => s.workingRooms)
+  const addRoomMode = useEditStore((s) => s.addRoomMode)
+  const selectedRoomId = useEditStore((s) => s.selectedRoomId)
+  const selectRoom = useEditStore((s) => s.selectRoom)
+  const editFloor = useEditStore((s) => s.floor)
+  const { placements, bounds, rooms } = useSiteLayout(racks)
   const size = {
     x: bounds.max.x - bounds.min.x,
     y: bounds.max.y - bounds.min.y,
@@ -251,6 +258,13 @@ export function SiteLevel({
     x: (bounds.max.x + bounds.min.x) / 2,
     z: (bounds.max.z + bounds.min.z) / 2,
   }
+  // While editing, an explicit floor size previews live (centered on origin);
+  // otherwise the floor/shell track the auto-computed bounds.
+  const floorEdit = editModeActive && editFloor
+  const floorSizeX = floorEdit ? editFloor!.width : size.x
+  const floorSizeZ = floorEdit ? editFloor!.depth : size.z
+  const floorCx = floorEdit ? 0 : center.x
+  const floorCz = floorEdit ? 0 : center.z
 
   const highlightActive = highlightedRoles.size > 0
   const matchedRackIds = useMemo(
@@ -298,13 +312,13 @@ export function SiteLevel({
       <directionalLight position={[center.x + 6, 10, center.z + 8]} intensity={1.3} />
       <directionalLight position={[center.x - 6, 6, center.z - 8]} intensity={0.5} />
       {/* floor */}
-      <mesh position={[center.x, -0.01, center.z]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[size.x, size.z]} />
+      <mesh position={[floorCx, -0.01, floorCz]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[floorSizeX, floorSizeZ]} />
         <meshStandardMaterial color={theme.scene.floor} roughness={0.9} />
       </mesh>
       {/* translucent glass building shell */}
-      <mesh position={[center.x, size.y / 2, center.z]}>
-        <boxGeometry args={[size.x, size.y, size.z]} />
+      <mesh position={[floorCx, size.y / 2, floorCz]}>
+        <boxGeometry args={[floorSizeX, size.y, floorSizeZ]} />
         <meshStandardMaterial
           color={theme.scene.buildingShell}
           transparent
@@ -331,6 +345,20 @@ export function SiteLevel({
           fixed rack positions (cables, markers, power, room labels) are unmounted so
           they don't render at stale coordinates while racks are being moved. */}
       {visible && editModeActive && <EditableRacks placements={workingPlacements} />}
+      {/* Rooms: live working copy while editing (selectable unless drawing),
+          saved rooms otherwise. RoomDrawer captures the floor only in add-room mode. */}
+      {visible && editModeActive && (
+        <>
+          <Rooms
+            rooms={workingRooms}
+            interactive={!addRoomMode}
+            selectedId={selectedRoomId}
+            onSelect={selectRoom}
+          />
+          {addRoomMode && <RoomDrawer />}
+        </>
+      )}
+      {visible && !editModeActive && rooms.length > 0 && <Rooms rooms={rooms} />}
       {visible && !editModeActive && markers.length > 0 && <RoleMarkers markers={markers} />}
       {visible && !editModeActive && powerVisible && (
         <RoomPower

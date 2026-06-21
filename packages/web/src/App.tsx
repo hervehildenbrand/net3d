@@ -17,6 +17,7 @@ import { useSites } from './hooks/useSites'
 import { connectionErrorMessage } from './connectionError'
 import { useCircuits } from './hooks/useCircuits'
 import { useSiteDetail } from './hooks/useSiteDetail'
+import { useSiteLayoutQuery } from './hooks/useSiteLayout'
 import { useDeviceIndex } from './hooks/useDeviceIndex'
 import { useAppStore } from './store/useAppStore'
 import { DevicePanel } from './components/DevicePanel'
@@ -88,6 +89,8 @@ export function App() {
     level !== 'map' ? selectedSiteName : null,
   )
   const { placements } = useSiteLayout(siteDetail?.racks)
+  // Raw saved layout (rooms + floor) to seed the editor when entering edit mode.
+  const { data: savedLayout } = useSiteLayoutQuery(level !== 'map' ? selectedSiteName : null)
   const editModeActive = useEditStore((s) => s.editModeActive)
   const exitEditMode = useEditStore((s) => s.exitEditMode)
   const selectedRack = siteDetail?.racks.find((r) => r.id === selectedRackId)
@@ -416,7 +419,12 @@ export function App() {
           allows edits). Gets the current placements so entering edit seeds the
           working copy from whatever is on screen (auto-layout or saved layout). */}
       {level === 'site' && selectedSiteName && siteDetail && (
-        <EditToolbar siteName={selectedSiteName} placements={placements} />
+        <EditToolbar
+          siteName={selectedSiteName}
+          placements={placements}
+          rooms={savedLayout?.rooms ?? []}
+          floor={savedLayout?.floor ?? null}
+        />
       )}
 
       {level !== 'map' && (
