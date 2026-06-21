@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { RackPlacement } from '@net3d/shared'
 import { useEditStore } from '../store/useEditStore'
 import { useLayoutEditable, useSaveLayout } from '../hooks/useSiteLayout'
@@ -53,9 +54,24 @@ export function EditToolbar({ siteName, placements }: { siteName: string; placem
   const setGridSnap = useEditStore((s) => s.setGridSnap)
   const topDownView = useEditStore((s) => s.topDownView)
   const toggleTopDownView = useEditStore((s) => s.toggleTopDownView)
+  const selectedRackId = useEditStore((s) => s.selectedRackId)
+  const rotateSelected = useEditStore((s) => s.rotateSelected)
   const buildLayoutPayload = useEditStore((s) => s.buildLayoutPayload)
   const markSaved = useEditStore((s) => s.markSaved)
   const save = useSaveLayout()
+
+  // 'R' rotates the selected rack while editing (ignored in text inputs).
+  useEffect(() => {
+    if (!editModeActive) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'r' && e.key !== 'R') return
+      const el = document.activeElement
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA')) return
+      rotateSelected()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [editModeActive, rotateSelected])
 
   if (!editable) return null
 
@@ -87,6 +103,14 @@ export function EditToolbar({ siteName, placements }: { siteName: string; placem
           ))}
         </select>
       </label>
+      <button
+        style={{ ...btn, opacity: selectedRackId ? 1 : 0.5 }}
+        onClick={rotateSelected}
+        disabled={!selectedRackId}
+        title="Rotate the selected rack 90° (R)"
+      >
+        rotate
+      </button>
       <button style={topDownView ? activeBtn : btn} onClick={toggleTopDownView}>
         {topDownView ? 'top-down ✓' : 'top-down'}
       </button>

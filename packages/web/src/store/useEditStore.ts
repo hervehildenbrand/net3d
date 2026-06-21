@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { CameraControls } from '@react-three/drei'
 import {
+  rotatedFootprint,
   snapToGrid,
   type FloorDimensions,
   type LayoutRoom,
@@ -37,6 +38,8 @@ interface EditState {
   exitEditMode: () => void
   selectRack: (rackId: string | null) => void
   updateRackPosition: (rackId: string, x: number, z: number) => void
+  /** Rotate the selected rack +90deg, swapping its footprint for 90/270. */
+  rotateSelected: () => void
   setGridSnap: (meters: number) => void
   toggleTopDownView: () => void
   setCameraControlsRef: (ref: { current: CameraControls | null } | null) => void
@@ -100,6 +103,26 @@ export const useEditStore = create<EditState>((set, get) => ({
       ),
     }))
   },
+
+  rotateSelected: () =>
+    set((s) => {
+      const id = s.selectedRackId
+      if (!id) return s
+      return {
+        dirty: true,
+        workingPlacements: s.workingPlacements.map((p) => {
+          if (p.rackId !== id) return p
+          const cur = p.rotationDeg ?? 0
+          // Recover the unrotated footprint, then apply the next rotation's swap.
+          const swapped = cur === 90 || cur === 270
+          const baseW = swapped ? p.depth : p.width
+          const baseD = swapped ? p.width : p.depth
+          const next = (((cur + 90) % 360) as Rotation)
+          const fp = rotatedFootprint(baseW, baseD, next)
+          return { ...p, rotationDeg: next, width: fp.width, depth: fp.depth }
+        }),
+      }
+    }),
 
   setGridSnap: (meters) => set({ gridSnap: meters }),
   toggleTopDownView: () => set((s) => ({ topDownView: !s.topDownView })),

@@ -100,9 +100,11 @@ export function EditableRacks({ placements }: { placements: RackPlacement[] }) {
         {placements.map((p) => (
           <Instance
             key={p.rackId}
+            // Rotation is encoded as the swapped width/depth footprint (same
+            // convention as the normal Racks + applyLayoutOverrides), so a plain
+            // rack box reads correctly without a separate rotation transform.
             position={[p.x, p.height / 2, p.z]}
             scale={[p.width, p.height, p.depth]}
-            rotation={[0, ((p.rotationDeg ?? 0) * Math.PI) / 180, 0]}
             color={
               p.rackId === selectedRackId || hovered === p.rackId
                 ? theme.scene.rackHover

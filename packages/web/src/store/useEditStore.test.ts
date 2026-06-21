@@ -73,6 +73,40 @@ describe('useEditStore', () => {
     expect(p.z).toBeCloseTo(0.5, 6)
   })
 
+  test('rotateSelected cycles the selected rack 0->90->180->270->0 and swaps the footprint', () => {
+    useEditStore.getState().enterEditMode([placement('A1')]) // width 0.6, depth 1.2
+    useEditStore.getState().selectRack('A1')
+    const rot = () => useEditStore.getState().rotateSelected()
+    const get = () => useEditStore.getState().workingPlacements.find((p) => p.rackId === 'A1')!
+
+    rot()
+    expect(get().rotationDeg).toBe(90)
+    expect(get().width).toBeCloseTo(1.2, 6)
+    expect(get().depth).toBeCloseTo(0.6, 6)
+    expect(useEditStore.getState().dirty).toBe(true)
+
+    rot()
+    expect(get().rotationDeg).toBe(180)
+    expect(get().width).toBeCloseTo(0.6, 6)
+    expect(get().depth).toBeCloseTo(1.2, 6)
+
+    rot()
+    expect(get().rotationDeg).toBe(270)
+    expect(get().width).toBeCloseTo(1.2, 6)
+
+    rot()
+    expect(get().rotationDeg).toBe(0)
+    expect(get().width).toBeCloseTo(0.6, 6)
+    expect(get().depth).toBeCloseTo(1.2, 6)
+  })
+
+  test('rotateSelected is a no-op when nothing is selected', () => {
+    useEditStore.getState().enterEditMode([placement('A1')])
+    useEditStore.getState().rotateSelected()
+    expect(useEditStore.getState().workingPlacements[0]!.rotationDeg ?? 0).toBe(0)
+    expect(useEditStore.getState().dirty).toBe(false)
+  })
+
   test('markSaved clears the dirty flag', () => {
     useEditStore.getState().enterEditMode([placement('A1', 0, 0)])
     useEditStore.getState().updateRackPosition('A1', 1, 1)
