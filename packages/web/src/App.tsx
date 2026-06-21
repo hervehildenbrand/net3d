@@ -25,6 +25,8 @@ import { DeviceSearch } from './components/DeviceSearch'
 import { LayersPanel } from './components/LayersPanel'
 import { PowerLegend } from './components/PowerLegend'
 import { BackendSwitcher } from './components/BackendSwitcher'
+import { EditToolbar } from './components/EditToolbar'
+import { useEditStore } from './store/useEditStore'
 import { computeSpecsRange } from './lib/specsHeatmap'
 import { collectSubnets } from './lib/subnetColoring'
 import { tracePowerChain } from './lib/powerChain'
@@ -86,6 +88,8 @@ export function App() {
     level !== 'map' ? selectedSiteName : null,
   )
   const { placements } = useSiteLayout(siteDetail?.racks)
+  const editModeActive = useEditStore((s) => s.editModeActive)
+  const exitEditMode = useEditStore((s) => s.exitEditMode)
   const selectedRack = siteDetail?.racks.find((r) => r.id === selectedRackId)
   const selectedPlacement = placements.find((p) => p.rackId === selectedRackId)
   const selectedDevice = selectedRack?.devices.find((d) => d.id === selectedDeviceId)
@@ -118,6 +122,12 @@ export function App() {
     selectDevice,
     clearPendingFocus,
   ])
+
+  // Leaving the site (← map / rack / device focus) ends an edit session so its
+  // working copy and nav suppression don't leak into other levels.
+  useEffect(() => {
+    if (level !== 'site' && editModeActive) exitEditMode()
+  }, [level, editModeActive, exitEditMode])
 
   // Resume the nav machine once the focus fly has settled. CameraRig's smoothTime
   // is 0.6s; a generous margin covers a long map→rack hop before the camera, now
@@ -356,7 +366,7 @@ export function App() {
           toggles. Role list is scoped to the rack(s) in view; the specs gradient
           stays site-wide. Hidden while a device is selected — the 380px DevicePanel
           occupies the same corner. */}
-      {level !== 'map' && !selectedDevice && !!siteDetail?.racks?.length && (
+      {level !== 'map' && !selectedDevice && !editModeActive && !!siteDetail?.racks?.length && (
         <LayersPanel
           level={level}
           racks={level === 'rack' && selectedRack ? [selectedRack] : siteDetail.racks}
@@ -384,7 +394,7 @@ export function App() {
         />
       )}
 
-      {level === 'site' && powerVisible && !!siteDetail?.racks?.length && (
+      {level === 'site' && powerVisible && !editModeActive && !!siteDetail?.racks?.length && (
         <PowerLegend
           racks={siteDetail.racks}
           power={siteDetail.power}
@@ -400,6 +410,13 @@ export function App() {
           }
           onClearChain={() => setPowerSource(null)}
         />
+      )}
+
+      {/* Floor-plan editor toolbar (site level only; self-hides unless the server
+          allows edits). Gets the current placements so entering edit seeds the
+          working copy from whatever is on screen (auto-layout or saved layout). */}
+      {level === 'site' && selectedSiteName && siteDetail && (
+        <EditToolbar siteName={selectedSiteName} placements={placements} />
       )}
 
       {level !== 'map' && (

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { CameraControls } from '@react-three/drei'
 import { useAppStore } from '../store/useAppStore'
+import { useEditStore } from '../store/useEditStore'
 import { useSiteDetail } from '../hooks/useSiteDetail'
 import { useSiteLayout } from './SiteLevel'
 
@@ -8,10 +9,18 @@ const SIGNAL_INTERVAL_MS = 120
 
 export function CameraRig() {
   const controls = useRef<CameraControls>(null)
+  // Expose the controls to the edit store so a rack drag can pause orbit.
+  const setCameraControlsRef = useEditStore((s) => s.setCameraControlsRef)
+  useEffect(() => {
+    setCameraControlsRef(controls)
+    return () => setCameraControlsRef(null)
+  }, [setCameraControlsRef])
   const level = useAppStore((s) => s.level)
   const siteName = useAppStore((s) => s.selectedSiteName)
   const rackId = useAppStore((s) => s.selectedRackId)
   const rackView = useAppStore((s) => s.rackView)
+  const editModeActive = useEditStore((s) => s.editModeActive)
+  const topDownView = useEditStore((s) => s.topDownView)
   const { data: siteDetail } = useSiteDetail(level !== 'map' ? siteName : null)
   const { placements, bounds } = useSiteLayout(siteDetail?.racks)
   const handleCameraSignals = useAppStore((s) => s.handleCameraSignals)
@@ -112,6 +121,22 @@ export function CameraRig() {
       )
     }
   }, [level, siteName, rackId, rackView, siteDetail, bounds, placements, beginTransition])
+
+  // Edit mode: snap between a straight-down (2D-style) view and the oblique site
+  // view when the top-down toggle changes. Safe from the nav machine because edit
+  // mode keeps navSuppressed true, and beginTransition suppresses signals too.
+  useEffect(() => {
+    const c = controls.current
+    if (!c || level !== 'site' || !editModeActive) return
+    const cx = (bounds.max.x + bounds.min.x) / 2
+    const cz = (bounds.max.z + bounds.min.z) / 2
+    const span = Math.max(bounds.max.x - bounds.min.x, bounds.max.z - bounds.min.z, 4)
+    if (topDownView) {
+      beginTransition(c.setLookAt(cx, span * 1.3, cz, cx, 0, cz, true))
+    } else {
+      beginTransition(c.setLookAt(cx + span * 0.55, span * 0.7, cz + span * 0.95, cx, 1, cz, true))
+    }
+  }, [topDownView, editModeActive, level, bounds, beginTransition])
 
   return (
     <CameraControls

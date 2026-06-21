@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { SiteLayout } from '@net3d/shared'
 
 /**
@@ -22,5 +22,49 @@ export function useSiteLayoutQuery(siteName: string | null) {
     },
     enabled: !!siteName,
     staleTime: 60_000,
+  })
+}
+
+/**
+ * Whether this deployment allows layout edits. Read from the NetBox-side /api/meta
+ * (the instance that stores layouts), NOT the active-backend prefix — so the Edit
+ * button reflects the real write capability regardless of which backend is shown.
+ */
+export function useLayoutEditable(): boolean {
+  const { data } = useQuery({
+    queryKey: ['layoutEditable'],
+    queryFn: async () => {
+      const res = await fetch('/api/meta')
+      if (!res.ok) return false
+      const meta = (await res.json()) as { layoutEditable?: boolean }
+      return !!meta.layoutEditable
+    },
+    staleTime: Infinity,
+  })
+  return data ?? false
+}
+
+/** Persist a site's layout (PUT). Invalidates the cached layout so the scene re-applies it. */
+export function useSaveLayout() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      siteName,
+      layout,
+    }: {
+      siteName: string
+      layout: Pick<SiteLayout, 'racks' | 'rooms' | 'floor'>
+    }) => {
+      const res = await fetch(layoutUrl(siteName), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(layout),
+      })
+      if (!res.ok) throw new Error(`save layout ${siteName}: HTTP ${res.status}`)
+      return (await res.json()) as SiteLayout
+    },
+    onSuccess: (_data, { siteName }) => {
+      void qc.invalidateQueries({ queryKey: ['layout', siteName] })
+    },
   })
 }

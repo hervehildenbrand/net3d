@@ -10,6 +10,8 @@ import type { SiteCable, SitePower, SiteRack } from '../hooks/useSiteDetail'
 import { useSiteLayoutQuery } from '../hooks/useSiteLayout'
 import { theme } from '../theme'
 import { useAppStore } from '../store/useAppStore'
+import { useEditStore } from '../store/useEditStore'
+import { EditableRacks } from './EditableRacks'
 import { SiteCables } from './cables'
 import { RoomPower } from './power'
 import { SiteDcLinks, type DcLink } from './dclinks'
@@ -236,6 +238,9 @@ export function SiteLevel({
   dcLinksVisible?: boolean
 }) {
   const colorMode = useAppStore((s) => s.colorMode)
+  // In edit mode the live working copy (mutated during a drag) drives the racks.
+  const editModeActive = useEditStore((s) => s.editModeActive)
+  const workingPlacements = useEditStore((s) => s.workingPlacements)
   const { placements, bounds } = useSiteLayout(racks)
   const size = {
     x: bounds.max.x - bounds.min.x,
@@ -311,7 +316,7 @@ export function SiteLevel({
           A hidden <group visible={false}> still leaves its instance meshes
           individually visible, so R3F's pointer raycaster keeps hitting them
           and they occlude the rack-level device meshes behind them. */}
-      {visible && (
+      {visible && !editModeActive && (
         <Racks
           placements={placements}
           onRackClick={onRackClick}
@@ -322,8 +327,12 @@ export function SiteLevel({
           powerChainRackIds={powerChainRackIds}
         />
       )}
-      {visible && markers.length > 0 && <RoleMarkers markers={markers} />}
-      {visible && powerVisible && (
+      {/* Edit mode: draggable racks from the working copy. Overlays that reference
+          fixed rack positions (cables, markers, power, room labels) are unmounted so
+          they don't render at stale coordinates while racks are being moved. */}
+      {visible && editModeActive && <EditableRacks placements={workingPlacements} />}
+      {visible && !editModeActive && markers.length > 0 && <RoleMarkers markers={markers} />}
+      {visible && !editModeActive && powerVisible && (
         <RoomPower
           racks={racks}
           placements={placements}
@@ -332,7 +341,7 @@ export function SiteLevel({
           selectedPanel={selectedPanel}
         />
       )}
-      {visible && dcLinksVisible && dcLinks.length > 0 && (
+      {visible && !editModeActive && dcLinksVisible && dcLinks.length > 0 && (
         <SiteDcLinks
           links={dcLinks}
           center={center}
@@ -340,8 +349,10 @@ export function SiteLevel({
           radius={Math.max(size.x, size.z, 4) * 0.85}
         />
       )}
-      <RoomLabels racks={racks} placements={placements} />
-      <SiteCables placements={placements} cables={cables} lldpSegments={lldpSegments} />
+      {!editModeActive && <RoomLabels racks={racks} placements={placements} />}
+      {!editModeActive && (
+        <SiteCables placements={placements} cables={cables} lldpSegments={lldpSegments} />
+      )}
       <Billboard position={[center.x, size.y + 0.6, center.z]}>
         <Text fontSize={0.5} color={theme.text.primary} anchorX="center">
           {siteName}
