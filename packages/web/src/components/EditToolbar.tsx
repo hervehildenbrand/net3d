@@ -186,9 +186,12 @@ export function EditToolbar({
 
   return (
     <div style={bar}>
-      <strong>edit · {siteName}</strong>
+      <strong style={{ whiteSpace: 'nowrap' }}>edit · {siteName}</strong>
       {!canSave && (
-        <span style={{ color: '#0891b2', fontStyle: 'italic' }} title="Try it out — your changes are local and won't be saved">
+        <span
+          style={{ color: '#0891b2', fontStyle: 'italic', whiteSpace: 'nowrap' }}
+          title="Try it out — your changes are local and won't be saved"
+        >
           sandbox · not saved
         </span>
       )}
