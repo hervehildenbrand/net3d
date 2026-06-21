@@ -24,6 +24,8 @@ export interface RackPlacement {
   width: number
   depth: number
   height: number
+  /** User-set yaw in degrees (0/90/180/270); undefined = 0 (auto-layout). */
+  rotationDeg?: 0 | 90 | 180 | 270
 }
 
 export interface Bounds {
