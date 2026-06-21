@@ -52,6 +52,8 @@ export interface AppDeps {
   layoutStore?: LayoutStore
   /** Gate for layout writes. Off (default) keeps the read-only posture: PUT/DELETE → 403. */
   layoutEditable?: boolean
+  /** Sandbox: editor UI available but changes never persist (Save disabled; writes still 403). */
+  layoutPreview?: boolean
 }
 
 // SWR-served payloads worth persisting. napalm:* is live device state with a short
@@ -70,6 +72,7 @@ export function buildApp({
   persist,
   layoutStore,
   layoutEditable = false,
+  layoutPreview = false,
 }: AppDeps): FastifyInstance {
   const app = Fastify({ logger })
   const cache = new TtlCache(persist ? { persist, shouldPersist: PERSISTABLE_KEYS } : undefined)
@@ -149,12 +152,12 @@ export function buildApp({
     app.get('/api/meta', async () => {
       try {
         const status = await cache.getOrSet('meta', CACHE_TTL.sites, () => netbox.getStatus())
-        // layoutEditable is a server-config flag, not SoT status — merge per response.
-        return { ...status, layoutEditable }
+        // layout flags are server-config, not SoT status — merge per response.
+        return { ...status, layoutEditable, layoutPreview }
       } catch (err) {
         app.log.warn(err)
         // showcase degrades gracefully: no capabilities ≠ broken app
-        return { backend, version: null, napalmAvailable: false, layoutEditable }
+        return { backend, version: null, napalmAvailable: false, layoutEditable, layoutPreview }
       }
     })
 

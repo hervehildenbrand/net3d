@@ -24,11 +24,12 @@ beforeEach(() => {
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-const buildWith = (editable: boolean, withStore = true) =>
+const buildWith = (editable: boolean, withStore = true, preview = false) =>
   buildApp({
     netbox: fakeNetbox(),
     layoutStore: withStore ? createLayoutStore(dir) : undefined,
     layoutEditable: editable,
+    layoutPreview: preview,
   })
 
 const validBody = { racks: [{ rackId: 'A1', x: 1, z: 2, rotationDeg: 90 }], rooms: [], floor: null }
@@ -104,5 +105,21 @@ describe('GET /api/meta', () => {
   test('reports layoutEditable false by default', async () => {
     const res = await buildWith(false, false).inject({ method: 'GET', url: '/api/meta' })
     expect(res.json().layoutEditable).toBe(false)
+    expect(res.json().layoutPreview).toBe(false)
+  })
+
+  test('reports layoutPreview true in sandbox mode (editor available, no save)', async () => {
+    const res = await buildWith(false, true, true).inject({ method: 'GET', url: '/api/meta' })
+    expect(res.json().layoutEditable).toBe(false)
+    expect(res.json().layoutPreview).toBe(true)
+  })
+
+  test('preview mode does NOT permit writes (PUT still 403)', async () => {
+    const res = await buildWith(false, true, true).inject({
+      method: 'PUT',
+      url: '/api/layouts/AMS1',
+      payload: validBody,
+    })
+    expect(res.statusCode).toBe(403)
   })
 })

@@ -17,7 +17,7 @@ import { useSites } from './hooks/useSites'
 import { connectionErrorMessage } from './connectionError'
 import { useCircuits } from './hooks/useCircuits'
 import { useSiteDetail } from './hooks/useSiteDetail'
-import { useSiteLayoutQuery } from './hooks/useSiteLayout'
+import { useSiteLayoutQuery, useLayoutCapability } from './hooks/useSiteLayout'
 import { useDeviceIndex } from './hooks/useDeviceIndex'
 import { useAppStore } from './store/useAppStore'
 import { DevicePanel } from './components/DevicePanel'
@@ -94,6 +94,7 @@ export function App() {
   const editModeActive = useEditStore((s) => s.editModeActive)
   const editDirty = useEditStore((s) => s.dirty)
   const exitEditMode = useEditStore((s) => s.exitEditMode)
+  const { canSave: layoutCanSave } = useLayoutCapability()
   const selectedRack = siteDetail?.racks.find((r) => r.id === selectedRackId)
   const selectedPlacement = placements.find((p) => p.rackId === selectedRackId)
   const selectedDevice = selectedRack?.devices.find((d) => d.id === selectedDeviceId)
@@ -431,8 +432,9 @@ export function App() {
       {level !== 'map' && (
         <button
           onClick={() => {
-            // Guard against silently dropping unsaved layout edits on navigate-away.
-            if (editModeActive && editDirty && !window.confirm('Discard unsaved layout changes?')) return
+            // Guard against silently dropping unsaved layout edits on navigate-away
+            // (only when saving is possible; sandbox edits are ephemeral by design).
+            if (editModeActive && editDirty && layoutCanSave && !window.confirm('Discard unsaved layout changes?')) return
             level === 'rack' && selectedSiteName ? zoomToSite(selectedSiteName) : zoomToMap()
           }}
           style={{

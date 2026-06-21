@@ -8,7 +8,7 @@ import {
   type SiteLayout,
 } from '@net3d/shared'
 import { useEditStore } from '../store/useEditStore'
-import { useLayoutEditable, useSaveLayout } from '../hooks/useSiteLayout'
+import { useLayoutCapability, useSaveLayout } from '../hooks/useSiteLayout'
 
 const bar: React.CSSProperties = {
   position: 'absolute',
@@ -62,7 +62,7 @@ export function EditToolbar({
   rooms: LayoutRoom[]
   floor: FloorDimensions | null
 }) {
-  const editable = useLayoutEditable()
+  const { canEdit, canSave } = useLayoutCapability()
   const editModeActive = useEditStore((s) => s.editModeActive)
   const enterEditMode = useEditStore((s) => s.enterEditMode)
   const exitEditMode = useEditStore((s) => s.exitEditMode)
@@ -99,18 +99,19 @@ export function EditToolbar({
     return () => window.removeEventListener('keydown', onKey)
   }, [editModeActive, rotateSelected])
 
-  // Warn before a tab close / reload drops unsaved layout edits.
+  // Warn before a tab close / reload drops unsaved layout edits (only when saving
+  // is possible — in sandbox mode edits are ephemeral by design, no warning).
   useEffect(() => {
-    if (!editModeActive || !dirty) return
+    if (!editModeActive || !dirty || !canSave) return
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault()
       e.returnValue = ''
     }
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
-  }, [editModeActive, dirty])
+  }, [editModeActive, dirty, canSave])
 
-  if (!editable) return null
+  if (!canEdit) return null
 
   if (!editModeActive) {
     return (
@@ -131,7 +132,7 @@ export function EditToolbar({
     save.mutate({ siteName, layout: buildLayoutPayload() }, { onSuccess: () => markSaved() })
 
   const onDone = () => {
-    if (dirty && !window.confirm('Discard unsaved layout changes?')) return
+    if (canSave && dirty && !window.confirm('Discard unsaved layout changes?')) return
     exitEditMode()
   }
 
@@ -186,6 +187,11 @@ export function EditToolbar({
   return (
     <div style={bar}>
       <strong>edit · {siteName}</strong>
+      {!canSave && (
+        <span style={{ color: '#0891b2', fontStyle: 'italic' }} title="Try it out — your changes are local and won't be saved">
+          sandbox · not saved
+        </span>
+      )}
       <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         grid
         <select
@@ -250,10 +256,12 @@ export function EditToolbar({
       <button style={topDownView ? activeBtn : btn} onClick={toggleTopDownView}>
         {topDownView ? 'top-down ✓' : 'top-down'}
       </button>
-      <button style={{ ...btn, opacity: !dirty || save.isPending ? 0.5 : 1 }} onClick={onSave} disabled={!dirty || save.isPending}>
-        {save.isPending ? 'saving…' : 'save'}
-      </button>
-      <button style={{ ...btn, opacity: dirty ? 1 : 0.5 }} onClick={onRevert} disabled={!dirty} title="Discard unsaved changes">
+      {canSave && (
+        <button style={{ ...btn, opacity: !dirty || save.isPending ? 0.5 : 1 }} onClick={onSave} disabled={!dirty || save.isPending}>
+          {save.isPending ? 'saving…' : 'save'}
+        </button>
+      )}
+      <button style={{ ...btn, opacity: dirty ? 1 : 0.5 }} onClick={onRevert} disabled={!dirty} title="Discard changes">
         revert
       </button>
       <button style={btn} onClick={onExport} title="Download this layout as JSON">

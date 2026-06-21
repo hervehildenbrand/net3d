@@ -20,6 +20,7 @@ const {
   CACHE_DIR,
   LAYOUT_DIR,
   LAYOUT_EDIT,
+  LAYOUT_PREVIEW,
 } = process.env
 
 // Which source of truth, and its connection details (NETBOX_* / INFRAHUB_*).
@@ -92,12 +93,15 @@ async function main() {
   )
   // Off by default → PUT/DELETE 403, keeping the public demo a read-only viewer.
   const layoutEditable = LAYOUT_EDIT === '1' || LAYOUT_EDIT === 'true'
+  // Sandbox: expose the editor for local play without persistence (Save disabled).
+  const layoutPreview = LAYOUT_PREVIEW === '1' || LAYOUT_PREVIEW === 'true'
 
   const app = buildApp({
     netbox: sot,
     backend: config.backend,
     layoutStore,
     layoutEditable,
+    layoutPreview,
     // when set (production/Docker), serve the built UI from this process too
     webDist: WEB_DIST ? resolve(WEB_DIST) : undefined,
     // optional shared-secret guard; unset = open (showcase / public demo)
