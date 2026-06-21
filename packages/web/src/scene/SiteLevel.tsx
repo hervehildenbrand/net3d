@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Billboard, Instance, Instances, Text } from '@react-three/drei'
 import {
-  computeBuildingBounds,
-  computeRackLayout,
+  applyLayoutOverrides,
   computeRoomStats,
   type LldpCableSegment,
   type RackPlacement,
 } from '@net3d/shared'
 import type { SiteCable, SitePower, SiteRack } from '../hooks/useSiteDetail'
+import { useSiteLayoutQuery } from '../hooks/useSiteLayout'
 import { theme } from '../theme'
 import { useAppStore } from '../store/useAppStore'
 import { SiteCables } from './cables'
@@ -23,17 +23,23 @@ import type { HeatmapView } from './RackLevel'
 const RACK_LABEL_THRESHOLD = 0.9
 
 export function useSiteLayout(racks: SiteRack[] | undefined) {
+  // Custom positions are a property of the site, not the active backend, so the
+  // override is fetched by site name and merged onto the schematic auto-layout.
+  // A null layout (no saved plan) yields the unchanged auto-layout.
+  const siteName = useAppStore((s) => s.selectedSiteName)
+  const { data: layout } = useSiteLayoutQuery(siteName)
   return useMemo(() => {
-    const placements = computeRackLayout(
+    const applied = applyLayoutOverrides(
       (racks ?? []).map((r) => ({
         id: r.id,
         name: r.name,
         uHeight: r.uHeight,
         location: r.location,
       })),
+      layout ?? null,
     )
-    return { placements, bounds: computeBuildingBounds(placements) }
-  }, [racks])
+    return { placements: applied.placements, bounds: applied.bounds, rooms: applied.rooms }
+  }, [racks, layout])
 }
 
 function Racks({

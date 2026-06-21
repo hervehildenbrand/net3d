@@ -137,7 +137,7 @@ describe('GET /api/meta', () => {
     const app = buildApp({ netbox: fakeNetbox() })
     const res = await app.inject({ method: 'GET', url: '/api/meta' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ backend: 'netbox', version: '3.7.8', napalmAvailable: true })
+    expect(res.json()).toEqual({ backend: 'netbox', version: '3.7.8', napalmAvailable: true, layoutEditable: false })
   })
 
   test('degrades to no-capabilities instead of failing when the backend is down', async () => {
@@ -150,7 +150,7 @@ describe('GET /api/meta', () => {
     })
     const res = await app.inject({ method: 'GET', url: '/api/meta' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ backend: 'netbox', version: null, napalmAvailable: false })
+    expect(res.json()).toEqual({ backend: 'netbox', version: null, napalmAvailable: false, layoutEditable: false })
   })
 })
 

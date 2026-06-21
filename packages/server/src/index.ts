@@ -5,6 +5,7 @@ import { ConnectionCheckError, verifyConnection } from './connection-check'
 import { netboxFetch } from './netbox'
 import { createSoTClient, getSoTConfigFromEnv } from './sot/factory'
 import { createDiskCacheStore } from './persistence'
+import { createLayoutStore } from './layout-store'
 
 const {
   PORT,
@@ -17,6 +18,8 @@ const {
   HOST,
   CACHE_PERSIST,
   CACHE_DIR,
+  LAYOUT_DIR,
+  LAYOUT_EDIT,
 } = process.env
 
 // Which source of truth, and its connection details (NETBOX_* / INFRAHUB_*).
@@ -80,9 +83,21 @@ async function main() {
           netboxUrl: cacheKeyUrl,
         })
 
+  // User-edited floor plans live OUTSIDE the cache dir (dev-restart wipes .cache),
+  // so they survive restarts and reseeds. Backend-agnostic: keyed by site name, so
+  // both the NetBox and Infrahub instances share one store when pointed at the same
+  // LAYOUT_DIR (in the dual-backend deploy the UI routes all layout calls to /api).
+  const layoutStore = createLayoutStore(
+    LAYOUT_DIR ? resolve(LAYOUT_DIR) : fileURLToPath(new URL('../.data/net3d-layouts/', import.meta.url)),
+  )
+  // Off by default → PUT/DELETE 403, keeping the public demo a read-only viewer.
+  const layoutEditable = LAYOUT_EDIT === '1' || LAYOUT_EDIT === 'true'
+
   const app = buildApp({
     netbox: sot,
     backend: config.backend,
+    layoutStore,
+    layoutEditable,
     // when set (production/Docker), serve the built UI from this process too
     webDist: WEB_DIST ? resolve(WEB_DIST) : undefined,
     // optional shared-secret guard; unset = open (showcase / public demo)

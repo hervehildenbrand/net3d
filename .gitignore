@@ -17,6 +17,8 @@ coverage/
 # misc
 # incl. packages/server/.cache/net3d — persisted SoT cache (per-instance)
 .cache/
+# user-edited floor plans (packages/server/.data/net3d-layouts) — local user data
+.data/
 tmp/
 *.tgz
 

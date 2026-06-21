@@ -3,11 +3,12 @@ import fastifyStatic from '@fastify/static'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import { timingSafeEqual } from 'node:crypto'
-import { groupCircuitsBySitePair } from '@net3d/shared'
+import { groupCircuitsBySitePair, SITE_LAYOUT_VERSION, type SiteLayout } from '@net3d/shared'
 import { TtlCache } from './cache'
 import { NapalmUnreachableError } from './netbox'
 import type { SoTClient } from './sot/client'
 import type { DiskCacheStore } from './persistence'
+import type { LayoutStore } from './layout-store'
 import { loadSiteDetail, prewarmCaches, type SiteDetail } from './prewarm'
 import { buildDeviceIndex } from './devices'
 
@@ -47,6 +48,41 @@ export interface AppDeps {
   logger?: FastifyServerOptions['logger']
   /** When set, the cache is persisted to disk and hydrated on boot (survives restarts). */
   persist?: DiskCacheStore
+  /** Durable store for user-edited floor plans; when unset, layout routes are not registered. */
+  layoutStore?: LayoutStore
+  /** Gate for layout writes. Off (default) keeps the read-only posture: PUT/DELETE → 403. */
+  layoutEditable?: boolean
+}
+
+/** Hand-validate a PUT /api/layouts body (no extra deps, matching the repo style). */
+function validateLayoutBody(body: unknown): string | null {
+  if (typeof body !== 'object' || body === null) return 'body must be an object'
+  const b = body as Record<string, unknown>
+  if (!Array.isArray(b.racks)) return 'racks must be an array'
+  for (const r of b.racks) {
+    if (typeof r !== 'object' || r === null) return 'each rack must be an object'
+    const rk = r as Record<string, unknown>
+    if (typeof rk.rackId !== 'string') return 'rack.rackId must be a string'
+    if (typeof rk.x !== 'number' || typeof rk.z !== 'number') return 'rack.x and rack.z must be numbers'
+    if (![0, 90, 180, 270].includes(rk.rotationDeg as number)) return 'rack.rotationDeg must be 0/90/180/270'
+  }
+  if (!Array.isArray(b.rooms)) return 'rooms must be an array'
+  for (const room of b.rooms) {
+    if (typeof room !== 'object' || room === null) return 'each room must be an object'
+    const rm = room as Record<string, unknown>
+    if (typeof rm.id !== 'string' || typeof rm.name !== 'string') return 'room.id and room.name must be strings'
+    if (typeof rm.bounds !== 'object' || rm.bounds === null) return 'room.bounds must be an object'
+    const bd = rm.bounds as Record<string, unknown>
+    if (['x', 'z', 'width', 'depth'].some((k) => typeof bd[k] !== 'number')) {
+      return 'room.bounds needs numeric x/z/width/depth'
+    }
+  }
+  if (b.floor !== null && b.floor !== undefined) {
+    if (typeof b.floor !== 'object') return 'floor must be an object or null'
+    const f = b.floor as Record<string, unknown>
+    if (typeof f.width !== 'number' || typeof f.depth !== 'number') return 'floor.width and floor.depth must be numbers'
+  }
+  return null
 }
 
 // SWR-served payloads worth persisting. napalm:* is live device state with a short
@@ -63,6 +99,8 @@ export function buildApp({
   apiToken,
   logger = false,
   persist,
+  layoutStore,
+  layoutEditable = false,
 }: AppDeps): FastifyInstance {
   const app = Fastify({ logger })
   const cache = new TtlCache(persist ? { persist, shouldPersist: PERSISTABLE_KEYS } : undefined)
@@ -141,11 +179,13 @@ export function buildApp({
 
     app.get('/api/meta', async () => {
       try {
-        return await cache.getOrSet('meta', CACHE_TTL.sites, () => netbox.getStatus())
+        const status = await cache.getOrSet('meta', CACHE_TTL.sites, () => netbox.getStatus())
+        // layoutEditable is a server-config flag, not SoT status — merge per response.
+        return { ...status, layoutEditable }
       } catch (err) {
         app.log.warn(err)
         // showcase degrades gracefully: no capabilities ≠ broken app
-        return { backend, version: null, napalmAvailable: false }
+        return { backend, version: null, napalmAvailable: false, layoutEditable }
       }
     })
 
@@ -246,6 +286,44 @@ export function buildApp({
         return reply.code(502).send({ error: 'netbox_unavailable' })
       }
     })
+
+    // User-edited floor plans. Backend-agnostic (keyed by site name) and gated:
+    // writes require layoutEditable so the default deploy stays a read-only viewer.
+    if (layoutStore) {
+      app.get<{ Params: { site: string } }>('/api/layouts/:site', async (req, reply) => {
+        const layout = layoutStore.get(req.params.site)
+        if (!layout) return reply.code(404).send({ error: 'no_layout' })
+        return layout
+      })
+
+      app.put<{ Params: { site: string }; Body: unknown }>('/api/layouts/:site', async (req, reply) => {
+        if (!layoutEditable) return reply.code(403).send({ error: 'layout_readonly' })
+        const invalid = validateLayoutBody(req.body)
+        if (invalid) return reply.code(400).send({ error: 'invalid_payload', detail: invalid })
+        const body = req.body as Pick<SiteLayout, 'racks' | 'rooms' | 'floor'>
+        // Server stamps version + updatedAt authoritatively.
+        const layout: SiteLayout = {
+          version: SITE_LAYOUT_VERSION,
+          updatedAt: new Date().toISOString(),
+          racks: body.racks,
+          rooms: body.rooms,
+          floor: body.floor ?? null,
+        }
+        try {
+          return await layoutStore.put(req.params.site, layout)
+        } catch (err) {
+          app.log.error(err)
+          return reply.code(500).send({ error: 'save_failed' })
+        }
+      })
+
+      app.delete<{ Params: { site: string } }>('/api/layouts/:site', async (req, reply) => {
+        if (!layoutEditable) return reply.code(403).send({ error: 'layout_readonly' })
+        const existed = await layoutStore.delete(req.params.site)
+        if (!existed) return reply.code(404).send({ error: 'no_layout' })
+        return { deleted: true }
+      })
+    }
   })
 
   if (webDist) {
