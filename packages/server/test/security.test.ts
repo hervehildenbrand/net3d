@@ -76,3 +76,29 @@ describe('bearer auth on /api/*', () => {
     expect((await app.inject({ method: 'GET', url: '/api/health' })).statusCode).toBe(200)
   })
 })
+
+describe('frame embedding (frameAncestors)', () => {
+  function frameAncestorsOf(csp: string): string | undefined {
+    return csp
+      .split(';')
+      .map((d) => d.trim())
+      .find((d) => d === 'frame-ancestors' || d.startsWith('frame-ancestors '))
+  }
+
+  test('default → same-origin only: X-Frame-Options set and CSP frame-ancestors is self', async () => {
+    const app = buildApp({ netbox: fakeNetbox() })
+    const res = await app.inject({ method: 'GET', url: '/api/health' })
+    expect(res.headers['x-frame-options']).toBeDefined()
+    expect(frameAncestorsOf(String(res.headers['content-security-policy']))).toBe("frame-ancestors 'self'")
+  })
+
+  test('frameAncestors set → drops X-Frame-Options and allows the configured origin', async () => {
+    const app = buildApp({ netbox: fakeNetbox(), frameAncestors: ['http://localhost:8080'] })
+    const res = await app.inject({ method: 'GET', url: '/api/health' })
+    // X-Frame-Options can't express an arbitrary allowed origin; modern browsers
+    // honor CSP frame-ancestors, so the legacy header is dropped when embedding.
+    expect(res.headers['x-frame-options']).toBeUndefined()
+    expect(frameAncestorsOf(String(res.headers['content-security-policy'])))
+      .toBe("frame-ancestors 'self' http://localhost:8080")
+  })
+})

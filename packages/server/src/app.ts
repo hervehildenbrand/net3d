@@ -44,6 +44,13 @@ export interface AppDeps {
   webDist?: string
   /** When set, /api/* (except /api/health) requires `Authorization: Bearer <token>`. */
   apiToken?: string
+  /**
+   * Origins allowed to embed net3d in an iframe (in addition to 'self'). Unset
+   * keeps the default same-origin-only posture. When set, CSP frame-ancestors
+   * lists these origins and the legacy X-Frame-Options header is dropped (it
+   * can't express an arbitrary allowed origin; modern browsers honor the CSP).
+   */
+  frameAncestors?: string[]
   /** Fastify logger config; default false keeps tests quiet. */
   logger?: FastifyServerOptions['logger']
   /** When set, the cache is persisted to disk and hydrated on boot (survives restarts). */
@@ -68,6 +75,7 @@ export function buildApp({
   prewarm,
   webDist,
   apiToken,
+  frameAncestors,
   logger = false,
   persist,
   layoutStore,
@@ -84,11 +92,18 @@ export function buildApp({
   // (raster tiles, GL textures, inline styles from R3F/drei); tune in the browser
   // if violations appear. crossOriginEmbedderPolicy is off so cross-origin map
   // tiles/textures load without requiring CORP headers on every tile server.
+  // When embedding is configured, allow those origins to frame us via CSP and
+  // drop X-Frame-Options (it only knows DENY/SAMEORIGIN — no arbitrary origin).
+  const frameAncestorsDirective =
+    frameAncestors && frameAncestors.length ? ["'self'", ...frameAncestors] : undefined
+
   app.register(helmet, {
     crossOriginEmbedderPolicy: false,
+    ...(frameAncestorsDirective ? { xFrameOptions: false } : {}),
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
+        ...(frameAncestorsDirective ? { frameAncestors: frameAncestorsDirective } : {}),
         // 'blob:' is required by @react-three/drei <Text> → troika-worker-utils,
         // which spawns a worker from a blob and importScripts(blob:) inside it.
         // importScripts is governed by script-src (not worker-src), so without this
