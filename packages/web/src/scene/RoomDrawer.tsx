@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Html } from '@react-three/drei'
 import { useThree, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { snapToGrid } from '@net3d/shared'
-import { useEditStore } from '../store/useEditStore'
+import { MIN_ROOM_M, useEditStore } from '../store/useEditStore'
+import { formatArea, formatLength } from '../lib/units'
 
 const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
-const MIN_ROOM_M = 0.5 // ignore accidental tiny rubber-bands
 
 interface Rect {
   minX: number
@@ -22,6 +23,7 @@ interface Rect {
 export function RoomDrawer() {
   const { camera, gl } = useThree()
   const gridSnap = useEditStore((s) => s.gridSnap)
+  const lengthUnit = useEditStore((s) => s.lengthUnit)
   const commitRoom = useEditStore((s) => s.commitRoom)
   const cameraControlsRef = useEditStore((s) => s.cameraControlsRef)
 
@@ -127,16 +129,38 @@ export function RoomDrawer() {
         <planeGeometry args={[400, 400]} />
         <meshBasicMaterial visible={false} />
       </mesh>
-      {/* live rubber-band preview */}
+      {/* live rubber-band preview + a dimension readout that follows the drag */}
       {rect && rect.maxX > rect.minX && (
-        <mesh
-          position={[(rect.minX + rect.maxX) / 2, 0.03, (rect.minZ + rect.maxZ) / 2]}
-          rotation={[-Math.PI / 2, 0, 0]}
-          raycast={() => null}
-        >
-          <planeGeometry args={[rect.maxX - rect.minX, rect.maxZ - rect.minZ]} />
-          <meshBasicMaterial color="#0891b2" transparent opacity={0.35} depthWrite={false} />
-        </mesh>
+        <>
+          <mesh
+            position={[(rect.minX + rect.maxX) / 2, 0.03, (rect.minZ + rect.maxZ) / 2]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            raycast={() => null}
+          >
+            <planeGeometry args={[rect.maxX - rect.minX, rect.maxZ - rect.minZ]} />
+            <meshBasicMaterial color="#0891b2" transparent opacity={0.35} depthWrite={false} />
+          </mesh>
+          <Html
+            position={[(rect.minX + rect.maxX) / 2, 0.5, (rect.minZ + rect.maxZ) / 2]}
+            center
+            zIndexRange={[30, 30]}
+            style={{
+              pointerEvents: 'none',
+              background: 'rgba(8,145,178,0.95)',
+              color: '#fff',
+              padding: '3px 8px',
+              borderRadius: 4,
+              fontFamily: 'ui-monospace, monospace',
+              fontSize: 12,
+              whiteSpace: 'nowrap',
+              userSelect: 'none',
+            }}
+          >
+            {formatLength(rect.maxX - rect.minX, lengthUnit)} ×{' '}
+            {formatLength(rect.maxZ - rect.minZ, lengthUnit)} ·{' '}
+            {formatArea((rect.maxX - rect.minX) * (rect.maxZ - rect.minZ), lengthUnit)}
+          </Html>
+        </>
       )}
     </>
   )
