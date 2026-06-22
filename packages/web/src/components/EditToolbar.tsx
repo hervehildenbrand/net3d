@@ -9,6 +9,7 @@ import {
 } from '@net3d/shared'
 import { useEditStore } from '../store/useEditStore'
 import { useLayoutCapability, useSaveLayout } from '../hooks/useSiteLayout'
+import { PropertiesPanel } from './PropertiesPanel'
 
 const bar: React.CSSProperties = {
   position: 'absolute',
@@ -206,6 +207,7 @@ export function EditToolbar({
   return (
     <>
       {addRoomMode && <div style={hint}>Drag on the floor to draw a room · Esc to cancel</div>}
+      <PropertiesPanel />
       <div style={bar}>
       <strong style={{ whiteSpace: 'nowrap' }}>edit · {siteName}</strong>
       {!canSave && (
