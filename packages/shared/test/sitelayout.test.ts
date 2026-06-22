@@ -140,6 +140,15 @@ describe('validateLayoutInput', () => {
     ).not.toBeNull()
   })
 
+  test('rejects rooms with non-positive width or depth', () => {
+    expect(
+      validateLayoutInput({ ...ok, rooms: [{ id: 'r', name: 'R', bounds: { x: 0, z: 0, width: 0, depth: 2 } }] }),
+    ).not.toBeNull()
+    expect(
+      validateLayoutInput({ ...ok, rooms: [{ id: 'r', name: 'R', bounds: { x: 0, z: 0, width: 2, depth: -1 } }] }),
+    ).not.toBeNull()
+  })
+
   test('rejects floors that are not positive and finite', () => {
     expect(validateLayoutInput({ ...ok, floor: { width: 0, depth: 5 } })).not.toBeNull()
     expect(validateLayoutInput({ ...ok, floor: { width: -1, depth: 5 } })).not.toBeNull()

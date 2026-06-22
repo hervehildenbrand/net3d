@@ -103,6 +103,9 @@ export function validateLayoutInput(body: unknown): string | null {
     if (!['x', 'z', 'width', 'depth'].every((k) => Number.isFinite(bd[k]))) {
       return 'room.bounds needs finite x/z/width/depth'
     }
+    if ((bd.width as number) <= 0 || (bd.depth as number) <= 0) {
+      return 'room.bounds width and depth must be positive'
+    }
   }
 
   if (b.floor !== null && b.floor !== undefined) {
