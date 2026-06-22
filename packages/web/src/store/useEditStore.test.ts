@@ -221,6 +221,22 @@ describe('useEditStore', () => {
     expect(useEditStore.getState().dirty).toBe(true)
   })
 
+  test('setAddRoomMode(true) switches to the top-down view for easy drawing', () => {
+    useEditStore.getState().enterEditMode([placement('A1')])
+    expect(useEditStore.getState().topDownView).toBe(false)
+    useEditStore.getState().setAddRoomMode(true)
+    expect(useEditStore.getState().addRoomMode).toBe(true)
+    expect(useEditStore.getState().topDownView).toBe(true)
+  })
+
+  test('setAddRoomMode(false) leaves the top-down view unchanged (no jarring snap-back)', () => {
+    useEditStore.getState().enterEditMode([placement('A1')])
+    useEditStore.getState().setAddRoomMode(true) // turns top-down on
+    useEditStore.getState().setAddRoomMode(false)
+    expect(useEditStore.getState().addRoomMode).toBe(false)
+    expect(useEditStore.getState().topDownView).toBe(true)
+  })
+
   test('exitEditMode clears room and floor working state', () => {
     useEditStore.getState().enterEditMode([placement('A1')])
     useEditStore.getState().commitRoom({ x: 0, z: 0, width: 2, depth: 2 })

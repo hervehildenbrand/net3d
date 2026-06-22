@@ -29,6 +29,24 @@ const bar: React.CSSProperties = {
   color: '#1e293b',
 }
 
+// Drawing affordance banner — top-center, click-through so it never eats the drag.
+const hint: React.CSSProperties = {
+  position: 'absolute',
+  top: 20,
+  left: '50%',
+  transform: 'translateX(-50%)',
+  zIndex: 20,
+  background: 'rgba(8,145,178,0.95)',
+  color: '#ffffff',
+  borderRadius: 8,
+  padding: '8px 14px',
+  fontFamily: 'ui-monospace, monospace',
+  fontSize: 13,
+  boxShadow: '0 2px 10px rgba(0,0,0,0.12)',
+  whiteSpace: 'nowrap',
+  pointerEvents: 'none',
+}
+
 const btn: React.CSSProperties = {
   background: '#ffffff',
   color: '#1e293b',
@@ -86,18 +104,19 @@ export function EditToolbar({
   const save = useSaveLayout()
   const fileInput = useRef<HTMLInputElement>(null)
 
-  // 'R' rotates the selected rack while editing (ignored in text inputs).
+  // Keyboard while editing (ignored in text inputs): 'R' rotates the selected rack,
+  // 'Esc' cancels add-room mode (unmounting RoomDrawer, which re-enables orbit).
   useEffect(() => {
     if (!editModeActive) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'r' && e.key !== 'R') return
       const el = document.activeElement
       if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA')) return
-      rotateSelected()
+      if (e.key === 'r' || e.key === 'R') rotateSelected()
+      else if (e.key === 'Escape' && addRoomMode) setAddRoomMode(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [editModeActive, rotateSelected])
+  }, [editModeActive, rotateSelected, addRoomMode, setAddRoomMode])
 
   // Warn before a tab close / reload drops unsaved layout edits (only when saving
   // is possible — in sandbox mode edits are ephemeral by design, no warning).
@@ -185,7 +204,9 @@ export function EditToolbar({
   }
 
   return (
-    <div style={bar}>
+    <>
+      {addRoomMode && <div style={hint}>Drag on the floor to draw a room · Esc to cancel</div>}
+      <div style={bar}>
       <strong style={{ whiteSpace: 'nowrap' }}>edit · {siteName}</strong>
       {!canSave && (
         <span
@@ -284,6 +305,7 @@ export function EditToolbar({
         done
       </button>
       {save.isError && <span style={{ color: '#b91c1c' }}>save failed</span>}
-    </div>
+      </div>
+    </>
   )
 }

@@ -153,7 +153,10 @@ export const useEditStore = create<EditState>((set, get) => ({
       }
     }),
 
-  setAddRoomMode: (on) => set({ addRoomMode: on, selectedRoomId: null }),
+  // Entering add-room mode snaps to the top-down view so drawing the rectangle is
+  // a predictable 2D gesture; leaving it keeps the current view (no jarring snap-back).
+  setAddRoomMode: (on) =>
+    set((s) => ({ addRoomMode: on, selectedRoomId: null, topDownView: on ? true : s.topDownView })),
   selectRoom: (roomId) => set({ selectedRoomId: roomId, selectedRackId: null }),
   commitRoom: (bounds) =>
     set((s) => {

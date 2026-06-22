@@ -23,10 +23,22 @@ export function RoomDrawer() {
   const { camera, gl } = useThree()
   const gridSnap = useEditStore((s) => s.gridSnap)
   const commitRoom = useEditStore((s) => s.commitRoom)
+  const cameraControlsRef = useEditStore((s) => s.cameraControlsRef)
 
   const raycaster = useRef(new THREE.Raycaster())
   const start = useRef<{ x: number; z: number } | null>(null)
   const [rect, setRect] = useState<Rect | null>(null)
+
+  // Pause CameraControls for the duration of a draw so the camera doesn't orbit
+  // while the user rubber-bands the room (CameraControls listens on the DOM canvas,
+  // so e.stopPropagation() alone can't stop it — same lever EditableRacks uses).
+  const setOrbitEnabled = useCallback(
+    (enabled: boolean) => {
+      const c = cameraControlsRef?.current
+      if (c) c.enabled = enabled
+    },
+    [cameraControlsRef],
+  )
 
   const groundXZ = useCallback(
     (clientX: number, clientY: number): { x: number; z: number } | null => {
@@ -62,6 +74,7 @@ export function RoomDrawer() {
   const onUp = useCallback(() => {
     const s = start.current
     start.current = null
+    setOrbitEnabled(true)
     window.removeEventListener('pointermove', onMove)
     window.removeEventListener('pointerup', onUp)
     setRect((cur) => {
@@ -75,12 +88,23 @@ export function RoomDrawer() {
       }
       return null
     })
-  }, [onMove, commitRoom])
+  }, [onMove, commitRoom, setOrbitEnabled])
 
   useEffect(() => () => {
     window.removeEventListener('pointermove', onMove)
     window.removeEventListener('pointerup', onUp)
   }, [onMove, onUp])
+
+  // Crosshair affordance for the whole add-room session; reset when we leave.
+  useEffect(() => {
+    document.body.style.cursor = 'crosshair'
+    return () => {
+      document.body.style.cursor = 'auto'
+    }
+  }, [])
+
+  // Safety net: re-enable orbit if we unmount mid-drag (add-room toggled/Esc'd off).
+  useEffect(() => () => setOrbitEnabled(true), [setOrbitEnabled])
 
   const onDown = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
@@ -89,10 +113,11 @@ export function RoomDrawer() {
       if (!hit) return
       start.current = hit
       setRect(rectFrom(hit, hit))
+      setOrbitEnabled(false)
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)
     },
-    [groundXZ, onMove, onUp],
+    [groundXZ, onMove, onUp, setOrbitEnabled],
   )
 
   return (
