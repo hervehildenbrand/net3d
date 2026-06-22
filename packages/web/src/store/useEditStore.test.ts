@@ -247,4 +247,91 @@ describe('useEditStore', () => {
     expect(useEditStore.getState().addRoomMode).toBe(false)
     expect(useEditStore.getState().selectedRoomId).toBeNull()
   })
+
+  test('enterEditMode defaults the display unit to meters', () => {
+    useEditStore.getState().enterEditMode([placement('A1')])
+    expect(useEditStore.getState().lengthUnit).toBe('m')
+  })
+
+  test('setLengthUnit switches the display unit without dirtying the layout', () => {
+    useEditStore.getState().enterEditMode([placement('A1')])
+    useEditStore.getState().setLengthUnit('ft')
+    expect(useEditStore.getState().lengthUnit).toBe('ft')
+    expect(useEditStore.getState().dirty).toBe(false)
+  })
+
+  test('updateRoom edits name and color and marks dirty', () => {
+    useEditStore.getState().enterEditMode([placement('A1')])
+    useEditStore.getState().commitRoom({ x: 0, z: 0, width: 2, depth: 2 })
+    const id = useEditStore.getState().workingRooms[0]!.id
+    useEditStore.getState().updateRoom(id, { name: 'Server Hall', color: '#ff0000' })
+    const room = useEditStore.getState().workingRooms[0]!
+    expect(room.name).toBe('Server Hall')
+    expect(room.color).toBe('#ff0000')
+    expect(useEditStore.getState().dirty).toBe(true)
+  })
+
+  test('updateRoom sets exact bounds, ignoring the active grid snap', () => {
+    useEditStore.getState().enterEditMode([placement('A1')])
+    useEditStore.getState().setGridSnap(0.5)
+    useEditStore.getState().commitRoom({ x: 0, z: 0, width: 2, depth: 2 })
+    const id = useEditStore.getState().workingRooms[0]!.id
+    useEditStore.getState().updateRoom(id, { bounds: { x: 1.23, z: 4.56, width: 3.33, depth: 2.22 } })
+    const room = useEditStore.getState().workingRooms[0]!
+    expect(room.bounds.x).toBeCloseTo(1.23, 6) // NOT snapped to 0.5
+    expect(room.bounds.width).toBeCloseTo(3.33, 6)
+  })
+
+  test('updateRoom merges a partial bounds patch onto the existing room', () => {
+    useEditStore.getState().enterEditMode([placement('A1')])
+    useEditStore.getState().commitRoom({ x: 0, z: 0, width: 2, depth: 2 })
+    const id = useEditStore.getState().workingRooms[0]!.id
+    useEditStore.getState().updateRoom(id, { bounds: { width: 5 } })
+    const room = useEditStore.getState().workingRooms[0]!
+    expect(room.bounds.width).toBeCloseTo(5, 6)
+    expect(room.bounds.depth).toBeCloseTo(2, 6) // untouched
+    expect(room.bounds.x).toBeCloseTo(0, 6)
+  })
+
+  test('updateRoom rejects a sub-minimum width (leaves the room unchanged)', () => {
+    useEditStore.getState().enterEditMode([placement('A1')])
+    useEditStore.getState().commitRoom({ x: 0, z: 0, width: 2, depth: 2 })
+    const id = useEditStore.getState().workingRooms[0]!.id
+    useEditStore.getState().updateRoom(id, { bounds: { width: 0.3 } })
+    expect(useEditStore.getState().workingRooms[0]!.bounds.width).toBeCloseTo(2, 6)
+  })
+
+  test('updateRoom rejects non-finite bounds (leaves the room unchanged)', () => {
+    useEditStore.getState().enterEditMode([placement('A1')])
+    useEditStore.getState().commitRoom({ x: 0, z: 0, width: 2, depth: 2 })
+    const id = useEditStore.getState().workingRooms[0]!.id
+    useEditStore.getState().updateRoom(id, { bounds: { x: NaN } })
+    expect(useEditStore.getState().workingRooms[0]!.bounds.x).toBeCloseTo(0, 6)
+  })
+
+  test('updateRackPrecise sets exact coordinates, ignoring the active grid snap', () => {
+    useEditStore.getState().enterEditMode([placement('A1', 0, 0)])
+    useEditStore.getState().setGridSnap(0.5)
+    useEditStore.getState().updateRackPrecise('A1', 1.23, 4.56)
+    const p = useEditStore.getState().workingPlacements.find((p) => p.rackId === 'A1')!
+    expect(p.x).toBeCloseTo(1.23, 6) // NOT snapped
+    expect(p.z).toBeCloseTo(4.56, 6)
+    expect(useEditStore.getState().dirty).toBe(true)
+  })
+
+  test('updateRackPrecise applies a rotation and swaps the footprint', () => {
+    useEditStore.getState().enterEditMode([placement('A1', 0, 0)]) // 0.6 x 1.2
+    useEditStore.getState().updateRackPrecise('A1', 1, 1, 90)
+    const p = useEditStore.getState().workingPlacements.find((p) => p.rackId === 'A1')!
+    expect(p.rotationDeg).toBe(90)
+    expect(p.width).toBeCloseTo(1.2, 6) // swapped
+    expect(p.depth).toBeCloseTo(0.6, 6)
+  })
+
+  test('updateRackPrecise rejects non-finite coordinates (leaves the rack unchanged)', () => {
+    useEditStore.getState().enterEditMode([placement('A1', 0, 0)])
+    useEditStore.getState().updateRackPrecise('A1', NaN, 1)
+    const p = useEditStore.getState().workingPlacements.find((p) => p.rackId === 'A1')!
+    expect(p.x).toBeCloseTo(0, 6)
+  })
 })

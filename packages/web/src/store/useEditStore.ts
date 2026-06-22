@@ -10,10 +10,14 @@ import {
   type Rotation,
   type SiteLayout,
 } from '@net3d/shared'
+import { loadUnitPreference, saveUnitPreference, type LengthUnit } from '../lib/units'
 import { useAppStore } from './useAppStore'
 
 /** The editable parts of a SiteLayout (server stamps version + updatedAt). */
 export type LayoutPayload = Pick<SiteLayout, 'racks' | 'rooms' | 'floor'>
+
+/** Smallest room edge we accept, in meters — guards against zero/degenerate rooms. */
+export const MIN_ROOM_M = 0.5
 
 interface EditState {
   /** Floor-plan edit mode is active (site level only). */
@@ -26,6 +30,8 @@ interface EditState {
   selectedRoomId: string | null
   /** Snap pitch in meters; 0 = free placement. */
   gridSnap: number
+  /** Display unit for lengths/areas in the editor UI (data stays in meters). */
+  lengthUnit: LengthUnit
   /** Look straight down for 2D-style placement. */
   topDownView: boolean
   /** Working copy differs from the last-saved layout. */
@@ -51,10 +57,28 @@ interface EditState {
   selectRoom: (roomId: string | null) => void
   /** Add a room from a drawn rectangle and leave add-room mode. */
   commitRoom: (bounds: RoomRect) => void
+  /**
+   * Edit a room's name/color/bounds from the properties panel. Bounds are merged
+   * onto the current rect and applied EXACTLY (no grid snap) so typed footprints
+   * land precisely; a patch that would make an edge < MIN_ROOM_M, or any non-finite
+   * value, is rejected wholesale (the room is left unchanged).
+   */
+  updateRoom: (
+    roomId: string,
+    patch: { name?: string; color?: string; bounds?: Partial<RoomRect> },
+  ) => void
   deleteSelectedRoom: () => void
+  /**
+   * Set a rack's position/rotation EXACTLY (no grid snap) from the properties
+   * panel. Non-finite coordinates are rejected. A changed rotation recomputes the
+   * footprint with the same base-recovery logic as rotateSelected.
+   */
+  updateRackPrecise: (rackId: string, x: number, z: number, rotationDeg?: Rotation) => void
   /** Set explicit floor dimensions, or null to auto-fit to racks + rooms. */
   setFloor: (floor: FloorDimensions | null) => void
   setGridSnap: (meters: number) => void
+  /** Switch the display unit (meters/feet); persisted, does not dirty the layout. */
+  setLengthUnit: (unit: LengthUnit) => void
   toggleTopDownView: () => void
   setCameraControlsRef: (ref: { current: CameraControls | null } | null) => void
   markDirty: () => void
@@ -77,6 +101,7 @@ export const useEditStore = create<EditState>((set, get) => ({
   addRoomMode: false,
   selectedRoomId: null,
   gridSnap: 0.25,
+  lengthUnit: 'm',
   topDownView: false,
   dirty: false,
   workingPlacements: [],
@@ -92,6 +117,7 @@ export const useEditStore = create<EditState>((set, get) => ({
     useAppStore.getState().setNavSuppressed(true)
     set({
       editModeActive: true,
+      lengthUnit: loadUnitPreference(),
       workingPlacements: placements.map((p) => ({ ...p })),
       workingRooms: rooms.map((r) => ({ ...r })),
       floor,
@@ -133,6 +159,28 @@ export const useEditStore = create<EditState>((set, get) => ({
     }))
   },
 
+  updateRackPrecise: (rackId, x, z, rotationDeg) =>
+    set((s) => {
+      if (!Number.isFinite(x) || !Number.isFinite(z)) return s
+      return {
+        dirty: true,
+        workingPlacements: s.workingPlacements.map((p) => {
+          if (p.rackId !== rackId) return p
+          if (rotationDeg === undefined || rotationDeg === (p.rotationDeg ?? 0)) {
+            return { ...p, x, z }
+          }
+          // Recover the unrotated footprint, then apply the target rotation's swap
+          // (identical logic to rotateSelected so both paths stay consistent).
+          const cur = p.rotationDeg ?? 0
+          const swapped = cur === 90 || cur === 270
+          const baseW = swapped ? p.depth : p.width
+          const baseD = swapped ? p.width : p.depth
+          const fp = rotatedFootprint(baseW, baseD, rotationDeg)
+          return { ...p, x, z, rotationDeg, width: fp.width, depth: fp.depth }
+        }),
+      }
+    }),
+
   rotateSelected: () =>
     set((s) => {
       const id = s.selectedRackId
@@ -163,6 +211,30 @@ export const useEditStore = create<EditState>((set, get) => ({
       const room: LayoutRoom = { id: `room-${++roomSeq}`, name: `Room ${s.workingRooms.length + 1}`, bounds }
       return { workingRooms: [...s.workingRooms, room], addRoomMode: false, dirty: true }
     }),
+  updateRoom: (roomId, patch) =>
+    set((s) => {
+      const room = s.workingRooms.find((r) => r.id === roomId)
+      if (!room) return s
+      const bounds = patch.bounds ? { ...room.bounds, ...patch.bounds } : room.bounds
+      if (patch.bounds) {
+        const { x, z, width, depth } = bounds
+        if (![x, z, width, depth].every(Number.isFinite)) return s
+        if (width < MIN_ROOM_M || depth < MIN_ROOM_M) return s
+      }
+      return {
+        dirty: true,
+        workingRooms: s.workingRooms.map((r) =>
+          r.id === roomId
+            ? {
+                ...r,
+                ...(patch.name !== undefined ? { name: patch.name } : {}),
+                ...(patch.color !== undefined ? { color: patch.color } : {}),
+                bounds,
+              }
+            : r,
+        ),
+      }
+    }),
   deleteSelectedRoom: () =>
     set((s) => {
       if (!s.selectedRoomId) return s
@@ -175,6 +247,10 @@ export const useEditStore = create<EditState>((set, get) => ({
   setFloor: (floor) => set({ floor, dirty: true }),
 
   setGridSnap: (meters) => set({ gridSnap: meters }),
+  setLengthUnit: (unit) => {
+    saveUnitPreference(unit)
+    set({ lengthUnit: unit })
+  },
   toggleTopDownView: () => set((s) => ({ topDownView: !s.topDownView })),
   setCameraControlsRef: (ref) => set({ cameraControlsRef: ref }),
   markDirty: () => set({ dirty: true }),
