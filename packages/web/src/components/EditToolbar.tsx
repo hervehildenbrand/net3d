@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   SITE_LAYOUT_VERSION,
   validateLayoutInput,
@@ -10,6 +10,15 @@ import {
 import { useEditStore } from '../store/useEditStore'
 import { useLayoutCapability, useSaveLayout } from '../hooks/useSiteLayout'
 import { PropertiesPanel } from './PropertiesPanel'
+import { EditHelpPanel } from './EditHelpPanel'
+import {
+  fromMeters,
+  formatLength,
+  toMeters,
+  unitLabel,
+  METERS_PER_FOOT,
+  type LengthUnit,
+} from '../lib/units'
 
 const bar: React.CSSProperties = {
   position: 'absolute',
@@ -59,12 +68,24 @@ const btn: React.CSSProperties = {
 
 const activeBtn: React.CSSProperties = { ...btn, background: '#0891b2', color: '#ffffff', borderColor: '#0891b2' }
 
-const GRID_OPTIONS = [
-  { label: 'free', value: 0 },
-  { label: '0.25m', value: 0.25 },
-  { label: '0.5m', value: 0.5 },
-  { label: 'rack', value: 0.75 },
-]
+// Grid-snap presets per display unit; values are stored in meters. "tile" is the
+// standard 0.6 m raised-floor tile (replaces the old, arbitrary "rack" = 0.75 m).
+const GRID_PRESETS: Record<LengthUnit, { label: string; value: number }[]> = {
+  m: [
+    { label: 'free', value: 0 },
+    { label: '0.1 m', value: 0.1 },
+    { label: '0.25 m', value: 0.25 },
+    { label: '0.5 m', value: 0.5 },
+    { label: 'tile (0.6 m)', value: 0.6 },
+    { label: '1 m', value: 1 },
+  ],
+  ft: [
+    { label: 'free', value: 0 },
+    { label: '0.5 ft', value: 0.5 * METERS_PER_FOOT },
+    { label: '1 ft', value: 1 * METERS_PER_FOOT },
+    { label: '2 ft', value: 2 * METERS_PER_FOOT },
+  ],
+}
 
 /**
  * Floor-plan editor toolbar (site level). Hidden entirely unless the server
@@ -88,6 +109,8 @@ export function EditToolbar({
   const dirty = useEditStore((s) => s.dirty)
   const gridSnap = useEditStore((s) => s.gridSnap)
   const setGridSnap = useEditStore((s) => s.setGridSnap)
+  const lengthUnit = useEditStore((s) => s.lengthUnit)
+  const setLengthUnit = useEditStore((s) => s.setLengthUnit)
   const topDownView = useEditStore((s) => s.topDownView)
   const toggleTopDownView = useEditStore((s) => s.toggleTopDownView)
   const selectedRackId = useEditStore((s) => s.selectedRackId)
@@ -104,6 +127,20 @@ export function EditToolbar({
   const importLayout = useEditStore((s) => s.importLayout)
   const save = useSaveLayout()
   const fileInput = useRef<HTMLInputElement>(null)
+  const [showHelp, setShowHelp] = useState(false)
+
+  // Open the help card automatically the first time a user enters the editor.
+  useEffect(() => {
+    if (!editModeActive) return
+    try {
+      if (typeof localStorage !== 'undefined' && !localStorage.getItem('net3d-edit-help-seen')) {
+        setShowHelp(true)
+        localStorage.setItem('net3d-edit-help-seen', '1')
+      }
+    } catch {
+      /* ignore storage failures */
+    }
+  }, [editModeActive])
 
   // Keyboard while editing (ignored in text inputs): 'R' rotates the selected rack,
   // 'Esc' cancels add-room mode (unmounting RoomDrawer, which re-enables orbit).
@@ -141,11 +178,15 @@ export function EditToolbar({
     )
   }
 
+  // Floor dimensions are entered in the active unit but stored in meters.
+  const floorDisplay = (m: number | undefined) =>
+    m === undefined ? '' : String(Math.round(fromMeters(m, lengthUnit) * 100) / 100)
+
   const onFloorChange = (key: 'width' | 'depth', raw: string) => {
     const v = parseFloat(raw)
     const base = workingFloor ?? { width: 20, depth: 20 }
     if (!Number.isFinite(v) || v <= 0) return
-    setFloor({ ...base, [key]: v })
+    setFloor({ ...base, [key]: toMeters(v, lengthUnit) })
   }
 
   const onSave = () =>
@@ -204,10 +245,23 @@ export function EditToolbar({
     }
   }
 
+  // Show the active unit's presets; if the current snap isn't one of them (e.g. after
+  // a unit toggle), keep it selectable so the <select> never falls out of sync.
+  const presets = GRID_PRESETS[lengthUnit]
+  const gridOptions =
+    gridSnap === 0 || presets.some((o) => o.value === gridSnap)
+      ? presets
+      : [{ label: formatLength(gridSnap, lengthUnit), value: gridSnap }, ...presets]
+
   return (
     <>
-      {addRoomMode && <div style={hint}>Drag on the floor to draw a room · Esc to cancel</div>}
+      {addRoomMode && (
+        <div style={hint}>
+          Drag on the floor to draw a room — refine the exact size in the panel · Esc to cancel
+        </div>
+      )}
       <PropertiesPanel />
+      {showHelp && <EditHelpPanel onClose={() => setShowHelp(false)} />}
       <div style={bar}>
       <strong style={{ whiteSpace: 'nowrap' }}>edit · {siteName}</strong>
       {!canSave && (
@@ -218,14 +272,25 @@ export function EditToolbar({
           sandbox · not saved
         </span>
       )}
-      <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="Length unit (display only)">
+        units
+        <select
+          value={lengthUnit}
+          onChange={(e) => setLengthUnit(e.target.value as LengthUnit)}
+          style={{ ...btn, padding: '4px 6px' }}
+        >
+          <option value="m">meters</option>
+          <option value="ft">feet</option>
+        </select>
+      </label>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="Snap pitch for dragging">
         grid
         <select
           value={gridSnap}
           onChange={(e) => setGridSnap(parseFloat(e.target.value))}
           style={{ ...btn, padding: '4px 6px' }}
         >
-          {GRID_OPTIONS.map((o) => (
+          {gridOptions.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
@@ -252,27 +317,31 @@ export function EditToolbar({
           delete room
         </button>
       )}
-      <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="Explicit floor size (blank = auto-fit)">
+      <label
+        style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+        title="Explicit floor size (blank = auto-fit)"
+      >
         floor
         <input
           type="number"
-          min={1}
-          step={1}
-          placeholder="W"
-          value={workingFloor?.width ?? ''}
+          min={0.1}
+          step={lengthUnit === 'm' ? 0.5 : 1}
+          placeholder="auto"
+          value={floorDisplay(workingFloor?.width)}
           onChange={(e) => onFloorChange('width', e.target.value)}
           style={{ ...btn, width: 52, padding: '4px 6px' }}
         />
         ×
         <input
           type="number"
-          min={1}
-          step={1}
-          placeholder="D"
-          value={workingFloor?.depth ?? ''}
+          min={0.1}
+          step={lengthUnit === 'm' ? 0.5 : 1}
+          placeholder="auto"
+          value={floorDisplay(workingFloor?.depth)}
           onChange={(e) => onFloorChange('depth', e.target.value)}
           style={{ ...btn, width: 52, padding: '4px 6px' }}
         />
+        <span style={{ color: '#64748b' }}>{unitLabel(lengthUnit)}</span>
         {workingFloor && (
           <button style={{ ...btn, padding: '4px 6px' }} onClick={() => setFloor(null)} title="Auto-fit floor">
             auto
@@ -303,6 +372,13 @@ export function EditToolbar({
         onChange={onImportFile}
         style={{ display: 'none' }}
       />
+      <button
+        style={showHelp ? activeBtn : btn}
+        onClick={() => setShowHelp((v) => !v)}
+        title="Editor help"
+      >
+        ?
+      </button>
       <button style={btn} onClick={onDone}>
         done
       </button>
