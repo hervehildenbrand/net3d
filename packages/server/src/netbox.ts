@@ -317,13 +317,13 @@ export function createNetBoxClient(
     },
 
     async getSiteRacks(site) {
-      if (!/^[\w.-]+$/.test(site)) throw new Error(`invalid site name: ${site}`)
+      if (/["\\/]/.test(site)) throw new Error(`invalid site name: ${site}`)
       const data = await graphql<{ rack_list: RawRack[] }>(siteRacksQuery(site, await netboxMajor()))
       return normalizeRawRacks(data.rack_list)
     },
 
     async getSiteCables(site) {
-      if (!/^[\w.-]+$/.test(site)) throw new Error(`invalid site name: ${site}`)
+      if (/["\\/]/.test(site)) throw new Error(`invalid site name: ${site}`)
       const major = await netboxMajor()
       if (major < 4) {
         const data = await graphql<{ cable_list: RawCable[] }>(siteCablesQuery(site, major))
@@ -354,7 +354,7 @@ export function createNetBoxClient(
     },
 
     async getSitePower(site) {
-      if (!/^[\w.-]+$/.test(site)) throw new Error(`invalid site name: ${site}`)
+      if (/["\\/]/.test(site)) throw new Error(`invalid site name: ${site}`)
       const data = await graphql<RawSitePower>(sitePowerQuery(site, await netboxMajor()))
       return normalizeRawPower(data)
     },
