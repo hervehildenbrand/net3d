@@ -195,7 +195,8 @@ export function App() {
     const locations: Record<string, RackLocation> = {}
     for (const r of siteDetail.racks)
       for (const d of r.devices)
-        locations[d.name.split('.')[0]!.toLowerCase()] = { rackId: r.id, rackName: r.name }
+        if (d.name)
+          locations[d.name.split('.')[0]!.toLowerCase()] = { rackId: r.id, rackName: r.name }
     const segments = lldpToSegments(lldp.byDevice, locations, siteDetail.cables)
     if (import.meta.env.DEV) {
       ;(window as unknown as Record<string, unknown>).__lldpSegments = segments
