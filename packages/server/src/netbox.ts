@@ -336,8 +336,9 @@ export function createNetBoxClient(
       const fetchPage = (offset: number) =>
         graphql<{ cable_list: RawCable[] }>(siteCablesQuery(site, major, { offset, limit }))
       const count = await restCableCount(site)
-      if (count === null) {
-        // count unavailable: sequential paging until a short page
+      if (count === null || count === 0) {
+        // count unavailable or zero (REST slug filter may not match site name):
+        // sequential paging until a short page
         const all: RawCable[] = []
         for (let offset = 0; ; offset += limit) {
           const data = await fetchPage(offset)
