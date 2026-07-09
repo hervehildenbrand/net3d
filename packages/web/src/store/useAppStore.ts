@@ -8,6 +8,7 @@ import {
 import type { SpecMetric } from '../lib/specsHeatmap'
 import type { PowerSource } from '../lib/powerChain'
 import type { Backend } from '../lib/api'
+import { loadSitesMenuOpen, saveSitesMenuOpen } from '../lib/sitesMenuStorage'
 
 export type ViewLevel = 'map' | 'site' | 'rack'
 
@@ -109,6 +110,9 @@ interface AppState {
   /** Specs heatmap: recolor devices (rack) and racks (room) by this metric; null = off. */
   specsHeatmapMetric: SpecMetric | null
   setSpecsMetric: (metric: SpecMetric | null) => void
+  /** Left sites-menu (sites grouped by region): open or collapsed. Persisted. */
+  sitesMenuOpen: boolean
+  toggleSitesMenu: () => void
   /** Leaflet zoomend/moveend feed: candidate site near the view center, if any. */
   handleMapSignals: (zoom: number, site: { name: string; lat: number; lng: number } | null) => void
   /** CameraControls feed at site/rack level; span sizes the exit thresholds. */
@@ -224,6 +228,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleIpLabels: () => set((s) => ({ ipLabelsVisible: !s.ipLabelsVisible })),
   specsHeatmapMetric: null,
   setSpecsMetric: (metric) => set({ specsHeatmapMetric: metric }),
+  sitesMenuOpen: loadSitesMenuOpen(),
+  toggleSitesMenu: () => {
+    const next = !get().sitesMenuOpen
+    saveSitesMenuOpen(next)
+    set({ sitesMenuOpen: next })
+  },
 
   handleMapSignals: (zoom, site) => {
     const { level, zoomToSite, setMapView } = get()

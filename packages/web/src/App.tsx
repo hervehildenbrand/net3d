@@ -21,6 +21,7 @@ import { useSiteLayoutQuery, useLayoutCapability } from './hooks/useSiteLayout'
 import { useDeviceIndex } from './hooks/useDeviceIndex'
 import { useAppStore } from './store/useAppStore'
 import { DevicePanel } from './components/DevicePanel'
+import { SitesMenu, SITES_MENU_WIDTH, SITES_MENU_COLLAPSED_OFFSET } from './components/SitesMenu'
 import { SiteSearch } from './components/SiteSearch'
 import { DeviceSearch } from './components/DeviceSearch'
 import { LayersPanel } from './components/LayersPanel'
@@ -85,6 +86,9 @@ export function App() {
   const clearHighlightedRoles = useAppStore((s) => s.clearHighlightedRoles)
   const specsHeatmapMetric = useAppStore((s) => s.specsHeatmapMetric)
   const setSpecsMetric = useAppStore((s) => s.setSpecsMetric)
+  const sitesMenuOpen = useAppStore((s) => s.sitesMenuOpen)
+  // Left-stacked HUD elements clear the sites menu (open) or its ☰ button (closed).
+  const leftOffset = sitesMenuOpen ? SITES_MENU_WIDTH + 16 : SITES_MENU_COLLAPSED_OFFSET
   const { data: siteDetail, isLoading: siteLoading } = useSiteDetail(
     level !== 'map' ? selectedSiteName : null,
   )
@@ -314,7 +318,10 @@ export function App() {
         </SceneErrorBoundary>
       </div>
 
-      <div style={{ ...hudStyle, pointerEvents: 'none' }}>
+      {/* Sites menu (left edge): all sites grouped by region, one click from any level. */}
+      {sites && <SitesMenu sites={sites} />}
+
+      <div style={{ ...hudStyle, left: leftOffset, pointerEvents: 'none' }}>
         <strong style={{ color: '#1e293b' }}>net3d</strong>
         <div>
           {isLoading && 'loading sites…'}
@@ -441,6 +448,7 @@ export function App() {
           style={{
             ...hudStyle,
             top: 56,
+            left: leftOffset,
             background: '#ffffff',
             color: '#1e293b',
             border: '1px solid #cbd5e1',
@@ -461,6 +469,7 @@ export function App() {
           style={{
             ...hudStyle,
             top: 96,
+            left: leftOffset,
             background: rackView === 'rear' ? '#0891b2' : '#ffffff',
             color: rackView === 'rear' ? '#ffffff' : '#1e293b',
             border: '1px solid #cbd5e1',

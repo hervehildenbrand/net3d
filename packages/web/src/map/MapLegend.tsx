@@ -1,5 +1,7 @@
 import { theme } from '../theme'
 import { markerColorsForRole } from './markerColors'
+import { useAppStore } from '../store/useAppStore'
+import { SITES_MENU_WIDTH } from '../components/SitesMenu'
 
 const box: React.CSSProperties = {
   position: 'absolute',
@@ -38,8 +40,10 @@ function Dot({ role }: { role: 'compute' | 'pop' | null }) {
 
 /** Static key for the world-map markers and inter-DC links. */
 export function MapLegend() {
+  // Clear the sites menu when it's open (the collapsed ☰ only occupies the top-left).
+  const sitesMenuOpen = useAppStore((s) => s.sitesMenuOpen)
   return (
-    <div style={box}>
+    <div style={{ ...box, left: sitesMenuOpen ? SITES_MENU_WIDTH + 12 : 12 }}>
       <div style={row}>
         <Dot role="compute" />
         <span>Compute</span>
