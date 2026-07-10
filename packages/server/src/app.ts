@@ -27,8 +27,10 @@ export const NAPALM_METHODS = {
   get_environment: 15_000,
   get_interfaces: 10_000,
   // LLDP backs the cabling overlay — discovery is expensive (one SSH per
-  // device through NetBox), topology changes slowly: cache for 10 minutes.
-  get_lldp_neighbors: 600_000,
+  // device through NetBox) and now runs site-wide from site entry; topology
+  // changes slowly: cache for 60 minutes. The DevicePanel "live audit" shares
+  // this cache, so audit answers can be up to an hour old — accepted.
+  get_lldp_neighbors: 3_600_000,
 } as const
 
 export interface AppDeps {

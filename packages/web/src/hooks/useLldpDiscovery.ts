@@ -54,9 +54,9 @@ export function useLldpDiscovery(devices: SiteDevice[], activeIds: Set<string>):
         }
       },
       enabled: activeIds.has(d.id),
-      staleTime: 600_000,
+      staleTime: 3_600_000,
       retry: false,
-      gcTime: 600_000,
+      gcTime: 3_600_000,
     })),
   })
 
