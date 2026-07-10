@@ -32,6 +32,20 @@ export interface LldpCableSegment {
 const short = (h: string) => h.split('.')[0]!.toLowerCase()
 
 /**
+ * Resolve an LLDP-reported hostname to a known device key. LLDP often reports
+ * '<site>-<pod>-<name>.<domain>' while the SoT names the device just '<name>'
+ * (prod: 'par1-cp01-lf1001.infra.eu.ginfra.net' vs NetBox 'lf1001'), so after
+ * an exact short-name match, fall back to a '-<name>' suffix match.
+ */
+// ponytail: linear scan per neighbor; index the keys if sites grow past ~10k devices
+function resolveRemote(hostname: string, locations: Record<string, RackLocation>): string {
+  const s = short(hostname)
+  if (locations[s]) return s
+  for (const key in locations) if (s.endsWith(`-${key}`)) return key
+  return s
+}
+
+/**
  * Convert per-device LLDP answers into drawable cable segments:
  * - links already documented as NetBox cables are suppressed,
  * - the same physical link reported from both ends collapses to one segment,
@@ -57,7 +71,7 @@ export function lldpToSegments(
     if (!localLoc) continue
     for (const [localInterface, neighbors] of Object.entries(byInterface)) {
       for (const n of neighbors) {
-        const remoteName = short(n.hostname)
+        const remoteName = resolveRemote(n.hostname, deviceLocations)
         if (documented.has(`${short(localDeviceName)}|${localInterface}`)) continue
 
         // canonical key so A→B and B→A collapse into one link
