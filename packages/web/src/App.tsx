@@ -32,6 +32,7 @@ import { useEditStore } from './store/useEditStore'
 import { computeSpecsRange } from './lib/specsHeatmap'
 import { collectSubnets } from './lib/subnetColoring'
 import { tracePowerChain } from './lib/powerChain'
+import { computeActiveLldpIds } from './lib/lldpScope'
 import { SceneErrorBoundary } from './components/SceneErrorBoundary'
 
 const hudStyle: React.CSSProperties = {
@@ -178,7 +179,8 @@ export function App() {
         : { kind: 'panel', name },
     )
 
-  // LLDP discovery: activates for the rack being viewed; results accumulate site-wide.
+  // LLDP discovery: network devices site-wide from site entry (NetBox-documented
+  // links still win per-link), plus the whole rack being viewed; results accumulate.
   const allSiteDevices = useMemo(
     () => siteDetail?.racks.flatMap((r) => r.devices) ?? [],
     [siteDetail],
@@ -186,12 +188,8 @@ export function App() {
   const capabilities = useCapabilities()
   const activeLldpIds = useMemo(
     () =>
-      new Set(
-        capabilities.napalmAvailable && level === 'rack' && selectedRack
-          ? selectedRack.devices.map((d) => d.id)
-          : [],
-      ),
-    [capabilities.napalmAvailable, level, selectedRack],
+      computeActiveLldpIds(capabilities.napalmAvailable, level, siteDetail?.racks ?? [], selectedRack),
+    [capabilities.napalmAvailable, level, siteDetail, selectedRack],
   )
   const lldp = useLldpDiscovery(allSiteDevices, activeLldpIds)
   const lldpSegments = useMemo(() => {
@@ -335,12 +333,12 @@ export function App() {
             selectedSiteName &&
             `site: ${selectedSiteName}${siteLoading ? ' — loading racks…' : siteDetail ? ` — ${siteDetail.racks.length} racks` : ''}`}
           {level === 'rack' && selectedRack && `${selectedSiteName} / ${selectedRack.name}`}
-          {level === 'rack' && lldp.discovering && (
+          {level !== 'map' && lldp.discovering && (
             <div style={{ color: '#0891b2' }}>
               ◐ discovering cabling {lldp.completed}/{lldp.total} devices…
             </div>
           )}
-          {level === 'rack' && !lldp.discovering && lldp.total > 0 && (
+          {level !== 'map' && !lldp.discovering && lldp.total > 0 && (
             <div style={{ color: '#0891b2' }}>
               ▣ LLDP: {lldpSegments.length} undocumented link{lldpSegments.length === 1 ? '' : 's'}
             </div>
