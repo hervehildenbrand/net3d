@@ -115,9 +115,21 @@ function Racks({
         ))}
       </Instances>
       {showRackLabels &&
-        placements.map((p) => (
-          <Billboard key={`label-${p.rackId}`} position={[p.x, p.height + 0.25, p.z]}>
-            <Text fontSize={0.16} color={theme.text.onScene} anchorX="center" anchorY="bottom">
+        placements.map((p, i) => (
+          // Names are wider than the 0.75 m rack pitch, so same-height labels in a
+          // dense row collide; cycling three tiers spaces same-tier names 2.25 m
+          // apart. Labels never raycast — they must not steal rack hover/click.
+          <Billboard
+            key={`label-${p.rackId}`}
+            position={[p.x, p.height + 0.25 + (i % 3) * 0.34, p.z]}
+          >
+            <Text
+              fontSize={0.16}
+              color={theme.text.onScene}
+              anchorX="center"
+              anchorY="bottom"
+              raycast={() => null}
+            >
               {p.name}
             </Text>
           </Billboard>
