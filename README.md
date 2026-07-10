@@ -29,6 +29,9 @@ at their true U-positions, connected by one continuous mouse-wheel journey.
   retrace every step. Clicks work as shortcuts; hysteresis prevents level flapping.
 - 🏢 **Procedural site view**: racks laid out in rows per NetBox location inside a
   glass building (NetBox stores no rack coordinates, so the floor plan is schematic).
+- 📐 **Editable floor plan** (opt-in): drag and rotate racks, draw rooms and the floor
+  outline to match your real datacenter; layouts are saved server-side per site and
+  survive restarts. Off by default so a deployment stays a read-only viewer.
 - 🗄 **Rack view**: devices at their real U-positions, sized by device-type height,
   colored by NetBox role color; documented cables routed down the side channel.
 - 🔌 **Cabling, documented and discovered**: solid lines are NetBox cables (all
@@ -160,6 +163,19 @@ WEB_DIST="$PWD/packages/web/dist" \
 
 `pnpm start` runs the Fastify server; with `WEB_DIST` set it also serves the built UI.
 Put it behind your own TLS / reverse proxy.
+
+### Floor-plan editing (optional)
+
+The schematic layout can be edited in-app and saved per site:
+
+```sh
+LAYOUT_EDIT=1                  # show the "Edit layout" toolbar and allow saving
+LAYOUT_DIR=/var/lib/net3d/layouts   # storage dir (default: packages/server/.data/net3d-layouts)
+```
+
+Layouts are one JSON file per site — in a container, point `LAYOUT_DIR` at a mounted
+volume so they survive redeploys. `LAYOUT_PREVIEW=1` applies saved layouts and shows the
+editor without allowing writes (nice for public demos). See `.env.example` for details.
 
 ### Security
 
