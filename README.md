@@ -33,8 +33,11 @@ at their true U-positions, connected by one continuous mouse-wheel journey.
   colored by NetBox role color; documented cables routed down the side channel.
 - 🔌 **Cabling, documented and discovered**: solid lines are NetBox cables (all
   termination types: interfaces, front/rear ports, console, power, circuits). Entering
-  a rack auto-discovers **LLDP neighbors via the NetBox NAPALM plugin** (the app never
-  contacts devices directly); undocumented links appear as dashed cyan cables.
+  a site auto-discovers **LLDP neighbors via the NetBox NAPALM plugin** for every
+  network-role device (switch/leaf/spine/router/firewall; the app never contacts
+  devices directly), and entering a rack covers that rack's remaining devices. Links
+  missing from NetBox render as dashed cyan cables — an undocumented fabric still
+  shows up — and documented cables always win per link.
 - 📟 **Live device panel**: NAPALM facts, environment sensors, interface up/down
   states (auto-refresh), live green/red cable coloring, and an LLDP-vs-NetBox audit.
 - 🪶 **Graceful degradation**: without the NAPALM plugin, all live features hide and
@@ -208,7 +211,11 @@ packages/
   pagination, polymorphic terminations).
 - **NAPALM calls are live SSH sessions** opened by NetBox (~25 s per device on real
   hardware). net3d bounds concurrency (3 client-side, 8 server-side with 429 shedding)
-  and caches LLDP answers for 10 minutes; discovery is progressive, not blocking.
+  and caches LLDP answers for 60 minutes; site-wide discovery is progressive, not
+  blocking, and devices NAPALM can't reach are skipped silently.
+- **LLDP hostnames are matched to SoT device names** by stripping the domain and,
+  when needed, a site/pod prefix (`par1-cp01-lf1001.example.net` matches device
+  `lf1001`), so discovered links resolve even when naming conventions differ.
 - Sites without latitude/longitude don't appear on the map but stay reachable through
   the search box.
 
