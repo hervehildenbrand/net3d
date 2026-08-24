@@ -31,6 +31,30 @@ export interface TracePath {
 // ponytail: \0 delimiter - device/port names may contain '|' but never NUL
 const SEP = '\0'
 
+/** One display row of a trace: a device visit with the port(s) touched there. */
+export interface TraceRow {
+  deviceName: string | null
+  rackName: string | null
+  ports: string[]
+  panel: boolean
+}
+
+/** Collapse hops into one row per device visit — panel front/rear pairs merge. */
+export function groupTraceHops(trace: TracePath): TraceRow[] {
+  const rows: TraceRow[] = []
+  for (const h of trace.hops) {
+    const prev = rows[rows.length - 1]
+    if (h.kind === 'interface') {
+      rows.push({ deviceName: h.deviceName, rackName: h.rackName, ports: [h.portName], panel: false })
+    } else if (prev?.panel && prev.deviceName === h.deviceName) {
+      prev.ports.push(h.portName)
+    } else {
+      rows.push({ deviceName: h.deviceName, rackName: h.rackName, ports: [h.portName], panel: true })
+    }
+  }
+  return rows
+}
+
 /**
  * Build a bidirectional map from "deviceName\0portName" to "deviceName\0pairedPort"
  * for all front-port ends with a pairedPort set.

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { extractFrontRearPairs, buildCablePath, buildCablePathThrough, TraceCable, TracePath } from './cabletrace'
+import { extractFrontRearPairs, buildCablePath, buildCablePathThrough, groupTraceHops, TraceCable, TracePath } from './cabletrace'
 
 // Helper to build cable ends with minimal boilerplate
 const iface = (dev: string, name: string, rack = 'R1'): NonNullable<TraceCable['a']> => ({
@@ -46,6 +46,46 @@ describe('extractFrontRearPairs', () => {
     // Keys use \0 delimiter internally, but test via the actual lookup
     expect(pairs.get('pp|panel\0port1')).toBe('pp|panel\0rear1')
     expect(pairs.get('pp|panel\0rear1')).toBe('pp|panel\0port1')
+  })
+})
+
+describe('groupTraceHops', () => {
+  test('collapses panel front/rear hop pairs into one row per device', () => {
+    const path = {
+      hops: [
+        { kind: 'interface' as const, portName: 'Ethernet1', deviceName: 'leaf-1', rackName: 'SRV-01' },
+        { kind: 'front-port' as const, portName: 'Front1', deviceName: 'pp-1', rackName: 'SRV-01' },
+        { kind: 'rear-port' as const, portName: 'Rear1', deviceName: 'pp-1', rackName: 'SRV-01' },
+        { kind: 'rear-port' as const, portName: 'Rear1', deviceName: 'xc-1', rackName: 'NET-01' },
+        { kind: 'front-port' as const, portName: 'Front1', deviceName: 'xc-1', rackName: 'NET-01' },
+        { kind: 'interface' as const, portName: 'leaf1-1', deviceName: 'spine-01', rackName: 'NET-01' },
+      ],
+      cableIds: ['c1', 'c2', 'c3'],
+      complete: true,
+      panelCount: 2,
+    }
+    expect(groupTraceHops(path)).toEqual([
+      { deviceName: 'leaf-1', rackName: 'SRV-01', ports: ['Ethernet1'], panel: false },
+      { deviceName: 'pp-1', rackName: 'SRV-01', ports: ['Front1', 'Rear1'], panel: true },
+      { deviceName: 'xc-1', rackName: 'NET-01', ports: ['Rear1', 'Front1'], panel: true },
+      { deviceName: 'spine-01', rackName: 'NET-01', ports: ['leaf1-1'], panel: false },
+    ])
+  })
+
+  test('a lone unpaired panel hop still becomes its own row', () => {
+    const path = {
+      hops: [
+        { kind: 'interface' as const, portName: 'eth0', deviceName: 'sw1', rackName: 'R1' },
+        { kind: 'front-port' as const, portName: 'f1', deviceName: 'pp1', rackName: 'R1' },
+      ],
+      cableIds: ['c1'],
+      complete: false,
+      panelCount: 0,
+    }
+    expect(groupTraceHops(path)).toEqual([
+      { deviceName: 'sw1', rackName: 'R1', ports: ['eth0'], panel: false },
+      { deviceName: 'pp1', rackName: 'R1', ports: ['f1'], panel: true },
+    ])
   })
 })
 

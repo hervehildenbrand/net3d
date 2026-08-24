@@ -8,6 +8,7 @@ import {
   interfaceSpeedBucket,
   lldpDiff,
   type LldpNeighbor,
+  groupTraceHops,
   isInterfaceEnd,
   type TraceCable,
   type TracePath,
@@ -173,29 +174,53 @@ function LldpAudit({ device, cables }: { device: SiteDevice; cables: SiteCable[]
   )
 }
 
-/** Format a TracePath as a compact human-readable string. */
-function formatTracePath(trace: TracePath): string {
-  if (trace.hops.length === 0) return ''
-  const parts: string[] = []
-  let i = 0
-  while (i < trace.hops.length) {
-    const hop = trace.hops[i]!
-    if (hop.kind === 'interface') {
-      parts.push(`${hop.deviceName ?? '?'}:${hop.portName}`)
-      i++
-    } else {
-      // front/rear port pair: combine them with a bidirectional arrow
-      const nextHop = trace.hops[i + 1]
-      if (nextHop && nextHop.deviceName === hop.deviceName) {
-        parts.push(`${hop.deviceName ?? '?'}:${hop.portName} ⇄ ${nextHop.portName}`)
-        i += 2
-      } else {
-        parts.push(`${hop.deviceName ?? '?'}:${hop.portName}`)
-        i++
-      }
-    }
-  }
-  return parts.join(' → ')
+/** Patch-panel accent — matches the panel role colour in the racks. */
+const PANEL_BROWN = '#795548'
+
+/**
+ * The traced path as a vertical route diagram: amber nodes for the two
+ * interface endpoints, brown squares for each patch panel passed through,
+ * one amber spine connecting them (same hue as the highlighted cables in 3D).
+ */
+function TracePathDiagram({ trace }: { trace: TracePath }) {
+  const rows = groupTraceHops(trace)
+  return (
+    <div>
+      {rows.map((r, i) => {
+        const crossed = i > 0 && r.rackName !== rows[i - 1]!.rackName
+        return (
+          <div key={i} style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 10 }}>
+              {r.panel ? (
+                <span style={{ width: 8, height: 8, background: '#fff', border: `2px solid ${PANEL_BROWN}`, borderRadius: 2, marginTop: 3, flexShrink: 0 }} />
+              ) : (
+                <span style={{ width: 8, height: 8, background: theme.cable.highlight, borderRadius: '50%', marginTop: 3, flexShrink: 0 }} />
+              )}
+              {i < rows.length - 1 && (
+                <span style={{ flex: 1, width: 2, background: theme.cable.highlight, minHeight: 12, opacity: 0.5 }} />
+              )}
+            </div>
+            <div style={{ flex: 1, minWidth: 0, paddingBottom: i < rows.length - 1 ? 8 : 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                <span style={{ color: '#1e293b', fontWeight: 600, overflowWrap: 'anywhere' }}>{r.deviceName ?? '?'}</span>
+                <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{r.ports.join(' ⇄ ')}</span>
+              </div>
+              <div style={{ color: '#94a3b8', fontSize: 10 }}>
+                {r.panel ? 'patch panel · ' : ''}
+                {r.rackName ?? ''}
+                {crossed && <span style={{ color: '#d97706' }}> — crosses racks</span>}
+              </div>
+            </div>
+          </div>
+        )
+      })}
+      {!trace.complete && (
+        <div style={{ color: '#d97706', fontSize: 10, marginTop: 4 }}>
+          ⚠ path incomplete — the far side isn't fully documented
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function DevicePanel({
@@ -220,6 +245,7 @@ export function DevicePanel({
   const ports = useMemo(() => getCablesForDevice(cables, device.name), [cables, device.name])
   const { backend } = useCapabilities()
   const activeTrace = useAppStore((s) => s.activeTrace)
+  const [hoverCable, setHoverCable] = useState<string | null>(null)
   const setTrace = useAppStore((s) => s.setTrace)
   const clearTrace = useAppStore((s) => s.clearTrace)
 
@@ -331,37 +357,44 @@ export function DevicePanel({
 
       <Section title={`Port allocation${ports.length ? ` (${ports.length})` : ''}`}>
         {ports.length === 0 && <div style={{ color: '#94a3b8' }}>no documented cables</div>}
-        {ports.map((p) => (
-          <div key={p.cableId} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0' }}>
-            <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-              <span style={{ color: p.kind === 'mgmt' ? theme.cable.mgmt : '#64748b' }}>
-                {p.interfaceName}
-                {speedByCable.has(p.cableId) && (
-                  <span style={{ color: '#94a3b8', marginLeft: 6 }}>{speedByCable.get(p.cableId)}</span>
-                )}
-              </span>
-              <span style={{ textAlign: 'right', wordBreak: 'break-all' }}>
-                {`→ ${p.remoteRackName ? `${p.remoteRackName} / ` : ''}${p.remoteDeviceName ?? '?'} : ${p.remoteInterfaceName ?? '?'}`}
-              </span>
+        {ports.map((p) => {
+          const traceable = backend === 'netbox' && traceableCables.has(p.cableId)
+          const isTraced = !!activeTrace && activeTrace.cableIds.includes(p.cableId)
+          return (
+            <div
+              key={p.cableId}
+              onClick={traceable ? () => (isTraced ? clearTrace() : handleTrace(p.interfaceName, p.cableId)) : undefined}
+              onMouseEnter={traceable ? () => setHoverCable(p.cableId) : undefined}
+              onMouseLeave={traceable ? () => setHoverCable(null) : undefined}
+              title={traceable ? 'trace this cable end-to-end, through patch panels' : undefined}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '3px 6px',
+                margin: '0 -6px',
+                borderRadius: 4,
+                cursor: traceable ? 'pointer' : undefined,
+                background: isTraced ? '#fef3c7' : hoverCable === p.cableId ? '#f1f5f9' : undefined,
+              }}
+            >
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <span style={{ color: p.kind === 'mgmt' ? theme.cable.mgmt : '#64748b' }}>
+                  {p.interfaceName}
+                  {speedByCable.has(p.cableId) && (
+                    <span style={{ color: '#94a3b8', marginLeft: 6 }}>{speedByCable.get(p.cableId)}</span>
+                  )}
+                </span>
+                <span style={{ textAlign: 'right', wordBreak: 'break-all' }}>
+                  {`→ ${p.remoteRackName ? `${p.remoteRackName} / ` : ''}${p.remoteDeviceName ?? '?'} : ${p.remoteInterfaceName ?? '?'}`}
+                </span>
+              </div>
+              {traceable && (
+                <span style={{ color: isTraced ? theme.cable.highlight : '#cbd5e1', fontSize: 11 }}>↯</span>
+              )}
             </div>
-            {backend === 'netbox' && traceableCables.has(p.cableId) && (
-              <button
-                onClick={() => handleTrace(p.interfaceName, p.cableId)}
-                title="trace through patch panels"
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#94a3b8',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  padding: '0 2px',
-                }}
-              >
-                ↯
-              </button>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </Section>
 
       {backend === 'infrahub' && (
@@ -372,30 +405,28 @@ export function DevicePanel({
 
       {backend === 'netbox' && activeTrace && (
         <Section title="Cable trace">
-          <div style={{ fontSize: 11, lineHeight: 1.5, wordBreak: 'break-word' }}>
-            {formatTracePath(activeTrace)}
+          <TracePathDiagram trace={activeTrace} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+            <span style={{ color: '#64748b', fontSize: 10 }}>
+              {activeTrace.cableIds.length} cable{activeTrace.cableIds.length !== 1 ? 's' : ''}
+              {activeTrace.panelCount > 0 && ` · through ${activeTrace.panelCount} patch panel${activeTrace.panelCount !== 1 ? 's' : ''}`}
+            </span>
+            <button
+              onClick={clearTrace}
+              style={{
+                background: '#f8fafc',
+                color: '#64748b',
+                border: '1px solid #cbd5e1',
+                borderRadius: 4,
+                padding: '3px 8px',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                fontSize: 10,
+              }}
+            >
+              clear
+            </button>
           </div>
-          <div style={{ color: '#64748b', fontSize: 10, marginTop: 4 }}>
-            {activeTrace.cableIds.length} cable{activeTrace.cableIds.length !== 1 ? 's' : ''}
-            {activeTrace.panelCount > 0 && ` · via ${activeTrace.panelCount} patch panel${activeTrace.panelCount !== 1 ? 's' : ''}`}
-            {!activeTrace.complete && <span style={{ color: '#d97706' }}> · path incomplete</span>}
-          </div>
-          <button
-            onClick={clearTrace}
-            style={{
-              background: '#f8fafc',
-              color: '#64748b',
-              border: '1px solid #cbd5e1',
-              borderRadius: 4,
-              padding: '3px 8px',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              fontSize: 10,
-              marginTop: 6,
-            }}
-          >
-            clear
-          </button>
         </Section>
       )}
 
