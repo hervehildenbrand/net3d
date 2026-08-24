@@ -176,7 +176,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Arm the rack exit on entry (covers rack-click entry that bypasses the
     // nav machine) so zoom-out-to-room is always reachable. See navigation.ts.
     navMachine = { ...navMachine, exitRackArmed: true, enterRackArmed: false }
-    set({ level: 'rack', selectedRackId: rackId, rackView: 'front', pendingDeviceFocus: null, activeTrace: null })
+    // activeTrace survives rack hops — it's site-scoped, and following a traced
+    // path rack-to-rack is exactly how the trace UI navigates
+    set({ level: 'rack', selectedRackId: rackId, rackView: 'front', pendingDeviceFocus: null })
   },
   zoomToMap: () =>
     set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, pendingDeviceFocus: null, navSuppressed: false, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null, colorMode: 'none', hiddenStatuses: new Set<string>(), cableColorMode: 'medium', ipLabelsVisible: false, activeTrace: null }),

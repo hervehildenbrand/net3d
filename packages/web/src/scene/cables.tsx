@@ -203,6 +203,7 @@ export function RackCables({
         if (bucket) speedTally.set(bucket, (speedTally.get(bucket) ?? 0) + 1)
         return {
           id: o.cable.id,
+          remote: o.remote,
           color: isMgmt && cableColorMode === 'medium' ? theme.cable.mgmt : cableColor(o.cable, cableColorMode),
           points: bundleConvergencePath(localAttach, { bundleX, rearZ, exitY, exitZ }).map(
             (p) => [p.x, p.y, p.z] as [number, number, number],
@@ -277,7 +278,8 @@ export function RackCables({
       })}
       {outgoingBundles.map((b) => {
         // trace highlighting: does any cable in this bundle belong to the trace?
-        const anyTraced = tracedCableIds && b.lines.some((ln) => tracedCableIds.has(ln.id))
+        const tracedLine = tracedCableIds ? b.lines.find((ln) => tracedCableIds.has(ln.id)) : undefined
+        const anyTraced = !!tracedLine
         // emphasis follows the LOCAL device (the one in this rack), trace takes precedence
         const bundleEmphasis = tracedCableIds
           ? anyTraced
@@ -330,13 +332,23 @@ export function RackCables({
                 {`${b.count} out`}
               </Text>
             </Billboard>
-            {/* on focus, reveal where this device's cables go (top racks + remainder) */}
-            {bundleEmphasis === 'hi' && b.hint && (
+            {/* on focus, reveal where this device's cables go (top racks + remainder);
+                a traced cable names its exact continuation instead */}
+            {tracedLine?.remote ? (
               <Billboard position={b.hintPos}>
-                <Text fontSize={0.022} color={theme.text.secondary} anchorX="right" anchorY="middle">
-                  {b.hint}
+                <Text fontSize={0.026} color={theme.cable.highlight} anchorX="right" anchorY="middle">
+                  {`continues → ${tracedLine.remote.rackName ?? '?'} / ${tracedLine.remote.deviceName ?? '?'} : ${tracedLine.remote.name}`}
                 </Text>
               </Billboard>
+            ) : (
+              bundleEmphasis === 'hi' &&
+              b.hint && (
+                <Billboard position={b.hintPos}>
+                  <Text fontSize={0.022} color={theme.text.secondary} anchorX="right" anchorY="middle">
+                    {b.hint}
+                  </Text>
+                </Billboard>
+              )
             )}
           </group>
         )

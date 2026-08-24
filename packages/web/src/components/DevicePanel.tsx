@@ -15,7 +15,7 @@ import {
 } from '@net3d/shared'
 import { useCapabilities } from '../hooks/useCapabilities'
 import { UnreachableError, useNapalm } from '../hooks/useNapalm'
-import type { SiteCable, SiteDevice, SiteRack } from '../hooks/useSiteDetail'
+import { useSiteDetail, type SiteCable, type SiteDevice, type SiteRack } from '../hooks/useSiteDetail'
 import { deriveRedundancy, deviceFeedSides } from '../lib/powerOverlay'
 import { useAppStore } from '../store/useAppStore'
 import { theme } from '../theme'
@@ -174,6 +174,17 @@ function LldpAudit({ device, cables }: { device: SiteDevice; cables: SiteCable[]
   )
 }
 
+const traceBtn: React.CSSProperties = {
+  background: '#f8fafc',
+  color: '#64748b',
+  border: '1px solid #cbd5e1',
+  borderRadius: 4,
+  padding: '3px 8px',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  fontSize: 10,
+}
+
 /** Patch-panel accent — matches the panel role colour in the racks. */
 const PANEL_BROWN = '#795548'
 
@@ -182,12 +193,13 @@ const PANEL_BROWN = '#795548'
  * interface endpoints, brown squares for each patch panel passed through,
  * one amber spine connecting them (same hue as the highlighted cables in 3D).
  */
-function TracePathDiagram({ trace }: { trace: TracePath }) {
+function TracePathDiagram({ trace, onJump }: { trace: TracePath; onJump?: (deviceName: string) => void }) {
   const rows = groupTraceHops(trace)
   return (
     <div>
       {rows.map((r, i) => {
         const crossed = i > 0 && r.rackName !== rows[i - 1]!.rackName
+        const jump = onJump && r.deviceName ? () => onJump(r.deviceName!) : undefined
         return (
           <div key={i} style={{ display: 'flex', gap: 8 }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 10 }}>
@@ -202,7 +214,20 @@ function TracePathDiagram({ trace }: { trace: TracePath }) {
             </div>
             <div style={{ flex: 1, minWidth: 0, paddingBottom: i < rows.length - 1 ? 8 : 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                <span style={{ color: '#1e293b', fontWeight: 600, overflowWrap: 'anywhere' }}>{r.deviceName ?? '?'}</span>
+                <span
+                  onClick={jump}
+                  title={jump ? 'go to this device' : undefined}
+                  style={{
+                    color: '#1e293b',
+                    fontWeight: 600,
+                    overflowWrap: 'anywhere',
+                    cursor: jump ? 'pointer' : undefined,
+                    textDecoration: jump ? 'underline dotted #cbd5e1' : undefined,
+                    textUnderlineOffset: 3,
+                  }}
+                >
+                  {r.deviceName ?? '?'}
+                </span>
                 <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{r.ports.join(' ⇄ ')}</span>
               </div>
               <div style={{ color: '#94a3b8', fontSize: 10 }}>
@@ -246,6 +271,21 @@ export function DevicePanel({
   const { backend } = useCapabilities()
   const activeTrace = useAppStore((s) => s.activeTrace)
   const [hoverCable, setHoverCable] = useState<string | null>(null)
+  const siteName = useAppStore((s) => s.selectedSiteName)
+  const focusDevice = useAppStore((s) => s.focusDevice)
+  const zoomToSite = useAppStore((s) => s.zoomToSite)
+  const { data: siteDetail } = useSiteDetail(siteName)
+  // trace-diagram rows jump to their device: name -> (rack, device) ids
+  const deviceLocator = useMemo(() => {
+    const m = new Map<string, { rackId: string; deviceId: string }>()
+    for (const r of siteDetail?.racks ?? [])
+      for (const d of r.devices) m.set(d.name, { rackId: r.id, deviceId: d.id })
+    return m
+  }, [siteDetail])
+  const jumpToDevice = (name: string) => {
+    const loc = deviceLocator.get(name)
+    if (loc && siteName) focusDevice({ siteName, rackId: loc.rackId, deviceId: loc.deviceId })
+  }
   const setTrace = useAppStore((s) => s.setTrace)
   const clearTrace = useAppStore((s) => s.clearTrace)
 
@@ -405,27 +445,22 @@ export function DevicePanel({
 
       {backend === 'netbox' && activeTrace && (
         <Section title="Cable trace">
-          <TracePathDiagram trace={activeTrace} />
+          <TracePathDiagram trace={activeTrace} onJump={jumpToDevice} />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
             <span style={{ color: '#64748b', fontSize: 10 }}>
               {activeTrace.cableIds.length} cable{activeTrace.cableIds.length !== 1 ? 's' : ''}
               {activeTrace.panelCount > 0 && ` · through ${activeTrace.panelCount} patch panel${activeTrace.panelCount !== 1 ? 's' : ''}`}
             </span>
-            <button
-              onClick={clearTrace}
-              style={{
-                background: '#f8fafc',
-                color: '#64748b',
-                border: '1px solid #cbd5e1',
-                borderRadius: 4,
-                padding: '3px 8px',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                fontSize: 10,
-              }}
-            >
-              clear
-            </button>
+            <span style={{ display: 'flex', gap: 6 }}>
+              {siteName && (
+                <button onClick={() => zoomToSite(siteName)} title="zoom out to the room — the traced run glows on the tray" style={traceBtn}>
+                  view in site
+                </button>
+              )}
+              <button onClick={clearTrace} style={traceBtn}>
+                clear
+              </button>
+            </span>
           </div>
         </Section>
       )}
