@@ -91,6 +91,19 @@ describe('siteCablesQuery', () => {
     }
   })
 
+  test('v3 selects the flat front-port rear_port (graphene FK)', () => {
+    const q = siteCablesQuery('dc1', 3)
+    expect(q).toContain('... on FrontPortType { name device { name rack { name } } rear_port { name } }')
+    expect(q).not.toContain('mappings')
+  })
+
+  test('v4 selects the front-port mappings list (NetBox 4.6 PortMappingType)', () => {
+    // 4.6 dropped FrontPort.rear_port for a multi-position mappings relation;
+    // selecting the flat field is a GraphQL validation error there
+    const q = siteCablesQuery('dc1', 4)
+    expect(q).toContain('... on FrontPortType { name device { name rack { name } } mappings { rear_port { name } } }')
+  })
+
   test('circuit termination fragment never selects site (dropped for 4.x compat)', () => {
     // cables.ts only needs circuit.cid; CircuitTerminationType has no site field in 4.x
     for (const v of [3, 4] as const) {

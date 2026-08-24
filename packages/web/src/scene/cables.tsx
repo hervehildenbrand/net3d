@@ -76,6 +76,12 @@ export function RackCables({
   highlightDeviceName?: string | null
 }) {
   const cableColorMode = useAppStore((s) => s.cableColorMode)
+  const activeTrace = useAppStore((s) => s.activeTrace)
+  // ponytail: Set lookup is O(1), build once per trace change
+  const tracedCableIds = useMemo(
+    () => (activeTrace ? new Set(activeTrace.cableIds) : null),
+    [activeTrace],
+  )
   // cabling runs along the rear of the rack, as in reality (front faces +z),
   // and just inside the right rail so the device boxes occlude it from the front
   const rearZ = placement.z - placement.depth / 2 + 0.06
@@ -196,6 +202,8 @@ export function RackCables({
         const bucket = interfaceSpeedBucket(o.cable.a?.ifaceType ?? o.cable.b?.ifaceType ?? null)
         if (bucket) speedTally.set(bucket, (speedTally.get(bucket) ?? 0) + 1)
         return {
+          id: o.cable.id,
+          remote: o.remote,
           color: isMgmt && cableColorMode === 'medium' ? theme.cable.mgmt : cableColor(o.cable, cableColorMode),
           points: bundleConvergencePath(localAttach, { bundleX, rearZ, exitY, exitZ }).map(
             (p) => [p.x, p.y, p.z] as [number, number, number],
@@ -235,12 +243,16 @@ export function RackCables({
     <>
       {intraLines.map((l) => {
         const live = liveStatus?.get(l.id)
-        // hovering/selecting a device emphasizes its links and fades the rest
-        const emphasis = highlightDeviceName
-          ? l.devices.includes(highlightDeviceName)
+        // trace highlighting takes precedence over device hover/selection
+        const emphasis = tracedCableIds
+          ? tracedCableIds.has(l.id)
             ? 'hi'
             : 'lo'
-          : 'none'
+          : highlightDeviceName
+            ? l.devices.includes(highlightDeviceName)
+              ? 'hi'
+              : 'lo'
+            : 'none'
         // live up/down wins; else the focused bundle reads as one accent colour
         const color =
           live === 'up'
@@ -265,39 +277,54 @@ export function RackCables({
         )
       })}
       {outgoingBundles.map((b) => {
-        // emphasis follows the LOCAL device (the one in this rack)
-        const emphasis = highlightDeviceName
-          ? b.device === highlightDeviceName
+        // trace highlighting: does any cable in this bundle belong to the trace?
+        const tracedLine = tracedCableIds ? b.lines.find((ln) => tracedCableIds.has(ln.id)) : undefined
+        const anyTraced = !!tracedLine
+        // emphasis follows the LOCAL device (the one in this rack), trace takes precedence
+        const bundleEmphasis = tracedCableIds
+          ? anyTraced
             ? 'hi'
             : 'lo'
-          : 'none'
-        const lineOpacity = emphasis === 'hi' ? 1 : emphasis === 'lo' ? 0.06 : 0.3
-        const nodeColor = emphasis === 'hi' ? theme.cable.highlight : b.nodeColor
-        const badgeOpacity = emphasis === 'hi' ? 1 : emphasis === 'lo' ? 0.06 : 0.7
+          : highlightDeviceName
+            ? b.device === highlightDeviceName
+              ? 'hi'
+              : 'lo'
+            : 'none'
+        const nodeColor = bundleEmphasis === 'hi' ? theme.cable.highlight : b.nodeColor
+        const badgeOpacity = bundleEmphasis === 'hi' ? 1 : bundleEmphasis === 'lo' ? 0.06 : 0.7
         return (
           <group key={`out-${b.device}`}>
-            {b.lines.map((ln, i) => (
-              <Line
-                key={i}
-                points={ln.points}
-                color={emphasis === 'hi' ? theme.cable.highlight : ln.color}
-                lineWidth={emphasis === 'hi' ? 2.5 : 1}
-                dashed
-                dashSize={0.03}
-                gapSize={0.02}
-                transparent
-                opacity={lineOpacity}
-              />
-            ))}
+            {b.lines.map((ln, i) => {
+              // per-line emphasis for traced cables
+              const lineEmphasis = tracedCableIds
+                ? tracedCableIds.has(ln.id)
+                  ? 'hi'
+                  : 'lo'
+                : bundleEmphasis
+              const lineOpacity = lineEmphasis === 'hi' ? 1 : lineEmphasis === 'lo' ? 0.06 : 0.3
+              return (
+                <Line
+                  key={i}
+                  points={ln.points}
+                  color={lineEmphasis === 'hi' ? theme.cable.highlight : ln.color}
+                  lineWidth={lineEmphasis === 'hi' ? 2.5 : 1}
+                  dashed
+                  dashSize={0.03}
+                  gapSize={0.02}
+                  transparent
+                  opacity={lineOpacity}
+                />
+              )
+            })}
             {/* one exit node + count badge per device (points out the back, -z) */}
             <mesh position={b.exit} rotation={[-Math.PI / 2, 0, 0]}>
-              <coneGeometry args={[emphasis === 'hi' ? 0.018 : 0.014, 0.035, 10]} />
-              <meshStandardMaterial color={nodeColor} transparent opacity={emphasis === 'lo' ? 0.06 : 0.9} />
+              <coneGeometry args={[bundleEmphasis === 'hi' ? 0.018 : 0.014, 0.035, 10]} />
+              <meshStandardMaterial color={nodeColor} transparent opacity={bundleEmphasis === 'lo' ? 0.06 : 0.9} />
             </mesh>
             <Billboard position={b.badgePos}>
               <Text
                 fontSize={0.034}
-                color={emphasis === 'hi' ? theme.text.primary : theme.text.secondary}
+                color={bundleEmphasis === 'hi' ? theme.text.primary : theme.text.secondary}
                 anchorX="right"
                 anchorY="middle"
                 fillOpacity={badgeOpacity}
@@ -305,13 +332,23 @@ export function RackCables({
                 {`${b.count} out`}
               </Text>
             </Billboard>
-            {/* on focus, reveal where this device's cables go (top racks + remainder) */}
-            {emphasis === 'hi' && b.hint && (
+            {/* on focus, reveal where this device's cables go (top racks + remainder);
+                a traced cable names its exact continuation instead */}
+            {tracedLine?.remote ? (
               <Billboard position={b.hintPos}>
-                <Text fontSize={0.022} color={theme.text.secondary} anchorX="right" anchorY="middle">
-                  {b.hint}
+                <Text fontSize={0.026} color={theme.cable.highlight} anchorX="right" anchorY="middle">
+                  {`continues → ${tracedLine.remote.rackName ?? '?'} / ${tracedLine.remote.deviceName ?? '?'} : ${tracedLine.remote.name}`}
                 </Text>
               </Billboard>
+            ) : (
+              bundleEmphasis === 'hi' &&
+              b.hint && (
+                <Billboard position={b.hintPos}>
+                  <Text fontSize={0.022} color={theme.text.secondary} anchorX="right" anchorY="middle">
+                    {b.hint}
+                  </Text>
+                </Billboard>
+              )
             )}
           </group>
         )
@@ -344,6 +381,34 @@ export function SiteCables({
   /** LLDP-discovered inter-rack links — rendered as dashed trays. */
   lldpSegments?: LldpCableSegment[]
 }) {
+  const activeTrace = useAppStore((s) => s.activeTrace)
+  // an active trace's inter-rack cables render as their own emphasized runs
+  // over the tray (the base layer only draws one bundled line per rack pair)
+  const traceLines = useMemo(() => {
+    if (!activeTrace) return []
+    const ids = new Set(activeTrace.cableIds)
+    const byRack = new Map(placements.map((p) => [p.name, p]))
+    const trayY = Math.max(...placements.map((p) => p.height), 2) + TRAY_CLEARANCE_M + 0.06
+    return cables.flatMap((c) => {
+      if (!ids.has(c.id)) return []
+      const ra = c.a?.rackName
+      const rb = c.b?.rackName
+      if (!ra || !rb || ra === rb) return []
+      const a = byRack.get(ra)
+      const b = byRack.get(rb)
+      if (!a || !b) return []
+      return [
+        {
+          key: `trace-${c.id}`,
+          points: interRackCablePath(
+            { x: a.x, y: a.height, z: a.z },
+            { x: b.x, y: b.height, z: b.z },
+            trayY,
+          ).map((p) => [p.x, p.y, p.z] as [number, number, number]),
+        },
+      ]
+    })
+  }, [activeTrace, placements, cables])
   const lldpLines = useMemo(() => {
     const byRackId = new Map(placements.map((p) => [p.rackId, p]))
     const trayY = Math.max(...placements.map((p) => p.height), 2) + TRAY_CLEARANCE_M + 0.12
@@ -405,7 +470,17 @@ export function SiteCables({
           color={CABLE_FALLBACK}
           lineWidth={1.5}
           transparent
-          opacity={l.intensity}
+          opacity={activeTrace ? l.intensity * 0.15 : l.intensity}
+        />
+      ))}
+      {traceLines.map((l) => (
+        <Line
+          key={l.key}
+          points={l.points}
+          color={theme.cable.highlight}
+          lineWidth={3}
+          transparent
+          opacity={1}
         />
       ))}
       {lldpLines.map((l) => (

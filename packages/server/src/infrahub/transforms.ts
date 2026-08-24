@@ -117,11 +117,13 @@ function endpoint(e: RawCableEndpoint | null): CableEndpoint | null {
       deviceName: val(dev?.name) ?? null,
       rackName: val(node(dev?.rack)?.name) ?? null,
       ifaceType: val(e.interface_type) ?? null,
+      termType: 'interface', // ponytail: Infrahub has no patch panels
+      pairedPort: null,
     }
   }
   const circuit = node(e.circuit)
   if (e.__typename === 'CircuitEndpoint' || circuit) {
-    return { kind: 'circuit', name: val(circuit?.cid) ?? val(e.name) ?? '', deviceName: null, rackName: null, ifaceType: null }
+    return { kind: 'circuit', name: val(circuit?.cid) ?? val(e.name) ?? '', deviceName: null, rackName: null, ifaceType: null, termType: 'other', pairedPort: null }
   }
   return null
 }

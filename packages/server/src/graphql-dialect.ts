@@ -49,9 +49,14 @@ const DEVICE_TERM = `name device { name rack { name } }`
 // cables.ts only needs circuit.cid, so we never select site here — valid on both.
 // `type` (interface form factor, e.g. "100gbase-x-qsfp28") drives bandwidth coloring;
 // only InterfaceType carries it — patch-panel/console/power ports have no line rate.
-const TERMINATION_FRAGMENTS = `__typename
+// The front->rear pass-through pairing (patch-panel trace): 3.x exposes the
+// flat rear_port FK; NetBox 4.6 replaced it with the multi-position mappings
+// relation, and selecting the flat field there is a validation error.
+function terminationFragments(version: NetBoxMajor): string {
+  const frontRear = version >= 4 ? `mappings { rear_port { name } }` : `rear_port { name }`
+  return `__typename
       ... on InterfaceType { ${DEVICE_TERM} type }
-      ... on FrontPortType { ${DEVICE_TERM} }
+      ... on FrontPortType { ${DEVICE_TERM} ${frontRear} }
       ... on RearPortType { ${DEVICE_TERM} }
       ... on ConsolePortType { ${DEVICE_TERM} }
       ... on ConsoleServerPortType { ${DEVICE_TERM} }
@@ -59,6 +64,7 @@ const TERMINATION_FRAGMENTS = `__typename
       ... on PowerOutletType { ${DEVICE_TERM} }
       ... on PowerFeedType { name rack { name } }
       ... on CircuitTerminationType { circuit { cid } }`
+}
 
 export interface CablePage {
   offset: number
@@ -83,10 +89,10 @@ export function siteCablesQuery(site: string, version: NetBoxMajor, page?: Cable
     status
     color
     a_terminations {
-      ${TERMINATION_FRAGMENTS}
+      ${terminationFragments(version)}
     }
     b_terminations {
-      ${TERMINATION_FRAGMENTS}
+      ${terminationFragments(version)}
     }
   }
 }`

@@ -1,8 +1,23 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { faceLabel, getCablesForDevice, interfaceSpeedBucket, lldpDiff, type LldpNeighbor } from '@net3d/shared'
+import {
+  buildCablePath,
+  buildCablePathThrough,
+  extractFrontRearPairs,
+  faceLabel,
+  getCablesForDevice,
+  interfaceSpeedBucket,
+  lldpDiff,
+  type LldpNeighbor,
+  groupTraceHops,
+  isInterfaceEnd,
+  type TraceCable,
+  type TracePath,
+} from '@net3d/shared'
+import { useCapabilities } from '../hooks/useCapabilities'
 import { UnreachableError, useNapalm } from '../hooks/useNapalm'
-import type { SiteCable, SiteDevice, SiteRack } from '../hooks/useSiteDetail'
+import { useSiteDetail, type SiteCable, type SiteDevice, type SiteRack } from '../hooks/useSiteDetail'
 import { deriveRedundancy, deviceFeedSides } from '../lib/powerOverlay'
+import { useAppStore } from '../store/useAppStore'
 import { theme } from '../theme'
 
 interface Facts {
@@ -159,6 +174,80 @@ function LldpAudit({ device, cables }: { device: SiteDevice; cables: SiteCable[]
   )
 }
 
+const traceBtn: React.CSSProperties = {
+  background: '#f8fafc',
+  color: '#64748b',
+  border: '1px solid #cbd5e1',
+  borderRadius: 4,
+  padding: '3px 8px',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  fontSize: 10,
+}
+
+/** Patch-panel accent — matches the panel role colour in the racks. */
+const PANEL_BROWN = '#795548'
+
+/**
+ * The traced path as a vertical route diagram: amber nodes for the two
+ * interface endpoints, brown squares for each patch panel passed through,
+ * one amber spine connecting them (same hue as the highlighted cables in 3D).
+ */
+function TracePathDiagram({ trace, onJump }: { trace: TracePath; onJump?: (deviceName: string) => void }) {
+  const rows = groupTraceHops(trace)
+  return (
+    <div>
+      {rows.map((r, i) => {
+        const crossed = i > 0 && r.rackName !== rows[i - 1]!.rackName
+        const jump = onJump && r.deviceName ? () => onJump(r.deviceName!) : undefined
+        return (
+          <div key={i} style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 10 }}>
+              {r.panel ? (
+                <span style={{ width: 8, height: 8, background: '#fff', border: `2px solid ${PANEL_BROWN}`, borderRadius: 2, marginTop: 3, flexShrink: 0 }} />
+              ) : (
+                <span style={{ width: 8, height: 8, background: theme.cable.highlight, borderRadius: '50%', marginTop: 3, flexShrink: 0 }} />
+              )}
+              {i < rows.length - 1 && (
+                <span style={{ flex: 1, width: 2, background: theme.cable.highlight, minHeight: 12, opacity: 0.5 }} />
+              )}
+            </div>
+            <div style={{ flex: 1, minWidth: 0, paddingBottom: i < rows.length - 1 ? 8 : 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                <span
+                  onClick={jump}
+                  title={jump ? 'go to this device' : undefined}
+                  style={{
+                    color: '#1e293b',
+                    fontWeight: 600,
+                    overflowWrap: 'anywhere',
+                    cursor: jump ? 'pointer' : undefined,
+                    textDecoration: jump ? 'underline dotted #cbd5e1' : undefined,
+                    textUnderlineOffset: 3,
+                  }}
+                >
+                  {r.deviceName ?? '?'}
+                </span>
+                <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{r.ports.join(' ⇄ ')}</span>
+              </div>
+              <div style={{ color: '#94a3b8', fontSize: 10 }}>
+                {r.panel ? 'patch panel · ' : ''}
+                {r.rackName ?? ''}
+                {crossed && <span style={{ color: '#d97706' }}> — crosses racks</span>}
+              </div>
+            </div>
+          </div>
+        )
+      })}
+      {!trace.complete && (
+        <div style={{ color: '#d97706', fontSize: 10, marginTop: 4 }}>
+          ⚠ path incomplete — the far side isn't fully documented
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function DevicePanel({
   device,
   cables,
@@ -179,6 +268,52 @@ export function DevicePanel({
   const env = useNapalm<Environment>(liveId, 'get_environment')
   const ifaces = useNapalm<Record<string, NapalmInterface>>(liveId, 'get_interfaces')
   const ports = useMemo(() => getCablesForDevice(cables, device.name), [cables, device.name])
+  const { backend } = useCapabilities()
+  const activeTrace = useAppStore((s) => s.activeTrace)
+  const [hoverCable, setHoverCable] = useState<string | null>(null)
+  const siteName = useAppStore((s) => s.selectedSiteName)
+  const focusDevice = useAppStore((s) => s.focusDevice)
+  const zoomToSite = useAppStore((s) => s.zoomToSite)
+  const { data: siteDetail } = useSiteDetail(siteName)
+  // trace-diagram rows jump to their device: name -> (rack, device) ids
+  const deviceLocator = useMemo(() => {
+    const m = new Map<string, { rackId: string; deviceId: string }>()
+    for (const r of siteDetail?.racks ?? [])
+      for (const d of r.devices) m.set(d.name, { rackId: r.id, deviceId: d.id })
+    return m
+  }, [siteDetail])
+  const jumpToDevice = (name: string) => {
+    const loc = deviceLocator.get(name)
+    if (loc && siteName) focusDevice({ siteName, rackId: loc.rackId, deviceId: loc.deviceId })
+  }
+  const setTrace = useAppStore((s) => s.setTrace)
+  const clearTrace = useAppStore((s) => s.clearTrace)
+
+  // ponytail: TraceCable is a structural subset of SiteCable, cast is safe
+  const traceCables = cables as unknown as TraceCable[]
+  const pairs = useMemo(() => extractFrontRearPairs(traceCables), [traceCables])
+  // traceable: interfaces OR front/rear ports (power cords PSU->outlet excluded)
+  const traceableCables = useMemo(() => {
+    const s = new Set<string>()
+    for (const c of traceCables) {
+      const local = c.a?.deviceName === device.name ? c.a : c.b?.deviceName === device.name ? c.b : null
+      if (local && (isInterfaceEnd(local) || local.termType === 'front-port' || local.termType === 'rear-port')) {
+        s.add(c.id)
+      }
+    }
+    return s
+  }, [traceCables, device.name])
+
+  const handleTrace = (portName: string, cableId: string) => {
+    // Find local end to detect if panel port
+    const cable = traceCables.find((c) => c.id === cableId)
+    const local = cable?.a?.deviceName === device.name ? cable.a : cable?.b?.deviceName === device.name ? cable?.b : null
+    const isPanel = local?.termType === 'front-port' || local?.termType === 'rear-port'
+    const path = isPanel
+      ? buildCablePathThrough(traceCables, pairs, device.name, portName)
+      : buildCablePath(traceCables, pairs, device.name, portName)
+    if (path) setTrace(path)
+  }
   // cableId -> this device's interface line rate, so the port list can show speeds
   const speedByCable = useMemo(() => {
     const m = new Map<string, string>()
@@ -262,21 +397,73 @@ export function DevicePanel({
 
       <Section title={`Port allocation${ports.length ? ` (${ports.length})` : ''}`}>
         {ports.length === 0 && <div style={{ color: '#94a3b8' }}>no documented cables</div>}
-        {ports.map((p) => (
-          <Row
-            key={p.cableId}
-            k={
-              <span style={{ color: p.kind === 'mgmt' ? theme.cable.mgmt : '#64748b' }}>
-                {p.interfaceName}
-                {speedByCable.has(p.cableId) && (
-                  <span style={{ color: '#94a3b8', marginLeft: 6 }}>{speedByCable.get(p.cableId)}</span>
-                )}
-              </span>
-            }
-            v={`→ ${p.remoteRackName ? `${p.remoteRackName} / ` : ''}${p.remoteDeviceName ?? '?'} : ${p.remoteInterfaceName ?? '?'}`}
-          />
-        ))}
+        {ports.map((p) => {
+          const traceable = backend === 'netbox' && traceableCables.has(p.cableId)
+          const isTraced = !!activeTrace && activeTrace.cableIds.includes(p.cableId)
+          return (
+            <div
+              key={p.cableId}
+              onClick={traceable ? () => (isTraced ? clearTrace() : handleTrace(p.interfaceName, p.cableId)) : undefined}
+              onMouseEnter={traceable ? () => setHoverCable(p.cableId) : undefined}
+              onMouseLeave={traceable ? () => setHoverCable(null) : undefined}
+              title={traceable ? 'trace this cable end-to-end, through patch panels' : undefined}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '3px 6px',
+                margin: '0 -6px',
+                borderRadius: 4,
+                cursor: traceable ? 'pointer' : undefined,
+                background: isTraced ? '#fef3c7' : hoverCable === p.cableId ? '#f1f5f9' : undefined,
+              }}
+            >
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <span style={{ color: p.kind === 'mgmt' ? theme.cable.mgmt : '#64748b' }}>
+                  {p.interfaceName}
+                  {speedByCable.has(p.cableId) && (
+                    <span style={{ color: '#94a3b8', marginLeft: 6 }}>{speedByCable.get(p.cableId)}</span>
+                  )}
+                </span>
+                <span style={{ textAlign: 'right', wordBreak: 'break-all' }}>
+                  {`→ ${p.remoteRackName ? `${p.remoteRackName} / ` : ''}${p.remoteDeviceName ?? '?'} : ${p.remoteInterfaceName ?? '?'}`}
+                </span>
+              </div>
+              {traceable && (
+                <span style={{ color: isTraced ? theme.cable.highlight : '#cbd5e1', fontSize: 11 }}>↯</span>
+              )}
+            </div>
+          )
+        })}
       </Section>
+
+      {backend === 'infrahub' && (
+        <div style={{ color: '#94a3b8', fontSize: 11, marginBottom: 14 }}>
+          Cable trace through patch panels — not available on this backend
+        </div>
+      )}
+
+      {backend === 'netbox' && activeTrace && (
+        <Section title="Cable trace">
+          <TracePathDiagram trace={activeTrace} onJump={jumpToDevice} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+            <span style={{ color: '#64748b', fontSize: 10 }}>
+              {activeTrace.cableIds.length} cable{activeTrace.cableIds.length !== 1 ? 's' : ''}
+              {activeTrace.panelCount > 0 && ` · through ${activeTrace.panelCount} patch panel${activeTrace.panelCount !== 1 ? 's' : ''}`}
+            </span>
+            <span style={{ display: 'flex', gap: 6 }}>
+              {siteName && (
+                <button onClick={() => zoomToSite(siteName)} title="zoom out to the room — the traced run glows on the tray" style={traceBtn}>
+                  view in site
+                </button>
+              )}
+              <button onClick={clearTrace} style={traceBtn}>
+                clear
+              </button>
+            </span>
+          </div>
+        </Section>
+      )}
 
       {!napalmAvailable && (
         <div style={{ color: '#94a3b8', marginBottom: 14 }}>
