@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import {
   buildCablePath,
+  buildCablePathThrough,
   extractFrontRearPairs,
   faceLabel,
   getCablesForDevice,
@@ -225,18 +226,26 @@ export function DevicePanel({
   // ponytail: TraceCable is a structural subset of SiteCable, cast is safe
   const traceCables = cables as unknown as TraceCable[]
   const pairs = useMemo(() => extractFrontRearPairs(traceCables), [traceCables])
-  // power cords (PSU->outlet) can't be traced — only offer ↯ on interface ends
+  // traceable: interfaces OR front/rear ports (power cords PSU->outlet excluded)
   const traceableCables = useMemo(() => {
     const s = new Set<string>()
     for (const c of traceCables) {
       const local = c.a?.deviceName === device.name ? c.a : c.b?.deviceName === device.name ? c.b : null
-      if (local && isInterfaceEnd(local)) s.add(c.id)
+      if (local && (isInterfaceEnd(local) || local.termType === 'front-port' || local.termType === 'rear-port')) {
+        s.add(c.id)
+      }
     }
     return s
   }, [traceCables, device.name])
 
-  const handleTrace = (interfaceName: string) => {
-    const path = buildCablePath(traceCables, pairs, device.name, interfaceName)
+  const handleTrace = (portName: string, cableId: string) => {
+    // Find local end to detect if panel port
+    const cable = traceCables.find((c) => c.id === cableId)
+    const local = cable?.a?.deviceName === device.name ? cable.a : cable?.b?.deviceName === device.name ? cable?.b : null
+    const isPanel = local?.termType === 'front-port' || local?.termType === 'rear-port'
+    const path = isPanel
+      ? buildCablePathThrough(traceCables, pairs, device.name, portName)
+      : buildCablePath(traceCables, pairs, device.name, portName)
     if (path) setTrace(path)
   }
   // cableId -> this device's interface line rate, so the port list can show speeds
@@ -337,7 +346,7 @@ export function DevicePanel({
             </div>
             {backend === 'netbox' && traceableCables.has(p.cableId) && (
               <button
-                onClick={() => handleTrace(p.interfaceName)}
+                onClick={() => handleTrace(p.interfaceName, p.cableId)}
                 title="trace through patch panels"
                 style={{
                   background: 'none',

@@ -163,3 +163,143 @@ export function buildCablePath(
   // Reached null end (dangling)
   return { hops, cableIds, complete: false, panelCount }
 }
+
+/**
+ * Walk from a cable end toward an interface, following pass-through pairs.
+ * Returns {dev, iface} of the first interface found, or null if dead-end.
+ */
+function walkToInterface(
+  cables: TraceCable[],
+  pairs: Map<string, string>,
+  start: TraceCableEnd,
+  usedCables: Set<string>,
+): { dev: string; iface: string } | null {
+  const visited = new Set<string>()
+  let current: TraceCableEnd | null = start
+
+  while (current) {
+    const key = `${current.deviceName}${SEP}${current.name}`
+    if (visited.has(key)) return null // cycle
+    visited.add(key)
+
+    if (isInterfaceEnd(current) && current.deviceName) {
+      return { dev: current.deviceName, iface: current.name }
+    }
+
+    if (current.termType !== 'front-port' && current.termType !== 'rear-port') {
+      return null // circuit/powerfeed/other
+    }
+
+    const pairedKey = pairs.get(key)
+    if (!pairedKey) return null
+    visited.add(pairedKey)
+
+    const [pairedDev, pairedPort] = pairedKey.split(SEP)
+    // Find next cable from paired port
+    let nextFar: TraceCableEnd | null = null
+    for (const c of cables) {
+      if (usedCables.has(c.id)) continue
+      const { a, b } = c
+      if (a && a.deviceName === pairedDev && a.name === pairedPort) {
+        usedCables.add(c.id)
+        nextFar = b
+        break
+      }
+      if (b && b.deviceName === pairedDev && b.name === pairedPort) {
+        usedCables.add(c.id)
+        nextFar = a
+        break
+      }
+    }
+    current = nextFar
+  }
+  return null
+}
+
+/**
+ * Build a cable path starting from a patch-panel port (front or rear).
+ * Walks outward to find an interface, then returns the full path via buildCablePath.
+ * If interfaces found on both ends, picks consistently by (dev, iface) sort order.
+ */
+export function buildCablePathThrough(
+  cables: TraceCable[],
+  pairs: Map<string, string>,
+  deviceName: string,
+  portName: string,
+): TracePath | null {
+  // Find cable attached to this port
+  let startCable: TraceCable | undefined
+  let localEnd: TraceCableEnd | undefined
+  let farEnd: TraceCableEnd | null | undefined
+
+  const portKey = `${deviceName}${SEP}${portName}`
+
+  for (const c of cables) {
+    if (c.a?.deviceName === deviceName && c.a.name === portName &&
+        (c.a.termType === 'front-port' || c.a.termType === 'rear-port')) {
+      startCable = c; localEnd = c.a; farEnd = c.b; break
+    }
+    if (c.b?.deviceName === deviceName && c.b.name === portName &&
+        (c.b.termType === 'front-port' || c.b.termType === 'rear-port')) {
+      startCable = c; localEnd = c.b; farEnd = c.a; break
+    }
+  }
+
+  // If port itself uncabled, try its paired port
+  if (!startCable) {
+    const pairedKey = pairs.get(portKey)
+    if (pairedKey) {
+      const [pairedDev, pairedPort] = pairedKey.split(SEP)
+      for (const c of cables) {
+        const { a, b } = c
+        if (a && a.deviceName === pairedDev && a.name === pairedPort) {
+          startCable = c; localEnd = a; farEnd = b; break
+        }
+        if (b && b.deviceName === pairedDev && b.name === pairedPort) {
+          startCable = c; localEnd = b; farEnd = a; break
+        }
+      }
+    }
+  }
+
+  if (!startCable || !localEnd) return null
+
+  // Collect interfaces reachable from both directions
+  const candidates: { dev: string; iface: string }[] = []
+
+  // Walk toward farEnd
+  const usedA = new Set<string>([startCable.id])
+  const foundA = farEnd ? walkToInterface(cables, pairs, farEnd, usedA) : null
+  if (foundA) candidates.push(foundA)
+
+  // Walk through localEnd's pass-through (other direction)
+  const pairedKey = pairs.get(`${localEnd.deviceName}${SEP}${localEnd.name}`)
+  if (pairedKey) {
+    const [pairedDev, pairedPort] = pairedKey.split(SEP)
+    const usedB = new Set<string>([startCable.id])
+    for (const c of cables) {
+      if (c.id === startCable.id) continue
+      const { a, b } = c
+      let otherEnd: TraceCableEnd | null = null
+      if (a && a.deviceName === pairedDev && a.name === pairedPort) {
+        otherEnd = b
+        usedB.add(c.id)
+      } else if (b && b.deviceName === pairedDev && b.name === pairedPort) {
+        otherEnd = a
+        usedB.add(c.id)
+      }
+      if (otherEnd) {
+        const foundB = walkToInterface(cables, pairs, otherEnd, usedB)
+        if (foundB) candidates.push(foundB)
+        break
+      }
+    }
+  }
+
+  if (candidates.length === 0) return null
+
+  // ponytail: pick consistently by lex sort — same chain always anchors at same end
+  candidates.sort((a, b) => a.dev.localeCompare(b.dev) || a.iface.localeCompare(b.iface))
+  const anchor = candidates[0]!
+  return buildCablePath(cables, pairs, anchor.dev, anchor.iface)
+}
