@@ -59,11 +59,13 @@ SKIP_CIRCUITS = os.environ.get("SKIP_CIRCUITS", "") in ("1", "true")
 RACK_HEIGHT = 42
 ROLE_COLORS = {
     "server": "2196f3", "leaf": "4caf50", "spine": "ff9800", "core": "9c27b0",
-    "oob": "607d8b",
+    "oob": "607d8b", "patch-panel": "795548",
 }
 SITE_TAGS = {"compute": "2196f3", "pop": "ff5722"}
 OOB_AGGS = 2
 OOB_SWITCH_POS = 40  # below leaf-2 (U41) / leaf-1 (U42)
+PATCH_PANEL_POS = 39  # below the OOB switch; servers (all 1U) never climb this high
+PANEL_PORTS = 24  # front/rear pairs per panel; overflow links fall back to direct
 
 # DeviceType custom fields carrying server hardware specs (keys match
 # the `specs` blocks in device_types.json).
@@ -272,11 +274,13 @@ def seed_site(dc, regions, roles, types_by_role, tags):
     core_type = types_by_role["core"][0]
     oob_type = types_by_role["oob"][0]
     oob_agg_type = types_by_role["oob-agg"][0]
+    panel_type = types_by_role["patch-panel"][0]
 
     # device specs
     dev_specs = []
     leaf_names, spine_names, core_names = [], [], []
     oob_by_rack = {}  # SRV rack name -> oob switch name
+    panel_by_rack = {}  # SRV rack name -> patch panel name (odd racks only)
     oob_agg_names = []
     server_names_by_rack = defaultdict(list)
     server_seq = 0  # per-site counter driving deterministic status sprinkling
@@ -299,6 +303,12 @@ def seed_site(dc, regions, roles, types_by_role, tags):
         on = f"{code}-SRV-{i:02d}-oob"
         dev(on, oob_type, "oob", rid, OOB_SWITCH_POS)
         oob_by_rack[rname] = on
+        # odd racks get a patch panel: their server access links run through it
+        # (front->rear pass-through), even racks stay direct — the demo shows both
+        if i % 2 == 1:
+            pn = f"{code}-SRV-{i:02d}-pp-1"
+            dev(pn, panel_type, "patch-panel", rid, PATCH_PANEL_POS)
+            panel_by_rack[rname] = pn
         # servers from the bottom up (stay below the OOB switch)
         u = 1
         for s in range(SERVERS_PER_RACK):
@@ -344,6 +354,21 @@ def seed_site(dc, regions, roles, types_by_role, tags):
         ifaces[b_dev][b_if] = b_type
         plan.append((a_dev, a_if, b_dev, b_if, ctype))
 
+    # links routed through a rack patch panel: two cables joined by the panel's
+    # front->rear pass-through (a_if -> FrontN, RearN -> b_if)
+    panel_ports_used = defaultdict(int)  # panel name -> ports allocated
+    panel_plan = []  # (a_dev, a_if, panel, port_no, b_dev, b_if, ctype)
+
+    def link_via_panel(a_dev, a_if, a_type, panel, b_dev, b_if, b_type, ctype):
+        n = panel_ports_used[panel] + 1
+        if n > PANEL_PORTS:  # panel full -> direct cable
+            link(a_dev, a_if, a_type, b_dev, b_if, b_type, ctype)
+            return
+        panel_ports_used[panel] = n
+        ifaces[a_dev][a_if] = a_type
+        ifaces[b_dev][b_if] = b_type
+        panel_plan.append((a_dev, a_if, panel, n, b_dev, b_if, ctype))
+
     # leaf -> spine uplinks (spine-leaf fabric)
     for li, leaf in enumerate(leaf_names):
         for u in range(SPINE_UPLINKS):
@@ -365,12 +390,17 @@ def seed_site(dc, regions, roles, types_by_role, tags):
             servers = server_names_by_rack[rname]
             if SERVER_CABLING == "sample":
                 servers = servers[:SERVER_CABLING_SAMPLE]
+            panel = panel_by_rack.get(rname)
             for sn in servers:
                 num = sn.split("-")[-1]
                 for li in (1, 2):
                     leaf = f"{code}-SRV-{i:02d}-leaf-{li}"
-                    link(sn, f"eth{li - 1}", "25gbase-x-sfp28",
-                         leaf, f"Server-{num}", "25gbase-x-sfp28", "cat6a")
+                    if panel:
+                        link_via_panel(sn, f"eth{li - 1}", "25gbase-x-sfp28", panel,
+                                       leaf, f"Server-{num}", "25gbase-x-sfp28", "cat6a")
+                    else:
+                        link(sn, f"eth{li - 1}", "25gbase-x-sfp28",
+                             leaf, f"Server-{num}", "25gbase-x-sfp28", "cat6a")
                 link(sn, "mgmt0", "1000base-t",
                      oob, f"Server-{num}", "1000base-t", "cat6a")
 
@@ -406,27 +436,97 @@ def seed_site(dc, regions, roles, types_by_role, tags):
     iface_id.update(((rec.device.id, rec.name), rec.id) for rec in created)
     print(f"   {len(iface_id)} interfaces ({len(created)} new)", flush=True)
 
-    # existing cables keyed by their interface-id pair, so resume never duplicates
-    existing_pairs = set()
+    # patch-panel front/rear ports — only the pairs the plan cables, diffed like
+    # interfaces; rear ports first (front ports reference them)
+    rear_id, front_id = {}, {}
+    if panel_plan:
+        for r in nb.dcim.rear_ports.filter(site_id=site.id, limit=1000):
+            rear_id[(r.device.id, r.name)] = r.id
+        rear_specs = [
+            {"device": devices[panel].id, "name": f"Rear{n}", "type": "8p8c", "positions": 1}
+            for _, _, panel, n, _, _, _ in panel_plan
+            if (devices[panel].id, f"Rear{n}") not in rear_id
+        ]
+        for rec in bulk_create(nb.dcim.rear_ports, rear_specs):
+            rear_id[(rec.device.id, rec.name)] = rec.id
+        front_recs = {}
+        for f in nb.dcim.front_ports.filter(site_id=site.id, limit=1000):
+            front_recs[(f.device.id, f.name)] = f
+
+        # NetBox 4.6 dropped the flat rear_port field for a positions list
+        def rear_map(pid, n):
+            return [{"rear_port": rear_id[(pid, f"Rear{n}")], "position": 1,
+                     "rear_port_position": 1}]
+
+        front_specs, repaired = [], 0
+        for _, _, panel, n, _, _, _ in panel_plan:
+            pid = devices[panel].id
+            rec = front_recs.get((pid, f"Front{n}"))
+            if rec is None:
+                front_specs.append({"device": pid, "name": f"Front{n}", "type": "8p8c",
+                                    "rear_ports": rear_map(pid, n)})
+            elif not rec.rear_ports:  # created before the mapping existed — backfill
+                rec.update({"rear_ports": rear_map(pid, n)})
+                repaired += 1
+        for rec in bulk_create(nb.dcim.front_ports, front_specs):
+            front_recs[(rec.device.id, rec.name)] = rec
+        front_id = {k: r.id for k, r in front_recs.items()}
+        new_ports = len(rear_specs) + len(front_specs)
+        print(f"   {len(panel_by_rack)} patch panels, {new_ports} new panel ports"
+              + (f", {repaired} front-port mappings backfilled" if repaired else ""), flush=True)
+
+    # existing cables keyed by their typed termination pair, so resume never
+    # duplicates (ids alone collide across interface/frontport/rearport tables).
+    # pynetbox hydrates known termination types to their nested object (type
+    # only left in the url); unknown types stay as the raw {object_type,
+    # object_id} wrapper — normalize both shapes to (object_type, id)
+    SEG_TYPE = {"interfaces": "dcim.interface", "front-ports": "dcim.frontport",
+                "rear-ports": "dcim.rearport"}
+
+    def term_key(t):
+        if isinstance(t, dict):
+            return (t["object_type"], t["object_id"])
+        seg = t.url.rstrip("/").rsplit("/", 2)[-2]
+        return (SEG_TYPE.get(seg, "dcim." + seg.replace("-", "")[:-1]), t.id)
+
+    existing_cables = {}
     for c in nb.dcim.cables.filter(site_id=site.id, limit=500):
-        a = c.a_terminations[0].object_id if c.a_terminations else None
-        b = c.b_terminations[0].object_id if c.b_terminations else None
-        if a and b:
-            existing_pairs.add(frozenset((a, b)))
+        if c.a_terminations and c.b_terminations:
+            existing_cables[
+                frozenset((term_key(c.a_terminations[0]), term_key(c.b_terminations[0])))
+            ] = c
 
     cable_specs = []
-    for a_dev, a_if, b_dev, b_if, ctype in plan:
-        aid = iface_id[(devices[a_dev].id, a_if)]
-        bid = iface_id[(devices[b_dev].id, b_if)]
-        if frozenset((aid, bid)) in existing_pairs:
-            continue
+
+    def add_cable(a_term, b_term, ctype):
+        if frozenset((a_term, b_term)) in existing_cables:
+            return
         cable_specs.append({
-            "a_terminations": [{"object_type": "dcim.interface", "object_id": aid}],
-            "b_terminations": [{"object_type": "dcim.interface", "object_id": bid}],
+            "a_terminations": [{"object_type": a_term[0], "object_id": a_term[1]}],
+            "b_terminations": [{"object_type": b_term[0], "object_id": b_term[1]}],
             "status": "connected", "type": ctype,
         })
+
+    for a_dev, a_if, b_dev, b_if, ctype in plan:
+        add_cable(("dcim.interface", iface_id[(devices[a_dev].id, a_if)]),
+                  ("dcim.interface", iface_id[(devices[b_dev].id, b_if)]), ctype)
+    rerouted = 0
+    for a_dev, a_if, panel, n, b_dev, b_if, ctype in panel_plan:
+        a = ("dcim.interface", iface_id[(devices[a_dev].id, a_if)])
+        b = ("dcim.interface", iface_id[(devices[b_dev].id, b_if)])
+        # a pre-panel seed cabled these two directly; that cable occupies both
+        # interfaces and would block the panel path — drop it first
+        direct = existing_cables.pop(frozenset((a, b)), None)
+        if direct:
+            direct.delete()
+            rerouted += 1
+        pid = devices[panel].id
+        add_cable(a, ("dcim.frontport", front_id[(pid, f"Front{n}")]), ctype)
+        add_cable(("dcim.rearport", rear_id[(pid, f"Rear{n}")]), b, ctype)
+    if rerouted:
+        print(f"   {rerouted} direct cables re-routed through panels", flush=True)
     cables = bulk_create(nb.dcim.cables, cable_specs)
-    print(f"   {len(existing_pairs) + len(cables)} cables ({len(cables)} new)", flush=True)
+    print(f"   {len(existing_cables) + len(cables)} cables ({len(cables)} new)", flush=True)
     return site
 
 
