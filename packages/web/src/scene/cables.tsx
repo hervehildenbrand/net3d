@@ -369,6 +369,34 @@ export function SiteCables({
   /** LLDP-discovered inter-rack links — rendered as dashed trays. */
   lldpSegments?: LldpCableSegment[]
 }) {
+  const activeTrace = useAppStore((s) => s.activeTrace)
+  // an active trace's inter-rack cables render as their own emphasized runs
+  // over the tray (the base layer only draws one bundled line per rack pair)
+  const traceLines = useMemo(() => {
+    if (!activeTrace) return []
+    const ids = new Set(activeTrace.cableIds)
+    const byRack = new Map(placements.map((p) => [p.name, p]))
+    const trayY = Math.max(...placements.map((p) => p.height), 2) + TRAY_CLEARANCE_M + 0.06
+    return cables.flatMap((c) => {
+      if (!ids.has(c.id)) return []
+      const ra = c.a?.rackName
+      const rb = c.b?.rackName
+      if (!ra || !rb || ra === rb) return []
+      const a = byRack.get(ra)
+      const b = byRack.get(rb)
+      if (!a || !b) return []
+      return [
+        {
+          key: `trace-${c.id}`,
+          points: interRackCablePath(
+            { x: a.x, y: a.height, z: a.z },
+            { x: b.x, y: b.height, z: b.z },
+            trayY,
+          ).map((p) => [p.x, p.y, p.z] as [number, number, number]),
+        },
+      ]
+    })
+  }, [activeTrace, placements, cables])
   const lldpLines = useMemo(() => {
     const byRackId = new Map(placements.map((p) => [p.rackId, p]))
     const trayY = Math.max(...placements.map((p) => p.height), 2) + TRAY_CLEARANCE_M + 0.12
@@ -430,7 +458,17 @@ export function SiteCables({
           color={CABLE_FALLBACK}
           lineWidth={1.5}
           transparent
-          opacity={l.intensity}
+          opacity={activeTrace ? l.intensity * 0.15 : l.intensity}
+        />
+      ))}
+      {traceLines.map((l) => (
+        <Line
+          key={l.key}
+          points={l.points}
+          color={theme.cable.highlight}
+          lineWidth={3}
+          transparent
+          opacity={1}
         />
       ))}
       {lldpLines.map((l) => (
