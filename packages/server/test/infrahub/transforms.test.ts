@@ -160,13 +160,13 @@ describe('normalizeInfrahubCables', () => {
     ]
     const cables = normalizeInfrahubCables(raw, 'AMS1')
     expect(cables).toHaveLength(1)
-    expect(cables[0]).toMatchObject({
+    expect(cables[0]).toEqual({
       id: 'c1',
       type: 'smf',
       status: 'CONNECTED',
       color: '',
-      a: { kind: 'device', name: 'Ethernet1', deviceName: 'AMS1-SRV-01-leaf-1', rackName: 'AMS1-SRV-01', ifaceType: '100gbase-x-qsfp28' },
-      b: { kind: 'device', name: 'leaf1-1', deviceName: 'AMS1-spine-01', rackName: 'AMS1-NET-01', ifaceType: '100gbase-x-qsfp28' },
+      a: { kind: 'device', name: 'Ethernet1', deviceName: 'AMS1-SRV-01-leaf-1', rackName: 'AMS1-SRV-01', ifaceType: '100gbase-x-qsfp28', termType: 'interface', pairedPort: null },
+      b: { kind: 'device', name: 'leaf1-1', deviceName: 'AMS1-spine-01', rackName: 'AMS1-NET-01', ifaceType: '100gbase-x-qsfp28', termType: 'interface', pairedPort: null },
     })
   })
 
@@ -180,7 +180,7 @@ describe('normalizeInfrahubCables', () => {
     ]
     const cable = normalizeInfrahubCables(raw, 'AMS1')[0]!
     expect(cable.color).toBe('ff0000')
-    expect(cable.b).toEqual({ kind: 'circuit', name: 'LUMEN-AMS1-FRA1-001', deviceName: null, rackName: null, ifaceType: null })
+    expect(cable.b).toEqual({ kind: 'circuit', name: 'LUMEN-AMS1-FRA1-001', deviceName: null, rackName: null, ifaceType: null, termType: 'other', pairedPort: null })
   })
 })
 
