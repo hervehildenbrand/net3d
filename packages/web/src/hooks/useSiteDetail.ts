@@ -49,6 +49,10 @@ export interface CableEndpoint {
   rackName: string | null
   /** Interface form factor at this end (e.g. "100gbase-x-qsfp28"); null for non-interface ends. */
   ifaceType: string | null
+  /** Termination type for patch-panel tracing; absent from older payloads. */
+  termType?: 'interface' | 'front-port' | 'rear-port' | 'other'
+  /** For front-port ends: the paired rear port name; null otherwise. */
+  pairedPort?: string | null
 }
 
 export interface SiteCable {

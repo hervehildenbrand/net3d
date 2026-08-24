@@ -1,8 +1,20 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { faceLabel, getCablesForDevice, interfaceSpeedBucket, lldpDiff, type LldpNeighbor } from '@net3d/shared'
+import {
+  buildCablePath,
+  extractFrontRearPairs,
+  faceLabel,
+  getCablesForDevice,
+  interfaceSpeedBucket,
+  lldpDiff,
+  type LldpNeighbor,
+  type TraceCable,
+  type TracePath,
+} from '@net3d/shared'
+import { useCapabilities } from '../hooks/useCapabilities'
 import { UnreachableError, useNapalm } from '../hooks/useNapalm'
 import type { SiteCable, SiteDevice, SiteRack } from '../hooks/useSiteDetail'
 import { deriveRedundancy, deviceFeedSides } from '../lib/powerOverlay'
+import { useAppStore } from '../store/useAppStore'
 import { theme } from '../theme'
 
 interface Facts {
@@ -159,6 +171,31 @@ function LldpAudit({ device, cables }: { device: SiteDevice; cables: SiteCable[]
   )
 }
 
+/** Format a TracePath as a compact human-readable string. */
+function formatTracePath(trace: TracePath): string {
+  if (trace.hops.length === 0) return ''
+  const parts: string[] = []
+  let i = 0
+  while (i < trace.hops.length) {
+    const hop = trace.hops[i]!
+    if (hop.kind === 'interface') {
+      parts.push(`${hop.deviceName ?? '?'}:${hop.portName}`)
+      i++
+    } else {
+      // front/rear port pair: combine them with a bidirectional arrow
+      const nextHop = trace.hops[i + 1]
+      if (nextHop && nextHop.deviceName === hop.deviceName) {
+        parts.push(`${hop.deviceName ?? '?'}:${hop.portName} ⇄ ${nextHop.portName}`)
+        i += 2
+      } else {
+        parts.push(`${hop.deviceName ?? '?'}:${hop.portName}`)
+        i++
+      }
+    }
+  }
+  return parts.join(' → ')
+}
+
 export function DevicePanel({
   device,
   cables,
@@ -179,6 +216,19 @@ export function DevicePanel({
   const env = useNapalm<Environment>(liveId, 'get_environment')
   const ifaces = useNapalm<Record<string, NapalmInterface>>(liveId, 'get_interfaces')
   const ports = useMemo(() => getCablesForDevice(cables, device.name), [cables, device.name])
+  const { backend } = useCapabilities()
+  const activeTrace = useAppStore((s) => s.activeTrace)
+  const setTrace = useAppStore((s) => s.setTrace)
+  const clearTrace = useAppStore((s) => s.clearTrace)
+
+  // ponytail: TraceCable is a structural subset of SiteCable, cast is safe
+  const traceCables = cables as unknown as TraceCable[]
+  const pairs = useMemo(() => extractFrontRearPairs(traceCables), [traceCables])
+
+  const handleTrace = (interfaceName: string) => {
+    const path = buildCablePath(traceCables, pairs, device.name, interfaceName)
+    if (path) setTrace(path)
+  }
   // cableId -> this device's interface line rate, so the port list can show speeds
   const speedByCable = useMemo(() => {
     const m = new Map<string, string>()
@@ -263,20 +313,72 @@ export function DevicePanel({
       <Section title={`Port allocation${ports.length ? ` (${ports.length})` : ''}`}>
         {ports.length === 0 && <div style={{ color: '#94a3b8' }}>no documented cables</div>}
         {ports.map((p) => (
-          <Row
-            key={p.cableId}
-            k={
+          <div key={p.cableId} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0' }}>
+            <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
               <span style={{ color: p.kind === 'mgmt' ? theme.cable.mgmt : '#64748b' }}>
                 {p.interfaceName}
                 {speedByCable.has(p.cableId) && (
                   <span style={{ color: '#94a3b8', marginLeft: 6 }}>{speedByCable.get(p.cableId)}</span>
                 )}
               </span>
-            }
-            v={`→ ${p.remoteRackName ? `${p.remoteRackName} / ` : ''}${p.remoteDeviceName ?? '?'} : ${p.remoteInterfaceName ?? '?'}`}
-          />
+              <span style={{ textAlign: 'right', wordBreak: 'break-all' }}>
+                {`→ ${p.remoteRackName ? `${p.remoteRackName} / ` : ''}${p.remoteDeviceName ?? '?'} : ${p.remoteInterfaceName ?? '?'}`}
+              </span>
+            </div>
+            {backend === 'netbox' && (p.kind === 'data' || p.kind === 'mgmt') && (
+              <button
+                onClick={() => handleTrace(p.interfaceName)}
+                title="trace through patch panels"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  padding: '0 2px',
+                }}
+              >
+                ↯
+              </button>
+            )}
+          </div>
         ))}
       </Section>
+
+      {backend === 'infrahub' && (
+        <div style={{ color: '#94a3b8', fontSize: 11, marginBottom: 14 }}>
+          Cable trace through patch panels — not available on this backend
+        </div>
+      )}
+
+      {backend === 'netbox' && activeTrace && (
+        <Section title="Cable trace">
+          <div style={{ fontSize: 11, lineHeight: 1.5, wordBreak: 'break-word' }}>
+            {formatTracePath(activeTrace)}
+          </div>
+          <div style={{ color: '#64748b', fontSize: 10, marginTop: 4 }}>
+            {activeTrace.cableIds.length} cable{activeTrace.cableIds.length !== 1 ? 's' : ''}
+            {activeTrace.panelCount > 0 && ` · via ${activeTrace.panelCount} patch panel${activeTrace.panelCount !== 1 ? 's' : ''}`}
+            {!activeTrace.complete && <span style={{ color: '#d97706' }}> · path incomplete</span>}
+          </div>
+          <button
+            onClick={clearTrace}
+            style={{
+              background: '#f8fafc',
+              color: '#64748b',
+              border: '1px solid #cbd5e1',
+              borderRadius: 4,
+              padding: '3px 8px',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: 10,
+              marginTop: 6,
+            }}
+          >
+            clear
+          </button>
+        </Section>
+      )}
 
       {!napalmAvailable && (
         <div style={{ color: '#94a3b8', marginBottom: 14 }}>

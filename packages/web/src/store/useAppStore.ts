@@ -5,6 +5,7 @@ import {
   stepNavigation,
   thresholdsForSpan,
 } from '@net3d/shared'
+import type { TracePath } from '@net3d/shared'
 import type { SpecMetric } from '../lib/specsHeatmap'
 import type { PowerSource } from '../lib/powerChain'
 import type { Backend } from '../lib/api'
@@ -38,6 +39,10 @@ export interface DeviceFocusTarget {
 }
 
 interface AppState {
+  /** Active cable trace through patch panels; null when not tracing. */
+  activeTrace: TracePath | null
+  setTrace: (path: TracePath) => void
+  clearTrace: () => void
   /** Active source of truth; switching it flips the API prefix and resets the view. */
   backend: Backend
   setBackend: (backend: Backend) => void
@@ -128,6 +133,9 @@ interface AppState {
 let navMachine = initialNavMachine()
 
 export const useAppStore = create<AppState>((set, get) => ({
+  activeTrace: null,
+  setTrace: (path) => set({ activeTrace: path }),
+  clearTrace: () => set({ activeTrace: null }),
   backend: 'netbox',
   setBackend: (backend) => {
     if (backend === get().backend) return
@@ -159,19 +167,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       siteViewDistance: null,
       // Keep the legend selection when bouncing back to the same room (rack->site
       // exit reuses this action); clear it when entering a different site, since
-      // roles are per-site.
+      // roles are per-site. Same for activeTrace - cable IDs are site-local.
       highlightedRoles: siteName === s.selectedSiteName ? s.highlightedRoles : new Set<string>(),
+      activeTrace: siteName === s.selectedSiteName ? s.activeTrace : null,
     }))
   },
   zoomToRack: (rackId) => {
     // Arm the rack exit on entry (covers rack-click entry that bypasses the
     // nav machine) so zoom-out-to-room is always reachable. See navigation.ts.
     navMachine = { ...navMachine, exitRackArmed: true, enterRackArmed: false }
-    set({ level: 'rack', selectedRackId: rackId, rackView: 'front', pendingDeviceFocus: null })
+    set({ level: 'rack', selectedRackId: rackId, rackView: 'front', pendingDeviceFocus: null, activeTrace: null })
   },
   zoomToMap: () =>
-    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, pendingDeviceFocus: null, navSuppressed: false, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null, colorMode: 'none', hiddenStatuses: new Set<string>(), cableColorMode: 'medium', ipLabelsVisible: false }),
-  selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
+    set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, pendingDeviceFocus: null, navSuppressed: false, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null, colorMode: 'none', hiddenStatuses: new Set<string>(), cableColorMode: 'medium', ipLabelsVisible: false, activeTrace: null }),
+  selectDevice: (deviceId) => set({ selectedDeviceId: deviceId, activeTrace: deviceId ? get().activeTrace : null }),
   focusDevice: (target) => {
     const { level, selectedSiteName } = get()
     // From the map, or when the device lives in another site, fly to its site
