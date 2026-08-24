@@ -7,6 +7,7 @@ import {
   interfaceSpeedBucket,
   lldpDiff,
   type LldpNeighbor,
+  isInterfaceEnd,
   type TraceCable,
   type TracePath,
 } from '@net3d/shared'
@@ -224,6 +225,15 @@ export function DevicePanel({
   // ponytail: TraceCable is a structural subset of SiteCable, cast is safe
   const traceCables = cables as unknown as TraceCable[]
   const pairs = useMemo(() => extractFrontRearPairs(traceCables), [traceCables])
+  // power cords (PSU->outlet) can't be traced — only offer ↯ on interface ends
+  const traceableCables = useMemo(() => {
+    const s = new Set<string>()
+    for (const c of traceCables) {
+      const local = c.a?.deviceName === device.name ? c.a : c.b?.deviceName === device.name ? c.b : null
+      if (local && isInterfaceEnd(local)) s.add(c.id)
+    }
+    return s
+  }, [traceCables, device.name])
 
   const handleTrace = (interfaceName: string) => {
     const path = buildCablePath(traceCables, pairs, device.name, interfaceName)
@@ -325,7 +335,7 @@ export function DevicePanel({
                 {`→ ${p.remoteRackName ? `${p.remoteRackName} / ` : ''}${p.remoteDeviceName ?? '?'} : ${p.remoteInterfaceName ?? '?'}`}
               </span>
             </div>
-            {backend === 'netbox' && (p.kind === 'data' || p.kind === 'mgmt') && (
+            {backend === 'netbox' && traceableCables.has(p.cableId) && (
               <button
                 onClick={() => handleTrace(p.interfaceName)}
                 title="trace through patch panels"

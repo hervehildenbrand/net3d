@@ -56,16 +56,11 @@ function hopKind(end: TraceCableEnd): 'interface' | 'front-port' | 'rear-port' {
   return 'interface'
 }
 
-/** Check if end is an interface (explicit or legacy). */
-function isInterface(end: TraceCableEnd): boolean {
+/** Check if end is an interface (explicit or legacy payload without termType). */
+export function isInterfaceEnd(end: TraceCableEnd): boolean {
   if (end.termType === 'interface') return true
   if (!end.termType && end.kind === 'device') return true
   return false
-}
-
-/** Check if end is front or rear port. */
-function isFrontOrRear(end: TraceCableEnd): boolean {
-  return end.termType === 'front-port' || end.termType === 'rear-port'
 }
 
 function makeHop(end: TraceCableEnd): TraceHop {
@@ -88,10 +83,10 @@ export function buildCablePath(
   let farEnd: TraceCableEnd | null | undefined
 
   for (const c of cables) {
-    if (c.a?.deviceName === startDevice && c.a.name === startInterface && isInterface(c.a)) {
+    if (c.a?.deviceName === startDevice && c.a.name === startInterface && isInterfaceEnd(c.a)) {
       startCable = c; localEnd = c.a; farEnd = c.b; break
     }
-    if (c.b?.deviceName === startDevice && c.b.name === startInterface && isInterface(c.b)) {
+    if (c.b?.deviceName === startDevice && c.b.name === startInterface && isInterfaceEnd(c.b)) {
       startCable = c; localEnd = c.b; farEnd = c.a; break
     }
   }
@@ -118,10 +113,10 @@ export function buildCablePath(
     hops.push(makeHop(current))
 
     // Terminal cases: interface or non-device ends (circuit, powerfeed)
-    if (isInterface(current)) {
+    if (isInterfaceEnd(current)) {
       return { hops, cableIds, complete: true, panelCount }
     }
-    if (!isFrontOrRear(current)) {
+    if (current.termType !== 'front-port' && current.termType !== 'rear-port') {
       // circuit/powerfeed/other - terminate
       return { hops, cableIds, complete: false, panelCount }
     }
