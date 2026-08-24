@@ -41,6 +41,13 @@ at their true U-positions, connected by one continuous mouse-wheel journey.
   devices directly), and entering a rack covers that rack's remaining devices. Links
   missing from NetBox render as dashed cyan cables — an undocumented fabric still
   shows up — and documented cables always win per link.
+- 🔎 **Cable trace through patch panels** (NetBox): click any connected port — on a
+  switch, a server, or a patch panel itself — and the full end-to-end path lights up
+  in 3D, following NetBox's front↔rear port pass-throughs across racks. The device
+  panel draws the route hop by hop (panels included), every hop is clickable to
+  follow the cable rack to rack, and the traced run glows on the overhead tray in
+  the site view. Infrahub has no patch-panel model, so that backend states the gap
+  explicitly — the contrast is part of the demo.
 - 📟 **Live device panel**: NAPALM facts, environment sensors, interface up/down
   states (auto-refresh), live green/red cable coloring, and an LLDP-vs-NetBox audit.
 - 🪶 **Graceful degradation**: without the NAPALM plugin, all live features hide and
@@ -128,8 +135,10 @@ INFRAHUB_BRANCH=main                         # optional, defaults to "main"
 ```
 
 The server's boot preflight then reports the Infrahub connection instead of NetBox.
-NAPALM/LLDP live features stay hidden (they have no Infrahub equivalent); everything else —
-map, sites, racks, cabling, specs heatmap, power chains — works identically. A local
+NAPALM/LLDP live features stay hidden (they have no Infrahub equivalent), and the
+patch-panel cable trace shows a "not available on this backend" note (Infrahub has no
+front/rear-port model); everything else — map, sites, racks, cabling, specs heatmap,
+power chains — works identically. A local
 Infrahub demo stack lives in [`showcase/infrahub/`](showcase/infrahub/); run it with
 `pnpm dev:showcase-infrahub`.
 
