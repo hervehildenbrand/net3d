@@ -332,14 +332,17 @@ def seed_site(dc, regions, roles, types_by_role, tags):
         dev(sn, spine_type, "spine", racks[rname].id, 30 + (i % 2) * 2)
         spine_names.append(sn)
         spine_rack[sn] = rname
-    # one cross-connect panel per network rack: the far end of the rack panels'
-    # rear-to-rear trunks; spines patch in on its front ports
+    # cross-connect panels per network rack: the far end of the rack panels'
+    # rear-to-rear trunks; spines patch in on their front ports. Two per rack —
+    # at full size each NET rack terminates 46 trunk ports.
     xc_by_netrack = {}
     for n in range(1, NETWORK_RACKS + 1):
         rname = f"{code}-NET-{n:02d}"
-        xn = f"{code}-NET-{n:02d}-xc-1"
-        dev(xn, panel_type, "patch-panel", racks[rname].id, PATCH_PANEL_POS)
-        xc_by_netrack[rname] = xn
+        xc_by_netrack[rname] = []
+        for x in (1, 2):
+            xn = f"{code}-NET-{n:02d}-xc-{x}"
+            dev(xn, panel_type, "patch-panel", racks[rname].id, PATCH_PANEL_POS - (x - 1))
+            xc_by_netrack[rname].append(xn)
     for c in range(CORES_PER_DC):
         cn = f"{code}-core-{c + 1:02d}"
         dev(cn, core_type, "core", racks[f"{code}-NET-01"].id, 1 + c * 6)
@@ -371,26 +374,27 @@ def seed_site(dc, regions, roles, types_by_role, tags):
     panel_ports_used = defaultdict(int)  # panel name -> ports allocated
     panel_plan = []  # (a_dev, a_if, rack_panel, rp_no, xc_panel, xc_no, b_dev, b_if, ctype)
 
-    def link_via_panels(a_dev, a_if, a_type, rack_panel, xc_panel, b_dev, b_if, b_type, ctype):
+    def link_via_panels(a_dev, a_if, a_type, rack_panel, xc_panels, b_dev, b_if, b_type, ctype):
         rp_n = panel_ports_used[rack_panel] + 1
-        xc_n = panel_ports_used[xc_panel] + 1
-        if rp_n > PANEL_PORTS or xc_n > PANEL_PORTS:  # a panel is full -> direct
+        xc_panel = next((x for x in xc_panels if panel_ports_used[x] < PANEL_PORTS), None)
+        if rp_n > PANEL_PORTS or xc_panel is None:  # panels full -> direct
             link(a_dev, a_if, a_type, b_dev, b_if, b_type, ctype)
             return
+        xc_n = panel_ports_used[xc_panel] + 1
         panel_ports_used[rack_panel] = rp_n
         panel_ports_used[xc_panel] = xc_n
         ifaces[a_dev][a_if] = a_type
         ifaces[b_dev][b_if] = b_type
         panel_plan.append((a_dev, a_if, rack_panel, rp_n, xc_panel, xc_n, b_dev, b_if, ctype))
 
-    # leaf -> spine uplinks (spine-leaf fabric); in odd racks one uplink per
-    # leaf runs through the rack panel + network-rack cross-connect
+    # leaf -> spine uplinks (spine-leaf fabric); in odd racks every uplink runs
+    # through the rack panel + a network-rack cross-connect (structured cabling)
     for li, leaf in enumerate(leaf_names):
         rack_i = li // 2 + 1
         rack_panel = panel_by_rack.get(f"{code}-SRV-{rack_i:02d}")
         for u in range(SPINE_UPLINKS):
             spine = spine_names[(li * SPINE_UPLINKS + u) % len(spine_names)]
-            if rack_panel and u == rack_i % SPINE_UPLINKS:
+            if rack_panel:
                 link_via_panels(leaf, f"Ethernet{u + 1}", "100gbase-x-qsfp28",
                                 rack_panel, xc_by_netrack[spine_rack[spine]],
                                 spine, f"leaf{li + 1}-{u + 1}", "100gbase-x-qsfp28", "smf")
@@ -493,7 +497,8 @@ def seed_site(dc, regions, roles, types_by_role, tags):
             front_recs[(rec.device.id, rec.name)] = rec
         front_id = {k: r.id for k, r in front_recs.items()}
         new_ports = len(rear_specs) + len(front_specs)
-        print(f"   {len(panel_by_rack) + len(xc_by_netrack)} patch panels, {new_ports} new panel ports"
+        n_panels = len(panel_by_rack) + sum(len(v) for v in xc_by_netrack.values())
+        print(f"   {n_panels} patch panels, {new_ports} new panel ports"
               + (f", {repaired} front-port mappings backfilled" if repaired else ""), flush=True)
 
     # existing cables keyed by their typed termination pair, so resume never
@@ -517,16 +522,14 @@ def seed_site(dc, regions, roles, types_by_role, tags):
                 frozenset((term_key(c.a_terminations[0]), term_key(c.b_terminations[0])))
             ] = c
 
-    cable_specs = []
+    desired = {}  # frozenset(typed term pair) -> create spec
 
     def add_cable(a_term, b_term, ctype):
-        if frozenset((a_term, b_term)) in existing_cables:
-            return
-        cable_specs.append({
+        desired[frozenset((a_term, b_term))] = {
             "a_terminations": [{"object_type": a_term[0], "object_id": a_term[1]}],
             "b_terminations": [{"object_type": b_term[0], "object_id": b_term[1]}],
             "status": "connected", "type": ctype,
-        })
+        }
 
     for a_dev, a_if, b_dev, b_if, ctype in plan:
         add_cable(("dcim.interface", iface_id[(devices[a_dev].id, a_if)]),
@@ -546,8 +549,19 @@ def seed_site(dc, regions, roles, types_by_role, tags):
         add_cable(("dcim.rearport", rear_id[(rp_id, f"Rear{rp_n}")]),
                   ("dcim.rearport", rear_id[(xc_id, f"Rear{xc_n}")]), ctype)
         add_cable(("dcim.frontport", front_id[(xc_id, f"Front{xc_n}")]), b, ctype)
-    if rerouted:
-        print(f"   {rerouted} direct cables re-routed through panels", flush=True)
+    # panel cabling is declarative: a cable on a panel port that the plan no
+    # longer wants is stale (port allocation shifted between schemes) — drop it
+    # before creating, so the freed interfaces/ports can be re-cabled
+    PANEL_TERMS = ("dcim.frontport", "dcim.rearport")
+    stale = 0
+    for key, c in list(existing_cables.items()):
+        if key not in desired and any(t[0] in PANEL_TERMS for t in key):
+            c.delete()
+            del existing_cables[key]
+            stale += 1
+    if rerouted or stale:
+        print(f"   {rerouted} direct cables re-routed, {stale} stale panel cables dropped", flush=True)
+    cable_specs = [spec for key, spec in desired.items() if key not in existing_cables]
     cables = bulk_create(nb.dcim.cables, cable_specs)
     print(f"   {len(existing_cables) + len(cables)} cables ({len(cables)} new)", flush=True)
     return site
