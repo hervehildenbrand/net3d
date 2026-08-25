@@ -280,7 +280,7 @@ def seed_site(dc, regions, roles, types_by_role, tags):
     dev_specs = []
     leaf_names, spine_names, core_names = [], [], []
     oob_by_rack = {}  # SRV rack name -> oob switch name
-    panel_by_rack = {}  # SRV rack name -> patch panel name (odd racks only)
+    panel_by_rack = {}  # SRV rack name -> patch panel name
     oob_agg_names = []
     server_names_by_rack = defaultdict(list)
     server_seq = 0  # per-site counter driving deterministic status sprinkling
@@ -303,13 +303,12 @@ def seed_site(dc, regions, roles, types_by_role, tags):
         on = f"{code}-SRV-{i:02d}-oob"
         dev(on, oob_type, "oob", rid, OOB_SWITCH_POS)
         oob_by_rack[rname] = on
-        # odd racks get a patch panel for structured cabling: one leaf uplink pair
-        # runs leaf -> panel -> network-rack cross-connect -> spine; servers stay
-        # direct (in-rack runs are plain patch cords), even racks fully direct
-        if i % 2 == 1:
-            pn = f"{code}-SRV-{i:02d}-pp-1"
-            dev(pn, panel_type, "patch-panel", rid, PATCH_PANEL_POS)
-            panel_by_rack[rname] = pn
+        # every server rack gets a patch panel — panels are how a rack reaches the
+        # room: leaf uplinks run leaf -> panel -> network-rack cross-connect ->
+        # spine; in-rack runs (servers, mgmt) stay plain patch cords
+        pn = f"{code}-SRV-{i:02d}-pp-1"
+        dev(pn, panel_type, "patch-panel", rid, PATCH_PANEL_POS)
+        panel_by_rack[rname] = pn
         # servers from the bottom up (stay below the OOB switch)
         u = 1
         for s in range(SERVERS_PER_RACK):
@@ -333,13 +332,13 @@ def seed_site(dc, regions, roles, types_by_role, tags):
         spine_names.append(sn)
         spine_rack[sn] = rname
     # cross-connect panels per network rack: the far end of the rack panels'
-    # rear-to-rear trunks; spines patch in on their front ports. Two per rack —
-    # at full size each NET rack terminates 46 trunk ports.
+    # rear-to-rear trunks; spines patch in on their front ports. Four per rack —
+    # every server rack lands 2 trunk ports on each NET rack (92 at full size).
     xc_by_netrack = {}
     for n in range(1, NETWORK_RACKS + 1):
         rname = f"{code}-NET-{n:02d}"
         xc_by_netrack[rname] = []
-        for x in (1, 2):
+        for x in (1, 2, 3, 4):
             xn = f"{code}-NET-{n:02d}-xc-{x}"
             dev(xn, panel_type, "patch-panel", racks[rname].id, PATCH_PANEL_POS - (x - 1))
             xc_by_netrack[rname].append(xn)
@@ -387,8 +386,8 @@ def seed_site(dc, regions, roles, types_by_role, tags):
         ifaces[b_dev][b_if] = b_type
         panel_plan.append((a_dev, a_if, rack_panel, rp_n, xc_panel, xc_n, b_dev, b_if, ctype))
 
-    # leaf -> spine uplinks (spine-leaf fabric); in odd racks every uplink runs
-    # through the rack panel + a network-rack cross-connect (structured cabling)
+    # leaf -> spine uplinks (spine-leaf fabric); every uplink runs through the
+    # rack panel + a network-rack cross-connect (structured cabling)
     for li, leaf in enumerate(leaf_names):
         rack_i = li // 2 + 1
         rack_panel = panel_by_rack.get(f"{code}-SRV-{rack_i:02d}")
