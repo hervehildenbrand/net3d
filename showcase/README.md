@@ -7,10 +7,10 @@ your own NetBox. It models a fictional hyperscale operator:
 - **50 racks per site**: server racks packed with servers + ToR (leaf) switches,
   network racks with spine switches + core routers
 - a **spine-leaf fabric** wired within each site (~18.6k devices total)
-- **structured cabling through patch panels**: odd server racks patch every leaf
-  uplink through a rack panel, trunked rear-to-rear to cross-connect panels in the
+- **structured cabling through patch panels**: every server rack patches its leaf
+  uplinks through a rack panel, trunked rear-to-rear to cross-connect panels in the
   network racks (front/rear ports), so NetBox's end-to-end cable trace has real
-  pass-throughs to follow; even racks stay direct for contrast
+  pass-throughs to follow; in-rack runs (servers, mgmt) stay direct patch cords
 - **inter-DC circuits** from a curated list of real transit providers (Arelion,
   Lumen, Colt, GTT, Telia, Cogent, Zayo, NTT, …) with fictional circuit IDs
 

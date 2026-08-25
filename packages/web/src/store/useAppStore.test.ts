@@ -235,6 +235,24 @@ describe('navSuppressed', () => {
     useAppStore.getState().zoomToMap()
     expect(useAppStore.getState().navSuppressed).toBe(false)
   })
+
+  test('a rack click cannot be undone by a stale camera signal (auto-suppress)', () => {
+    useAppStore.getState().zoomToSite('AMS1')
+    useAppStore.getState().setNavSuppressed(false) // the site fly has settled
+    useAppStore.getState().zoomToRack('r1') // user clicks a rack; exit arms on entry
+    // A damping onChange lands before CameraRig starts the fly: the camera is
+    // still at site distance, far beyond rackExitDistance — must NOT bounce back.
+    useAppStore.getState().handleCameraSignals(20, 18, null, 30)
+    expect(useAppStore.getState().level).toBe('rack')
+    expect(useAppStore.getState().selectedRackId).toBe('r1')
+  })
+
+  test('entering a site suppresses signals but LOD distance still records', () => {
+    useAppStore.getState().zoomToSite('AMS1')
+    expect(useAppStore.getState().navSuppressed).toBe(true)
+    useAppStore.getState().handleCameraSignals(15, null, null, 20)
+    expect(useAppStore.getState().siteViewDistance).toBe(15)
+  })
 })
 
 describe('powerVisible', () => {

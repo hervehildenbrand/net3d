@@ -165,6 +165,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       pendingDeviceFocus: null,
       rackView: 'front',
       siteViewDistance: null,
+      // Same stale-signal gap as zoomToRack: the camera may still sit next to a
+      // rack when the level flips to 'site', and an onChange before the fly
+      // starts would re-enter that rack. Suppress until the fly settles.
+      navSuppressed: true,
       // Keep the legend selection when bouncing back to the same room (rack->site
       // exit reuses this action); clear it when entering a different site, since
       // roles are per-site. Same for activeTrace - cable IDs are site-local.
@@ -177,8 +181,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     // nav machine) so zoom-out-to-room is always reachable. See navigation.ts.
     navMachine = { ...navMachine, exitRackArmed: true, enterRackArmed: false }
     // activeTrace survives rack hops — it's site-scoped, and following a traced
-    // path rack-to-rack is exactly how the trace UI navigates
-    set({ level: 'rack', selectedRackId: rackId, rackView: 'front', pendingDeviceFocus: null })
+    // path rack-to-rack is exactly how the trace UI navigates.
+    // navSuppressed: the exit above is armed while the camera still sits at SITE
+    // distance; CameraRig only suppresses signals once its fly effect runs, so a
+    // damping onChange in that gap would fire exitToSite and undo the click
+    // ("clicking a rack sometimes does nothing"). Suppress synchronously here;
+    // App's watchdog resumes the machine after the fly settles.
+    set({ level: 'rack', selectedRackId: rackId, rackView: 'front', pendingDeviceFocus: null, navSuppressed: true })
   },
   zoomToMap: () =>
     set({ level: 'map', selectedSiteName: null, selectedRackId: null, selectedDeviceId: null, pendingDeviceFocus: null, navSuppressed: false, siteViewDistance: null, highlightedRoles: new Set<string>(), powerVisible: false, selectedPowerSource: null, specsHeatmapMetric: null, colorMode: 'none', hiddenStatuses: new Set<string>(), cableColorMode: 'medium', ipLabelsVisible: false, activeTrace: null }),
@@ -263,12 +272,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   handleCameraSignals: (distToSite, distToRack, nearestRackId, siteSpan = null) => {
     const { level, selectedSiteName, zoomToSite, zoomToRack, zoomToMap, navSuppressed } = get()
-    // A programmatic fly (e.g. zoom-to-device) is in flight: ignore the camera so
-    // the machine can't bounce levels on a mid-flight far-distance reading.
-    if (navSuppressed) return
     if (level === 'map') return
-    // record camera distance only at site level — drives rack-label LOD
+    // record camera distance only at site level — drives rack-label LOD; a passive
+    // reading, so it records even while the nav machine is suppressed below
     if (level === 'site') set({ siteViewDistance: distToSite })
+    // A programmatic fly (level change or zoom-to-device) is in flight: ignore the
+    // camera so the machine can't bounce levels on a mid-flight far-distance reading.
+    if (navSuppressed) return
     const r = stepNavigation(
       navMachine,
       {
