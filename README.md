@@ -156,6 +156,11 @@ docker compose up --build     # then open http://localhost:8080
 
 - Change the published port with `NET3D_PORT` (e.g. `NET3D_PORT=9000 docker compose up`).
 - Pre-warm caches for snappier first loads with `PREWARM=1` in `.env`.
+- World-map tiles: CARTO requires a (free) API key for its basemaps — without one the
+  map shows an "API KEY REQUIRED" watermark. Get a key at
+  [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey) and set
+  `VITE_CARTO_KEY` in `.env` before building. It's baked into the UI bundle at build
+  time (client-side by design, not a secret) and works for `pnpm dev` too.
 - If NetBox runs on your **host** (e.g. the showcase on `localhost:8088`), point the
   container at it via `NETBOX_URL=http://host.docker.internal:8088`.
 
@@ -256,6 +261,7 @@ packages/
 | Site view is empty or sparse | NetBox has no rack positions/faces there; devices without a U-position aren't drawn. |
 | No live device data / no LLDP links | The NAPALM plugin isn't installed (optional). |
 | A site is missing from the map | It has no latitude/longitude; reach it via the search box. |
+| Map tiles say `API KEY REQUIRED` | Set `VITE_CARTO_KEY` in `.env` (free key: [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey)) and rebuild/restart; force-refresh, tiles are cached. |
 
 ## License
 
