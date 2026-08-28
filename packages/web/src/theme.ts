@@ -1,9 +1,6 @@
 /** Single source of truth for the light visual style. */
 export const theme = {
   map: {
-    tiles: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
     background: '#f4f6f8',
     // Site markers, coloured by DC role (matches the SiteTooltip role badge).
     marker: { color: '#0284c7', fill: '#38bdf8' }, // compute (default)

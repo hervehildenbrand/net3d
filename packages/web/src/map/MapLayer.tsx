@@ -9,12 +9,13 @@ import { CircuitPolylines } from './CircuitPolylines'
 import { SiteTooltip } from './SiteTooltip'
 import { MapLegend } from './MapLegend'
 import { markerColorsForRole } from './markerColors'
+import { cartoTileUrl } from './tileUrl'
 
 /** Below the enter threshold (14), but close enough that entry is likely. */
 const PREFETCH_ZOOM = 11
 
 
-const TILE_URL = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+const TILE_URL = cartoTileUrl(import.meta.env.VITE_CARTO_KEY)
 const TILE_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
 

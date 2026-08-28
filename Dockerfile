@@ -16,6 +16,11 @@ RUN pnpm install --frozen-lockfile
 
 # Sources, then build the UI to packages/web/dist.
 COPY . .
+# CARTO basemap key, baked into the client bundle (not a secret — it rides on
+# every tile URL). Empty = watermarked tiles. .env is dockerignored, so the
+# key must arrive as a build arg.
+ARG VITE_CARTO_KEY=
+ENV VITE_CARTO_KEY=$VITE_CARTO_KEY
 RUN pnpm --filter @net3d/web build
 
 # ── runtime: the Fastify proxy (via tsx) serving the built UI ───────────────
