@@ -11,6 +11,14 @@ import type { DiskCacheStore } from './persistence'
 import type { LayoutStore } from './layout-store'
 import { loadSiteDetail, prewarmCaches, type SiteDetail } from './prewarm'
 import { buildDeviceIndex } from './devices'
+import { SseBroadcaster } from './events'
+import {
+  parseNetboxWebhook,
+  parseInfrahubWebhook,
+  verifyNetboxSignature,
+  verifyInfrahubSignature,
+  type WebhookImpact,
+} from './webhooks'
 
 // Stale entries are served instantly and refreshed in the background, so a
 // TTL here is "how old may data get before a refresh starts", not a hard cutoff.
@@ -63,6 +71,8 @@ export interface AppDeps {
   layoutEditable?: boolean
   /** Sandbox: editor UI available but changes never persist (Save disabled; writes still 403). */
   layoutPreview?: boolean
+  /** Shared secret for SoT webhooks; unset = webhook + SSE routes disabled (404). */
+  webhookSecret?: string
 }
 
 // SWR-served payloads worth persisting. napalm:* is live device state with a short
@@ -83,6 +93,7 @@ export function buildApp({
   layoutStore,
   layoutEditable = false,
   layoutPreview = false,
+  webhookSecret,
 }: AppDeps): FastifyInstance {
   const app = Fastify({ logger })
   const cache = new TtlCache(persist ? { persist, shouldPersist: PERSISTABLE_KEYS } : undefined)
@@ -127,7 +138,16 @@ export function buildApp({
   if (apiToken) {
     const expected = Buffer.from(`Bearer ${apiToken}`)
     app.addHook('onRequest', async (req, reply) => {
-      if (!req.url.startsWith('/api/') || req.url === '/api/health') return
+      // webhooks authenticate with their own HMAC signature; /api/events only
+      // emits {scope, site} pings and must stay reachable by EventSource
+      // (which cannot send an Authorization header).
+      if (
+        !req.url.startsWith('/api/') ||
+        req.url === '/api/health' ||
+        req.url === '/api/events' ||
+        req.url.startsWith('/api/webhooks/')
+      )
+        return
       const got = Buffer.from(req.headers.authorization ?? '')
       if (got.length !== expected.length || !timingSafeEqual(got, expected)) {
         return reply.code(401).send({ error: 'unauthorized' })
@@ -314,6 +334,97 @@ export function buildApp({
       })
     }
   })
+
+  // Live updates: SoT webhooks bust the SWR cache, SSE tells browsers to refetch.
+  if (webhookSecret) {
+    const sse = new SseBroadcaster()
+    app.addHook('onClose', async () => sse.close())
+
+    // Debounce broadcasts so bulk edits/reseeds don't trigger refetch storms;
+    // the cache keys are deleted immediately, only the SSE ping is delayed.
+    const DEBOUNCE_MS = 1000
+    const pendingSites = new Map<string, NodeJS.Timeout>()
+    let pendingAll: NodeJS.Timeout | null = null
+
+    const applyImpact = (impact: WebhookImpact): void => {
+      cache.delete('sites')
+      cache.delete('circuits')
+      if ('scope' in impact) {
+        for (const k of [...cache.keys()]) if (k.startsWith('site:')) cache.delete(k)
+        if (pendingAll) clearTimeout(pendingAll)
+        pendingAll = setTimeout(() => {
+          pendingAll = null
+          sse.broadcast({ type: 'invalidate', scope: 'all' })
+        }, DEBOUNCE_MS)
+        pendingAll.unref?.()
+        return
+      }
+      for (const site of impact.sites) {
+        cache.delete(`site:${site}`)
+        const t = pendingSites.get(site)
+        if (t) clearTimeout(t)
+        const timer = setTimeout(() => {
+          pendingSites.delete(site)
+          sse.broadcast({ type: 'invalidate', scope: 'site', site })
+        }, DEBOUNCE_MS)
+        timer.unref?.()
+        pendingSites.set(site, timer)
+      }
+    }
+
+    app.register(async function webhookRoutes(wh) {
+      // signature verification needs the raw body — this parser is scoped to
+      // THIS plugin only; every other route keeps Fastify's parsed JSON
+      wh.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) =>
+        done(null, body),
+      )
+
+      wh.post('/api/webhooks/netbox', async (req, reply) => {
+        const raw = req.body as string
+        const sig = req.headers['x-hook-signature']
+        if (typeof sig !== 'string' || !verifyNetboxSignature(raw, sig, webhookSecret)) {
+          return reply.code(401).send({ error: 'invalid_signature' })
+        }
+        try {
+          applyImpact(parseNetboxWebhook(JSON.parse(raw)))
+        } catch {
+          return reply.code(400).send({ error: 'invalid_payload' })
+        }
+        return reply.code(204).send()
+      })
+
+      wh.post('/api/webhooks/infrahub', async (req, reply) => {
+        const raw = req.body as string
+        const { 'webhook-id': id, 'webhook-timestamp': ts, 'webhook-signature': sig } = req.headers
+        if (
+          typeof id !== 'string' ||
+          typeof ts !== 'string' ||
+          typeof sig !== 'string' ||
+          !verifyInfrahubSignature(id, ts, raw, sig, webhookSecret)
+        ) {
+          return reply.code(401).send({ error: 'invalid_signature' })
+        }
+        try {
+          applyImpact(parseInfrahubWebhook(JSON.parse(raw)))
+        } catch {
+          return reply.code(400).send({ error: 'invalid_payload' })
+        }
+        return reply.code(204).send()
+      })
+    })
+
+    app.get('/api/events', (_req, reply) => {
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no', // nginx: don't buffer the stream
+      })
+      reply.raw.write(': connected\n\n')
+      sse.addClient(reply)
+      // no reply.send(): the connection stays open until the client disconnects
+    })
+  }
 
   if (webDist) {
     // Serve the built UI from the same process so production is one container.

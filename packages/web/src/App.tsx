@@ -19,6 +19,7 @@ import { useCircuits } from './hooks/useCircuits'
 import { useSiteDetail } from './hooks/useSiteDetail'
 import { useSiteLayoutQuery, useLayoutCapability } from './hooks/useSiteLayout'
 import { useDeviceIndex } from './hooks/useDeviceIndex'
+import { useLiveUpdates } from './hooks/useLiveUpdates'
 import { useAppStore } from './store/useAppStore'
 import { DevicePanel } from './components/DevicePanel'
 import { SitesMenu, SITES_MENU_WIDTH, SITES_MENU_COLLAPSED_OFFSET } from './components/SitesMenu'
@@ -49,6 +50,7 @@ const hudStyle: React.CSSProperties = {
 const NO_ROLES: Set<string> = new Set<string>()
 
 export function App() {
+  useLiveUpdates()
   const { data: sites, isLoading, error } = useSites()
   const { data: circuitGroups } = useCircuits()
   const level = useAppStore((s) => s.level)

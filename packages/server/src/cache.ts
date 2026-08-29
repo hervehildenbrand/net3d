@@ -79,6 +79,17 @@ export class TtlCache {
     if (this.persist && this.shouldPersist(key)) void this.persist.write(key, value, expiresAt)
   }
 
+  /** Force-expire a key so the next getOrSet fetches fresh (no SWR stale-serve). */
+  delete(key: string): void {
+    this.store.delete(key)
+    // ponytail: persisted disk copy left in place — rehydrate happens only at
+    // boot and SWR revalidates it immediately; next set() overwrites the file.
+  }
+
+  keys(): IterableIterator<string> {
+    return this.store.keys()
+  }
+
   async getOrSet<T>(
     key: string,
     ttlMs: number,
