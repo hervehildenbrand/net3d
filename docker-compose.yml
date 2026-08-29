@@ -23,4 +23,7 @@ services:
       # Pre-warm caches at boot for snappier first loads (off by default; can be
       # slow on very large instances). Set PREWARM=1 in .env to enable.
       PREWARM: ${PREWARM:-}
+      # Live updates (off by default). When set, NetBox/Infrahub webhooks can push
+      # cache invalidations that reach open browsers over SSE — see README "Live updates".
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
     restart: unless-stopped

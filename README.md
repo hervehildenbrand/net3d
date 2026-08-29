@@ -60,6 +60,10 @@ at their true U-positions, connected by one continuous mouse-wheel journey.
   emphasis per device role.
 - 💾 **Disk-persistent cache**: the proxy's cache is keyed per backend instance and
   survives restarts, so a restart doesn't re-warm from cold.
+- ⚡ **Live updates** (opt-in): point a NetBox or Infrahub webhook at net3d and edits in
+  your source of truth appear in the 3D view within a second or two — the server busts
+  its cache and pushes an invalidation to every open browser over SSE. Without it,
+  changes show up on the cache TTLs (a few minutes) or on reload.
 
 ## Requirements
 
@@ -191,6 +195,34 @@ Layouts are one JSON file per site — in a container, point `LAYOUT_DIR` at a m
 volume so they survive redeploys. `LAYOUT_PREVIEW=1` applies saved layouts and shows the
 editor without allowing writes (nice for public demos). See `.env.example` for details.
 
+### Live updates (optional)
+
+By default net3d refreshes on cache TTLs (2–5 min). To reflect SoT changes in
+near-real-time, set a shared secret and register a webhook:
+
+```sh
+WEBHOOK_SECRET=<random string>   # enables POST /api/webhooks/{netbox,infrahub} + GET /api/events
+```
+
+Then point your backend at the receiver (net3d verifies the HMAC signature on every
+delivery, so the endpoint is safe to expose alongside the API):
+
+- **NetBox 4.x**: create a *Webhook* (URL `https://<net3d-host>/api/webhooks/netbox`,
+  secret = `WEBHOOK_SECRET`) plus *Event Rules* for create/update/delete on sites,
+  devices, racks, cables, power panels and power feeds — or run the idempotent
+  [`showcase/seed/register_webhooks.py`](showcase/seed/register_webhooks.py) against
+  your instance (`NETBOX_URL`/`NETBOX_TOKEN`/`WEBHOOK_SECRET`/`WEBHOOK_CALLBACK` env vars).
+- **NetBox 3.7**: a single *Webhook* object carries the content types and events; same
+  URL and secret.
+- **Infrahub**: standard webhooks, one per event type × node kind — run
+  [`showcase/infrahub/register_webhooks.py`](showcase/infrahub/register_webhooks.py).
+
+The browser subscribes to `GET /api/events` (SSE) and refetches exactly what changed:
+NetBox events invalidate per site, Infrahub events invalidate everything (its payloads
+carry no site linkage). Broadcasts are debounced ~1 s so bulk imports coalesce instead
+of stampeding clients. Leave `WEBHOOK_SECRET` unset and the routes don't exist —
+behavior is exactly as before.
+
 ### Security
 
 net3d is a **read-only** visualizer and its API is **unauthenticated by default**. It
@@ -202,7 +234,9 @@ all NetBox data the server fetches (devices, IPs, topology, power, live NAPALM).
 - Optional `NET3D_API_TOKEN`: when set, every `/api/*` route (except `/api/health`)
   requires `Authorization: Bearer <token>`. A browser can't hold a secret, so use it
   for API clients or have the proxy inject the header after authenticating the user;
-  leave it unset for the open read-only demo.
+  leave it unset for the open read-only demo. Webhook routes are exempt (they carry
+  their own HMAC auth), as is the `/api/events` stream (EventSource can't send
+  headers; it only ever emits "something at site X changed" pings).
 - `NETBOX_TLS_VERIFY=false` relaxes certificate checks **only** for NetBox calls.
 
 See [SECURITY.md](SECURITY.md) for the full model and how to report vulnerabilities.
@@ -262,6 +296,7 @@ packages/
 | No live device data / no LLDP links | The NAPALM plugin isn't installed (optional). |
 | A site is missing from the map | It has no latitude/longitude; reach it via the search box. |
 | Map tiles say `API KEY REQUIRED` | Set `VITE_CARTO_KEY` in `.env` (free key: [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey)) and rebuild/restart; force-refresh, tiles are cached. |
+| NetBox edits take minutes to appear | That's the cache TTLs; for ~1 s propagation set `WEBHOOK_SECRET` and register a webhook (see *Live updates*). |
 
 ## License
 
