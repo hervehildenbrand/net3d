@@ -22,6 +22,7 @@ const {
   LAYOUT_EDIT,
   LAYOUT_PREVIEW,
   FRAME_ANCESTORS,
+  WEBHOOK_SECRET,
 } = process.env
 
 // Which source of truth, and its connection details (NETBOX_* / INFRAHUB_*).
@@ -107,6 +108,8 @@ async function main() {
     webDist: WEB_DIST ? resolve(WEB_DIST) : undefined,
     // optional shared-secret guard; unset = open (showcase / public demo)
     apiToken: process.env.NET3D_API_TOKEN || undefined,
+    // SoT webhook receivers + SSE live updates; unset = TTL-only refresh
+    webhookSecret: WEBHOOK_SECRET || undefined,
     // origins allowed to iframe net3d (space-separated); unset = same-origin only
     frameAncestors: FRAME_ANCESTORS?.split(/\s+/).filter(Boolean),
     // structured logs in real runs; buildApp defaults to silent for tests
