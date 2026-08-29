@@ -89,6 +89,22 @@ pnpm dev:showcase   # server reads ../../.env.showcase (NETBOX_URL=:8088)
 (`pnpm dev` targets whatever NetBox you configure in `.env`; `pnpm dev:showcase` targets
 this local demo via `.env.showcase`.)
 
+## 4. Live updates (optional)
+
+With `WEBHOOK_SECRET` set (already in `.env.showcase`), the server exposes SoT webhook
+receivers plus an SSE stream (`/api/events`) the UI listens on, so NetBox edits show up
+in the 3D view within ~1–2 s instead of waiting out the caches. Register the webhook
+once per NetBox instance (idempotent):
+
+```bash
+python3 showcase/seed/register_webhooks.py     # NetBox: Webhook + EventRules
+python3 showcase/infrahub/register_webhooks.py # Infrahub (dual setup only, :3002 instance)
+```
+
+The callback defaults to `http://host.docker.internal:3001/api/webhooks/netbox` — the
+NetBox container POSTing back to the dev server on the host. Broadcasts are debounced
+~1 s, so bulk edits/reseeds coalesce instead of stampeding the browser with refetches.
+
 ## Teardown
 
 ```bash
