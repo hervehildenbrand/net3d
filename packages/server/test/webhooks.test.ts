@@ -14,6 +14,19 @@ describe('parseNetboxWebhook', () => {
     )
   })
 
+  test('NetBox 4.x payloads use namespaced object_type instead of model', () => {
+    expect(
+      parseNetboxWebhook({
+        event: 'updated',
+        object_type: 'dcim.device',
+        data: { site: { name: 'AMS1' } },
+      }),
+    ).toEqual({ sites: ['AMS1'] })
+    expect(
+      parseNetboxWebhook({ event: 'updated', object_type: 'dcim.site', data: { name: 'FRA1' } }),
+    ).toEqual({ sites: ['FRA1'] })
+  })
+
   test('device/rack/powerpanel/powerfeed use data.site.name', () => {
     for (const model of ['device', 'rack', 'powerpanel', 'powerfeed']) {
       expect(

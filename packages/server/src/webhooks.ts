@@ -6,18 +6,21 @@ export type WebhookImpact = { sites: string[] } | { scope: 'all' }
 const SITE_LINKED_MODELS = new Set(['device', 'rack', 'powerpanel', 'powerfeed'])
 
 export function parseNetboxWebhook(body: unknown): WebhookImpact {
-  const p = body as { model?: string; data?: Record<string, unknown> } | null
-  if (!p?.model || !p.data) return { scope: 'all' }
+  const p = body as { model?: string; object_type?: string; data?: Record<string, unknown> } | null
+  // NetBox 3.x sends `model: "device"`, 4.x `object_type: "dcim.device"` —
+  // normalize to the bare model name.
+  const model = (p?.model ?? p?.object_type)?.replace(/^dcim\./, '')
+  if (!model || !p?.data) return { scope: 'all' }
 
-  if (p.model === 'site') {
+  if (model === 'site') {
     const name = (p.data as { name?: string }).name
     return name ? { sites: [name] } : { scope: 'all' }
   }
-  if (SITE_LINKED_MODELS.has(p.model)) {
+  if (SITE_LINKED_MODELS.has(model)) {
     const site = (p.data as { site?: { name?: string } }).site?.name
     return site ? { sites: [site] } : { scope: 'all' }
   }
-  if (p.model === 'cable') {
+  if (model === 'cable') {
     const sites = new Set<string>()
     for (const side of ['a_terminations', 'b_terminations']) {
       const terms = (p.data as Record<string, unknown>)[side]
