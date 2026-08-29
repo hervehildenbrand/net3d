@@ -66,6 +66,30 @@ describe('TtlCache peek', () => {
   })
 })
 
+describe('TtlCache delete', () => {
+  test('removes an existing key', () => {
+    const cache = new TtlCache()
+    cache.set('k', 'v', 10_000)
+    cache.delete('k')
+    expect(cache.get('k')).toBeUndefined()
+    expect(cache.peek('k')).toBeUndefined()
+  })
+
+  test('is a no-op on a missing key', () => {
+    const cache = new TtlCache()
+    expect(() => cache.delete('nope')).not.toThrow()
+  })
+})
+
+describe('TtlCache keys', () => {
+  test('lists all stored keys including stale ones', () => {
+    const cache = new TtlCache()
+    cache.set('a', 1, 10_000)
+    cache.set('site:AMS1', 2, -1) // already expired — still listed
+    expect([...cache.keys()].sort()).toEqual(['a', 'site:AMS1'])
+  })
+})
+
 describe('TtlCache stale-while-revalidate', () => {
   test('serves the stale value instantly after ttl and refreshes in background', async () => {
     vi.useFakeTimers()
