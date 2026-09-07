@@ -105,7 +105,7 @@ export function App() {
   const selectedDevice = selectedRack?.devices.find((d) => d.id === selectedDeviceId)
 
   // Global device search index (backend-agnostic; refetched per backend).
-  const { data: deviceIndex } = useDeviceIndex()
+  const { data: deviceIndex, isLoading: deviceIndexLoading, isError: deviceIndexError } = useDeviceIndex()
 
   // Staged zoom-to-device from the search box. The searched device may live in a
   // different site, whose racks only exist once its detail has loaded — so once
@@ -339,12 +339,15 @@ export function App() {
 
       {/* Global device finder — persistent (top-center) so any device is reachable
           from any level. Selecting one stages a zoom to its rack. */}
-      {deviceIndex && deviceIndex.length > 0 && (
-        <DeviceSearch
-          devices={deviceIndex}
-          onSelect={(e) => focusDevice({ siteName: e.siteName, rackId: e.rackId, deviceId: e.id })}
-        />
-      )}
+      <DeviceSearch
+        devices={deviceIndex?.devices ?? []}
+        indexedSites={deviceIndex?.indexedSites ?? 0}
+        totalSites={deviceIndex?.totalSites ?? 0}
+        prewarmEnabled={deviceIndex?.prewarmEnabled ?? false}
+        isLoading={deviceIndexLoading}
+        isError={deviceIndexError}
+        onSelect={(e) => focusDevice({ siteName: e.siteName, rackId: e.rackId, deviceId: e.id })}
+      />
 
       {selectedDevice && (
         <DevicePanel

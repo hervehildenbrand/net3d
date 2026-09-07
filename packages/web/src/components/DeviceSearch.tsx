@@ -10,9 +10,19 @@ import { filterDevices, type DeviceIndexEntry } from '../lib/deviceSearch'
  */
 export function DeviceSearch({
   devices,
+  indexedSites,
+  totalSites,
+  prewarmEnabled,
+  isLoading,
+  isError,
   onSelect,
 }: {
   devices: DeviceIndexEntry[]
+  indexedSites: number
+  totalSites: number
+  prewarmEnabled: boolean
+  isLoading: boolean
+  isError: boolean
   onSelect: (entry: DeviceIndexEntry) => void
 }) {
   const [query, setQuery] = useState('')
@@ -20,6 +30,14 @@ export function DeviceSearch({
 
   const matches = useMemo(() => filterDevices(devices, query), [devices, query])
   const showDropdown = open && query.trim().length > 0
+  const partial = indexedSites < totalSites
+  const status = isError
+    ? devices.length > 0
+      ? 'refresh failed; showing cached results'
+      : 'device index unavailable'
+    : partial
+      ? `${indexedSites} of ${totalSites} sites indexed${prewarmEnabled ? '' : '; prewarm disabled'}`
+      : null
 
   return (
     <div
@@ -36,7 +54,7 @@ export function DeviceSearch({
     >
       <input
         value={query}
-        placeholder={`find device… (${devices.length} total)`}
+        placeholder={isLoading ? 'loading device index…' : `find device… (${devices.length} indexed)`}
         onChange={(e) => setQuery(e.target.value)}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
@@ -52,6 +70,9 @@ export function DeviceSearch({
           boxShadow: '0 1px 3px rgba(15, 23, 42, 0.1)',
         }}
       />
+      {status && (
+        <div style={{ padding: '4px 10px 0', color: isError ? '#b91c1c' : '#64748b' }}>{status}</div>
+      )}
       {showDropdown && (
         <div
           style={{
