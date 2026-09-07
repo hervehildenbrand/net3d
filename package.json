@@ -12,10 +12,12 @@
     "build": "pnpm --filter @net3d/web build",
     "start": "pnpm --filter @net3d/server start:prod",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "pnpm -r exec tsc --noEmit"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "3.2.6",
     "typescript": "^5.5.0",
     "vitest": "^3.2.0"
   },

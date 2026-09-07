@@ -89,6 +89,7 @@ cp .env.example .env     # set NETBOX_URL + NETBOX_TOKEN (NETBOX_TLS_VERIFY=fals
 pnpm install
 pnpm dev                 # API proxy on :3001, app on http://localhost:5173
 pnpm test                # vitest across all packages
+pnpm test:coverage       # full source report; 80% gate on TypeScript logic
 ```
 
 The API token never reaches the browser: a small Fastify proxy holds it, queries
