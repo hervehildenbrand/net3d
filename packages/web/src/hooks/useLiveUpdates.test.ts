@@ -78,6 +78,28 @@ describe('startLiveUpdates', () => {
     stop()
   })
 
+  test('test_startLiveUpdates_reconnect_refreshes_active_index_and_marks_inactive_sites_stale', async () => {
+    let deviceFetches = 0
+    queryClient.setQueryData(['devices', 'netbox'], [])
+    queryClient.setQueryData(['site', 'netbox', 'CDG1'], {})
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ['devices', 'netbox'],
+      queryFn: async () => { deviceFetches++; return [] },
+      staleTime: Infinity,
+    })
+    const unsubscribe = observer.subscribe(() => {})
+    const stop = start(true)
+    const source = FakeEventSource.instances[0]!
+    source.onopen?.()
+    source.onerror?.()
+    source.onopen?.()
+    await vi.runAllTicks()
+    expect(deviceFetches).toBe(1)
+    expect(queryClient.getQueryState(['site', 'netbox', 'CDG1'])?.isInvalidated).toBe(true)
+    unsubscribe()
+    stop()
+  })
+
   test('test_startLiveUpdates_hidden_reconnect_resynchronizes_when_visible', async () => {
     let fetches = 0
     queryClient.setQueryData(['site', 'netbox', 'AMS1'], {})

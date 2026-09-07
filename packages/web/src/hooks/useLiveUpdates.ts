@@ -31,13 +31,21 @@ export function startLiveUpdates(options: LiveUpdateOptions): () => void {
   const { backend, queryClient } = options
   let disconnected = !options.liveUpdatesAvailable
   let resyncPending = false
-  const refresh = (): boolean => {
+  const refreshActiveTopology = (): boolean => {
     if (!options.isVisible()) return false
     void queryClient.invalidateQueries({ predicate: (query) => isActiveTopologyQuery(backend, query) })
     return true
   }
+  const resynchronize = (): boolean => {
+    if (!options.isVisible()) return false
+    for (const filter of eventToInvalidations(backend, { type: 'invalidate', scope: 'all' })) {
+      void queryClient.invalidateQueries(filter)
+    }
+    return true
+  }
   const refreshIfNeeded = () => {
-    if ((disconnected || resyncPending) && refresh()) resyncPending = false
+    if (disconnected) refreshActiveTopology()
+    if (resyncPending && resynchronize()) resyncPending = false
   }
   const timer = setInterval(refreshIfNeeded, 60_000)
   const removeVisibilityListener = options.onVisibilityChange(refreshIfNeeded)
