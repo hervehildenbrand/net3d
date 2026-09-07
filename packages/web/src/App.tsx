@@ -29,6 +29,7 @@ import { BackendSwitcher } from './components/BackendSwitcher'
 import { EditToolbar } from './components/EditToolbar'
 import { useEditStore } from './store/useEditStore'
 import { SceneErrorBoundary } from './components/SceneErrorBoundary'
+import { SiteStatus } from './components/SiteStatus'
 import { computeSpecsRange } from './lib/specsHeatmap'
 import { collectSubnets } from './lib/subnetColoring'
 import { tracePowerChain } from './lib/powerChain'
@@ -48,7 +49,7 @@ const hudStyle: React.CSSProperties = {
 const NO_ROLES: Set<string> = new Set<string>()
 
 export function App() {
-  useLiveUpdates()
+  const liveUpdateStatus = useLiveUpdates()
   const { data: sites, isLoading, error } = useSites()
   const { data: circuitGroups } = useCircuits()
   const level = useAppStore((s) => s.level)
@@ -90,7 +91,7 @@ export function App() {
   const sitesMenuOpen = useAppStore((s) => s.sitesMenuOpen)
   // Left-stacked HUD elements clear the sites menu (open) or its ☰ button (closed).
   const leftOffset = sitesMenuOpen ? SITES_MENU_WIDTH + 16 : SITES_MENU_COLLAPSED_OFFSET
-  const { data: siteDetail, isLoading: siteLoading } = useSiteDetail(
+  const { data: siteDetail, isLoading: siteLoading, isFetching: siteFetching, error: siteError, refetch: retrySite } = useSiteDetail(
     level !== 'map' ? selectedSiteName : null,
   )
   const { placements } = useComputedSiteLayout(siteDetail?.racks)
@@ -308,6 +309,9 @@ export function App() {
 
       <div style={{ ...hudStyle, left: leftOffset, pointerEvents: 'none' }}>
         <strong style={{ color: '#1e293b' }}>net3d</strong>
+        <span style={{ marginLeft: 8, color: liveUpdateStatus === 'live' ? '#15803d' : '#64748b' }}>
+          data: {liveUpdateStatus}
+        </span>
         <div>
           {isLoading && 'loading sites…'}
           {error && (
@@ -316,10 +320,12 @@ export function App() {
           {sites &&
             level === 'map' &&
             `${sites.length} sites — ${sites.filter((s) => s.latitude !== null).length} on map — ${circuitGroups?.length ?? 0} DC links`}
-          {level === 'site' &&
-            selectedSiteName &&
-            `site: ${selectedSiteName}${siteLoading ? ' — loading racks…' : siteDetail ? ` — ${siteDetail.racks.length} racks` : ''}`}
-          {level === 'rack' && selectedRack && `${selectedSiteName} / ${selectedRack.name}`}
+          {level !== 'map' && selectedSiteName && (
+            <div style={{ pointerEvents: 'auto' }}>
+              <SiteStatus siteName={selectedSiteName} loading={siteLoading} fetching={siteFetching} error={siteError} rackCount={siteDetail?.racks.length} onRetry={() => void retrySite()} />
+              {level === 'rack' && selectedRack && ` / ${selectedRack.name}`}
+            </div>
+          )}
           {level !== 'map' && lldp.discovering && (
             <div style={{ color: '#0891b2' }}>
               ◐ discovering cabling {lldp.completed}/{lldp.total} devices…
