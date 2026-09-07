@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { filterDevices, type DeviceIndexEntry } from '../lib/deviceSearch'
 
 /**
@@ -27,6 +27,8 @@ export function DeviceSearch({
 }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const listId = useId()
 
   const matches = useMemo(() => filterDevices(devices, query), [devices, query])
   const showDropdown = open && query.trim().length > 0
@@ -38,6 +40,13 @@ export function DeviceSearch({
     : partial
       ? `${indexedSites} of ${totalSites} sites indexed${prewarmEnabled ? '' : '; prewarm disabled'}`
       : null
+
+  const select = (device: DeviceIndexEntry) => {
+    onSelect(device)
+    setQuery('')
+    setOpen(false)
+    setActiveIndex(-1)
+  }
 
   return (
     <div
@@ -53,11 +62,34 @@ export function DeviceSearch({
       }}
     >
       <input
+        role="combobox"
+        aria-label="Find device"
+        aria-autocomplete="list"
+        aria-expanded={showDropdown}
+        aria-controls={showDropdown ? listId : undefined}
+        aria-activedescendant={showDropdown && matches[activeIndex] ? `${listId}-${activeIndex}` : undefined}
+        aria-busy={isLoading}
         value={query}
         placeholder={isLoading ? 'loading device index…' : `find device… (${devices.length} indexed)`}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => { setQuery(e.target.value); setActiveIndex(-1); setOpen(true) }}
         onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() => { setOpen(false); setActiveIndex(-1) }}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault()
+            setOpen(true)
+            setActiveIndex((index) => matches.length === 0 ? -1 :
+              index < 0 ? (e.key === 'ArrowDown' ? 0 : matches.length - 1) :
+                (index + (e.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length)
+          } else if (e.key === 'Enter' && showDropdown && matches[activeIndex]) {
+            e.preventDefault()
+            select(matches[activeIndex]!)
+          } else if (e.key === 'Escape') {
+            e.preventDefault()
+            setOpen(false)
+            setActiveIndex(-1)
+          }
+        }}
         style={{
           width: '100%',
           boxSizing: 'border-box',
@@ -66,15 +98,17 @@ export function DeviceSearch({
           border: '1px solid #cbd5e1',
           borderRadius: 6,
           padding: '7px 10px',
-          outline: 'none',
           boxShadow: '0 1px 3px rgba(15, 23, 42, 0.1)',
         }}
       />
       {status && (
-        <div style={{ padding: '4px 10px 0', color: isError ? '#b91c1c' : '#64748b' }}>{status}</div>
+        <div role="status" style={{ padding: '4px 10px 0', color: isError ? '#b91c1c' : '#64748b' }}>{status}</div>
       )}
       {showDropdown && (
         <div
+          id={listId}
+          role="listbox"
+          aria-label="Devices"
           style={{
             marginTop: 4,
             background: 'rgba(255, 255, 255, 0.97)',
@@ -84,14 +118,13 @@ export function DeviceSearch({
             boxShadow: '0 4px 12px rgba(15, 23, 42, 0.12)',
           }}
         >
-          {matches.map((d) => (
+          {matches.map((d, index) => (
             <div
               key={`${d.siteName}/${d.id}`}
-              onMouseDown={() => {
-                onSelect(d)
-                setQuery('')
-                setOpen(false)
-              }}
+              id={`${listId}-${index}`}
+              role="option"
+              aria-selected={index === activeIndex}
+              onMouseDown={(e) => { e.preventDefault(); select(d) }}
               style={{
                 padding: '6px 10px',
                 cursor: 'pointer',
@@ -101,9 +134,9 @@ export function DeviceSearch({
                 gap: 8,
                 color: '#1e293b',
                 borderBottom: '1px solid #e2e8f0',
+                background: index === activeIndex ? '#f1f5f9' : 'transparent',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              onMouseEnter={() => setActiveIndex(index)}
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                 <span
