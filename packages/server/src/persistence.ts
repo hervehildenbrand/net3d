@@ -32,6 +32,8 @@ export function hashNetboxUrl(url: string): string {
 interface PersistedRecord {
   cacheVersion: number
   netboxUrl: string
+  backend?: 'netbox' | 'infrahub'
+  branch?: string
   key: string
   expiresAt: number
   value: unknown
@@ -55,12 +57,20 @@ export interface DiskCacheStore {
 export function createDiskCacheStore({
   baseDir,
   netboxUrl,
+  backend = 'netbox',
+  branch = 'main',
 }: {
   baseDir: string
   netboxUrl: string
+  backend?: 'netbox' | 'infrahub'
+  branch?: string
 }): DiskCacheStore {
   const normalizedUrl = normalize(netboxUrl)
-  const dir = join(baseDir, hashNetboxUrl(netboxUrl))
+  // Keep NetBox's existing namespace; legacy Infrahub records are ambiguous.
+  const identity = backend === 'infrahub'
+    ? JSON.stringify([backend, normalizedUrl, branch])
+    : normalizedUrl
+  const dir = join(baseDir, hashNetboxUrl(identity))
   const inFlight = new Set<Promise<void>>()
 
   // Hash the key so filesystem-hostile characters (the ':' in "site:AMS1") and
@@ -74,6 +84,8 @@ export function createDiskCacheStore({
       data = JSON.stringify({
         cacheVersion: CACHE_VERSION,
         netboxUrl: normalizedUrl,
+        backend,
+        branch: backend === 'infrahub' ? branch : undefined,
         key,
         expiresAt,
         value,
@@ -123,6 +135,7 @@ export function createDiskCacheStore({
           const r = rec as Partial<PersistedRecord>
           if (r.cacheVersion !== CACHE_VERSION) continue // stale shape — discard
           if (r.netboxUrl !== normalizedUrl) continue // foreign instance — discard
+          if (backend === 'infrahub' && (r.backend !== backend || r.branch !== branch)) continue
           if (typeof r.key !== 'string') continue
           if (typeof r.expiresAt !== 'number') continue
           out.push({ key: r.key, value: r.value, expiresAt: r.expiresAt })

@@ -71,11 +71,7 @@ async function main() {
     }
   }
 
-  // Persist the NetBox cache across restarts (default on). A restart otherwise wipes
-  // the in-memory cache, so the next big-site click hangs 30-75s re-warming. Keyed by
-  // NetBox instance so showcase (:8088) and live never read each other's data.
-  // key the on-disk cache by the active backend instance so showcase (:8088),
-  // live NetBox, and Infrahub (:8000) never read each other's data
+  // Persist topology across restarts, isolated by backend instance and branch.
   const cacheKeyUrl = config.backend === 'netbox' ? config.netbox.url! : config.infrahub.url!
   const persist =
     CACHE_PERSIST === '0' || CACHE_PERSIST === 'false'
@@ -84,6 +80,8 @@ async function main() {
           // default lives next to the server package, stable across cwd + tsx-watch restarts
           baseDir: CACHE_DIR ? resolve(CACHE_DIR) : fileURLToPath(new URL('../.cache/net3d/', import.meta.url)),
           netboxUrl: cacheKeyUrl,
+          backend: config.backend,
+          branch: config.backend === 'infrahub' ? config.infrahub.branch : undefined,
         })
 
   // User-edited floor plans live OUTSIDE the cache dir (dev-restart wipes .cache),

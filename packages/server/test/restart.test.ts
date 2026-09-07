@@ -73,6 +73,7 @@ describe('cache persistence across restarts', () => {
     // …and made no NetBox call on the request path
     expect(second.counts.racks).toBe(0)
     await app2.close()
+    await store2.flush()
   })
 
   test('the persisted cache is isolated per NetBox instance', async () => {
@@ -92,5 +93,6 @@ describe('cache persistence across restarts', () => {
     expect(r2.json()).toEqual({ racks: [rack('B-RACK')], cables: [], power: { panels: [], feeds: [] } })
     expect(second.counts.racks).toBe(1) // had to fetch — A's cache was correctly invisible
     await app2.close()
+    await store2.flush()
   })
 })

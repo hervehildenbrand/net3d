@@ -128,6 +128,29 @@ describe('DiskCacheStore resilience', () => {
 })
 
 describe('profile isolation', () => {
+  test('test_createDiskCacheStore_different_infrahub_branches_never_cross_hydrate', async () => {
+    const main = createDiskCacheStore({ baseDir, netboxUrl: URL_A, backend: 'infrahub', branch: 'main' })
+    await main.write('site:AMS1', { branch: 'main' }, 1)
+    const feature = createDiskCacheStore({ baseDir, netboxUrl: URL_A, backend: 'infrahub', branch: 'feature' })
+    expect(feature.loadAllSync()).toEqual([])
+    await feature.write('site:AMS1', { branch: 'feature' }, 2)
+    expect(main.loadAllSync()[0]?.value).toEqual({ branch: 'main' })
+  })
+
+  test('test_createDiskCacheStore_same_infrahub_identity_survives_restart', async () => {
+    const first = createDiskCacheStore({ baseDir, netboxUrl: URL_A, backend: 'infrahub', branch: 'main' })
+    await first.write('sites', ['AMS1'], 1000)
+    const restart = createDiskCacheStore({ baseDir, netboxUrl: `${URL_A}/`, backend: 'infrahub' })
+    expect(restart.loadAllSync()).toEqual([{ key: 'sites', value: ['AMS1'], expiresAt: 1000 }])
+  })
+
+  test('test_createDiskCacheStore_legacy_namespace_preserved_for_netbox_only', async () => {
+    const legacy = createDiskCacheStore({ baseDir, netboxUrl: URL_A })
+    await legacy.write('sites', ['legacy'], 1000)
+    expect(createDiskCacheStore({ baseDir, netboxUrl: URL_A, backend: 'netbox' }).loadAllSync()).toHaveLength(1)
+    expect(createDiskCacheStore({ baseDir, netboxUrl: URL_A, backend: 'infrahub' }).loadAllSync()).toEqual([])
+  })
+
   test('a store does not load entries written under a different netbox url', async () => {
     const a = createDiskCacheStore({ baseDir, netboxUrl: URL_A })
     await a.write('site:AMS1', { from: 'A' }, 1)
