@@ -68,11 +68,11 @@ function Racks({
   powerChainRackIds?: Set<string> | null
 }) {
   const [hovered, setHovered] = useState<string | null>(null)
-  const siteViewDistance = useAppStore((s) => s.siteViewDistance)
   // Show per-rack names only when zoomed in; far out they overlap into noise,
   // so the room labels carry orientation instead. Null = no signal yet → show.
-  const showRackLabels =
-    siteViewDistance === null || siteViewDistance < span * RACK_LABEL_THRESHOLD
+  const showRackLabels = useAppStore((s) =>
+    s.siteViewDistance === null || s.siteViewDistance < span * RACK_LABEL_THRESHOLD,
+  )
 
   return (
     <>

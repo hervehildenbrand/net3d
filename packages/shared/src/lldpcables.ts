@@ -70,9 +70,9 @@ export function lldpToSegments(
     const localLoc = deviceLocations[short(localDeviceName)]
     if (!localLoc) continue
     for (const [localInterface, neighbors] of Object.entries(byInterface)) {
+      if (documented.has(`${short(localDeviceName)}|${localInterface}`)) continue
       for (const n of neighbors) {
         const remoteName = resolveRemote(n.hostname, deviceLocations)
-        if (documented.has(`${short(localDeviceName)}|${localInterface}`)) continue
 
         // canonical key so A→B and B→A collapse into one link
         const endA = `${short(localDeviceName)}|${localInterface}`

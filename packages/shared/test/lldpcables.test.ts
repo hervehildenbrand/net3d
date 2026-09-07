@@ -12,6 +12,19 @@ const documented = [
 ]
 
 describe('lldpToSegments', () => {
+  test('test_lldpToSegments_documented_neighbor_skips_remote_host_scan', () => {
+    let scans = 0
+    const trackedLocations = new Proxy(locations, {
+      ownKeys(target) { scans++; return Reflect.ownKeys(target) },
+    })
+    expect(lldpToSegments(
+      { rt1: { 'et-0/0/0': [{ hostname: 'site-prefixed-rt2.example', port: 'et-0/0/0' }] } },
+      trackedLocations,
+      documented,
+    )).toEqual([])
+    expect(scans).toBe(0)
+  })
+
   test('discovered link not in NetBox becomes an intra-rack segment', () => {
     const segs = lldpToSegments(
       { rt1: { 'et-0/0/9': [{ hostname: 'rt2.corp.example', port: 'et-0/0/9' }] } },
