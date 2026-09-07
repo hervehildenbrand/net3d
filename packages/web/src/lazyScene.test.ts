@@ -1,8 +1,24 @@
 import { fileURLToPath } from 'node:url'
 import { build, type Rollup } from 'vite'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
+import { preloadSiteScene } from './scene/lazySiteScene'
+
+const sceneImport = vi.hoisted(() => ({ attempts: 0 }))
+vi.mock('./scene/SiteScene', () => {
+  sceneImport.attempts += 1
+  if (sceneImport.attempts === 1) throw new Error('transient chunk failure')
+  return { default: () => null }
+})
 
 describe('site scene bundle', () => {
+  test('test_preload_scene_after_rejection_retries_successful_site_entry', async () => {
+    void preloadSiteScene()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    await expect(preloadSiteScene()).resolves.toBeDefined()
+    expect(sceneImport.attempts).toBe(2)
+  })
+
   test('test_initial_map_without_scene_request_excludes_webgl_modules', async () => {
     const result = await build({
       root: fileURLToPath(new URL('..', import.meta.url)),
