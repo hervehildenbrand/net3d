@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiUrl } from '../lib/api'
 import type { Backend } from '../lib/api'
+import { withLldpSlot } from '../lib/lldpSemaphore'
 import { useAppStore } from '../store/useAppStore'
-import { withLldpSlot } from './useLldpDiscovery'
 
 export type NapalmMethod =
   | 'get_facts'

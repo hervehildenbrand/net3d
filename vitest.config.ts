@@ -14,6 +14,12 @@ export default defineConfig({
           functions: 100,
           branches: 100,
         },
+        'packages/web/src/lib/lldpSemaphore.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
         // Unit-test gate for application logic; the report also includes TSX UI.
         'packages/*/src/**/*.ts': {
           lines: 80,

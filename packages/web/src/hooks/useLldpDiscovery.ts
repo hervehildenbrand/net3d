@@ -10,75 +10,9 @@ import { apiUrl } from '../lib/api'
 import type { Backend } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import type { SiteDevice } from './useSiteDetail'
+import { withLldpSlot } from '../lib/lldpSemaphore'
 
-/** Max NAPALM/LLDP calls in flight from this client — each is a ~25 s SSH behind NetBox. */
-const MAX_CONCURRENT = 3
-
-type Release = () => void
-
-export class LldpSemaphore {
-  private inFlight = 0
-  private readonly waiters: Array<{ grant: () => boolean }> = []
-
-  constructor(private readonly maxConcurrent: number) {}
-
-  async acquire(signal: AbortSignal): Promise<Release> {
-    signal.throwIfAborted()
-    if (this.inFlight < this.maxConcurrent) {
-      this.inFlight++
-      return this.releaseOnce()
-    }
-
-    return new Promise<Release>((resolve, reject) => {
-      let settled = false
-      const onAbort = () => {
-        if (settled) return
-        settled = true
-        const index = this.waiters.indexOf(waiter)
-        if (index >= 0) this.waiters.splice(index, 1)
-        reject(signal.reason)
-      }
-      const waiter = {
-        grant: () => {
-          if (settled) return false
-          settled = true
-          signal.removeEventListener('abort', onAbort)
-          resolve(this.releaseOnce())
-          return true
-        },
-      }
-      this.waiters.push(waiter)
-      signal.addEventListener('abort', onAbort, { once: true })
-      if (signal.aborted) onAbort()
-    })
-  }
-
-  private releaseOnce(): Release {
-    let released = false
-    return () => {
-      if (released) return
-      released = true
-      while (this.waiters.length > 0) {
-        if (this.waiters.shift()!.grant()) return
-      }
-      this.inFlight--
-    }
-  }
-}
-
-const lldpSemaphore = new LldpSemaphore(MAX_CONCURRENT)
-
-export async function withLldpSlot<T>(
-  signal: AbortSignal,
-  request: () => Promise<T>,
-): Promise<T> {
-  const release = await lldpSemaphore.acquire(signal)
-  try {
-    return await request()
-  } finally {
-    release()
-  }
-}
+export { LldpSemaphore, withLldpSlot } from '../lib/lldpSemaphore'
 
 export async function fetchLldp(
   backend: Backend,
