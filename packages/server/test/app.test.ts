@@ -232,7 +232,7 @@ describe('GET /api/circuits', () => {
 })
 
 describe('GET /api/devices', () => {
-  test('builds the index from already-cached site detail (no per-site backend load)', async () => {
+  test('test_device_index_complete_cache_returns_array_and_coverage_headers', async () => {
     let rackCalls = 0
     const app = buildApp({
       netbox: fakeNetbox({
@@ -249,6 +249,9 @@ describe('GET /api/devices', () => {
 
     const res = await app.inject({ method: 'GET', url: '/api/devices' })
     expect(res.statusCode).toBe(200)
+    expect(res.headers['x-indexed-sites']).toBe('2')
+    expect(res.headers['x-total-sites']).toBe('2')
+    expect(res.headers['x-prewarm-enabled']).toBe('false')
     const index = res.json() as Array<{ siteName: string }>
     expect(index).toHaveLength(2) // one device per warmed site
     expect(index).toContainEqual({
@@ -268,7 +271,7 @@ describe('GET /api/devices', () => {
     expect(rackCalls).toBe(warmCalls)
   })
 
-  test('cold detail cache yields an empty index without blocking on the backend', async () => {
+  test('test_device_index_cold_cache_returns_empty_array_and_zero_coverage', async () => {
     let rackCalls = 0
     const app = buildApp({
       netbox: fakeNetbox({
@@ -281,11 +284,51 @@ describe('GET /api/devices', () => {
     const res = await app.inject({ method: 'GET', url: '/api/devices' })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual([])
+    expect(res.headers['x-indexed-sites']).toBe('0')
+    expect(res.headers['x-total-sites']).toBe('2')
+    expect(res.headers['x-prewarm-enabled']).toBe('false')
     // Crucially: it never loads (a single slow/cold site must not hang the request).
     expect(rackCalls).toBe(0)
   })
 
-  test('maps a sites-list failure to 502', async () => {
+  test('test_device_index_partial_cache_counts_only_successful_site_loads', async () => {
+    const app = buildApp({ netbox: fakeNetbox() })
+    await app.inject({ method: 'GET', url: '/api/sites/site-a' })
+
+    const res = await app.inject({ method: 'GET', url: '/api/devices' })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toHaveLength(1)
+    expect(res.headers['x-indexed-sites']).toBe('1')
+    expect(res.headers['x-total-sites']).toBe('2')
+  })
+
+  test('test_device_index_failed_site_load_remains_incomplete', async () => {
+    const app = buildApp({
+      netbox: fakeNetbox({
+        getSiteRacks: async (site) => {
+          if (site === 'site-c') throw new Error('site unavailable')
+          return RACKS
+        },
+      }),
+    })
+    await app.inject({ method: 'GET', url: '/api/sites/site-a' })
+    expect((await app.inject({ method: 'GET', url: '/api/sites/site-c' })).statusCode).toBe(502)
+
+    const res = await app.inject({ method: 'GET', url: '/api/devices' })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['x-indexed-sites']).toBe('1')
+    expect(res.headers['x-total-sites']).toBe('2')
+  })
+
+  test('test_device_index_prewarm_configuration_is_reported', async () => {
+    const app = buildApp({ netbox: fakeNetbox(), prewarm: { intervalMs: 0 } })
+    const res = await app.inject({ method: 'GET', url: '/api/devices' })
+    expect(res.headers['x-prewarm-enabled']).toBe('true')
+  })
+
+  test('test_device_index_sites_failure_returns_502', async () => {
     const app = buildApp({
       netbox: fakeNetbox({
         getSites: async () => {

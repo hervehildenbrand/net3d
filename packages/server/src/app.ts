@@ -278,6 +278,10 @@ export function buildApp({
           const detail = cache.peek<SiteDetail>(`site:${s.name}`)
           if (detail) details.set(s.name, detail)
         }
+        reply
+          .header('X-Indexed-Sites', details.size)
+          .header('X-Total-Sites', sites.length)
+          .header('X-Prewarm-Enabled', Boolean(prewarm))
         return buildDeviceIndex(details)
       } catch (err) {
         app.log.error(err)
