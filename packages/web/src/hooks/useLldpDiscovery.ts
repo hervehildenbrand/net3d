@@ -1,5 +1,10 @@
 import { useCallback } from 'react'
-import { useQueries, type UseQueryResult } from '@tanstack/react-query'
+import {
+  useQueries,
+  useQueryClient,
+  type QueryClient,
+  type UseQueryResult,
+} from '@tanstack/react-query'
 import type { LldpNeighbor } from '@net3d/shared'
 import { apiUrl } from '../lib/api'
 import type { Backend } from '../lib/api'
@@ -95,7 +100,65 @@ export interface LldpDiscovery {
   byDevice: Record<string, Record<string, LldpNeighbor[]>>
   completed: number
   total: number
+  successful: number
+  failed: number
+  pending: number
+  failedDeviceIds: string[]
   discovering: boolean
+  retryFailed: () => Promise<void>
+}
+
+type LldpResult = Pick<
+  UseQueryResult<Record<string, LldpNeighbor[]>>,
+  'data' | 'isSuccess' | 'isError' | 'isFetching'
+>
+
+export function combineLldpResults(
+  devices: Pick<SiteDevice, 'id' | 'name'>[],
+  activeIds: Set<string>,
+  results: LldpResult[],
+): Omit<LldpDiscovery, 'retryFailed'> {
+  const byDevice: LldpDiscovery['byDevice'] = {}
+  const failedDeviceIds: string[] = []
+  let successful = 0
+  let pending = 0
+  results.forEach((result, i) => {
+    const device = devices[i]!
+    if (result.data) byDevice[device.name] = result.data
+    if (!activeIds.has(device.id)) return
+    if (result.isFetching) pending++
+    else if (result.isError) failedDeviceIds.push(device.id)
+    else if (result.isSuccess) successful++
+    else pending++
+  })
+  const failed = failedDeviceIds.length
+  return {
+    byDevice,
+    completed: successful + failed,
+    total: activeIds.size,
+    successful,
+    failed,
+    pending,
+    failedDeviceIds,
+    discovering: pending > 0,
+  }
+}
+
+export async function retryFailedLldp(
+  queryClient: QueryClient,
+  backend: Backend,
+  failedDeviceIds: string[],
+): Promise<void> {
+  const failed = new Set(failedDeviceIds)
+  await queryClient.refetchQueries({
+    type: 'active',
+    predicate: ({ queryKey }) =>
+      queryKey[0] === 'napalm' &&
+      queryKey[1] === backend &&
+      typeof queryKey[2] === 'string' &&
+      failed.has(queryKey[2]) &&
+      queryKey[3] === 'get_lldp_neighbors',
+  })
 }
 
 /**
@@ -105,22 +168,13 @@ export interface LldpDiscovery {
  */
 export function useLldpDiscovery(devices: SiteDevice[], activeIds: Set<string>): LldpDiscovery {
   const backend = useAppStore((s) => s.backend)
-  const combine = useCallback((results: UseQueryResult<Record<string, LldpNeighbor[]>>[]) => {
-    const byDevice: LldpDiscovery['byDevice'] = {}
-    let completed = 0
-    results.forEach((r, i) => {
-      const d = devices[i]!
-      if (activeIds.has(d.id) && (r.isSuccess || r.isError)) completed++
-      if (r.data) byDevice[d.name] = r.data
-    })
-    return {
-      byDevice,
-      completed,
-      total: activeIds.size,
-      discovering: activeIds.size > 0 && completed < activeIds.size,
-    }
-  }, [devices, activeIds])
-  return useQueries({
+  const queryClient = useQueryClient()
+  const combine = useCallback(
+    (results: UseQueryResult<Record<string, LldpNeighbor[]>>[]) =>
+      combineLldpResults(devices, activeIds, results),
+    [devices, activeIds],
+  )
+  const result = useQueries({
     queries: devices.map((d) => ({
       queryKey: ['napalm', backend, d.id, 'get_lldp_neighbors'],
       queryFn: ({ signal }) => fetchLldp(backend, d, signal),
@@ -131,4 +185,9 @@ export function useLldpDiscovery(devices: SiteDevice[], activeIds: Set<string>):
     })),
     combine,
   })
+  const retryFailed = useCallback(
+    () => retryFailedLldp(queryClient, backend, result.failedDeviceIds),
+    [queryClient, backend, result.failedDeviceIds],
+  )
+  return { ...result, retryFailed }
 }

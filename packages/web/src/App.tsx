@@ -30,6 +30,7 @@ import { EditToolbar } from './components/EditToolbar'
 import { useEditStore } from './store/useEditStore'
 import { SceneErrorBoundary } from './components/SceneErrorBoundary'
 import { SiteStatus } from './components/SiteStatus'
+import { LldpHud } from './components/LldpHud'
 import { computeSpecsRange } from './lib/specsHeatmap'
 import { collectSubnets } from './lib/subnetColoring'
 import { tracePowerChain } from './lib/powerChain'
@@ -326,16 +327,7 @@ export function App() {
               {level === 'rack' && selectedRack && ` / ${selectedRack.name}`}
             </div>
           )}
-          {level !== 'map' && lldp.discovering && (
-            <div style={{ color: '#0891b2' }}>
-              ◐ discovering cabling {lldp.completed}/{lldp.total} devices…
-            </div>
-          )}
-          {level !== 'map' && !lldp.discovering && lldp.total > 0 && (
-            <div style={{ color: '#0891b2' }}>
-              ▣ LLDP: {lldpSegments.length} undocumented link{lldpSegments.length === 1 ? '' : 's'}
-            </div>
-          )}
+          {level !== 'map' && <LldpHud discovery={lldp} undocumentedLinks={lldpSegments.length} />}
         </div>
       </div>
 

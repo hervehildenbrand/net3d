@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { QueryClient } from '@tanstack/react-query'
-import { fetchLldp, LldpSemaphore } from './useLldpDiscovery'
+import { QueryClient, QueryObserver } from '@tanstack/react-query'
+import {
+  combineLldpResults,
+  fetchLldp,
+  LldpSemaphore,
+  retryFailedLldp,
+} from './useLldpDiscovery'
 import { fetchNapalm } from './useNapalm'
 
 describe('LldpSemaphore', () => {
@@ -172,6 +177,143 @@ describe('fetchLldp', () => {
     await expect(refetch).resolves.toEqual(cached)
 
     expect(queryClient.getQueryData(key)).toEqual(cached)
+    queryClient.clear()
+  })
+})
+
+describe('combineLldpResults', () => {
+  const devices = [
+    { id: 'leaf-1', name: 'leaf-1' },
+    { id: 'leaf-2', name: 'leaf-2' },
+    { id: 'leaf-3', name: 'leaf-3' },
+  ]
+  const success = (data: Record<string, never[]> = {}) => ({
+    data,
+    isSuccess: true,
+    isError: false,
+    isFetching: false,
+  })
+  const failure = (data?: Record<string, never[]>) => ({
+    data,
+    isSuccess: false,
+    isError: true,
+    isFetching: false,
+  })
+  const pending = () => ({
+    data: undefined,
+    isSuccess: false,
+    isError: false,
+    isFetching: true,
+  })
+
+  test('test_combineLldpResults_all_active_failed_reports_incomplete_coverage', () => {
+    const result = combineLldpResults(devices, new Set(devices.map((d) => d.id)), [
+      failure(),
+      failure(),
+      failure(),
+    ])
+
+    expect(result).toMatchObject({
+      successful: 0,
+      failed: 3,
+      pending: 0,
+      failedDeviceIds: ['leaf-1', 'leaf-2', 'leaf-3'],
+      completed: 3,
+      total: 3,
+      discovering: false,
+    })
+  })
+
+  test('test_combineLldpResults_mixed_results_counts_each_active_state', () => {
+    const stale = { Ethernet1: [] }
+    const result = combineLldpResults(devices, new Set(devices.map((d) => d.id)), [
+      success(),
+      failure(stale),
+      pending(),
+    ])
+
+    expect(result).toMatchObject({
+      successful: 1,
+      failed: 1,
+      pending: 1,
+      failedDeviceIds: ['leaf-2'],
+      completed: 2,
+      total: 3,
+      discovering: true,
+    })
+    expect(result.byDevice['leaf-2']).toBe(stale)
+  })
+
+  test('test_combineLldpResults_failed_refetch_with_stale_data_reports_failed', () => {
+    const stale = { Ethernet1: [] }
+    const result = combineLldpResults([devices[0]!], new Set(['leaf-1']), [failure(stale)])
+
+    expect(result).toMatchObject({ successful: 0, failed: 1, pending: 0 })
+    expect(result.byDevice['leaf-1']).toBe(stale)
+  })
+
+  test('test_combineLldpResults_retrying_failure_moves_it_to_pending', () => {
+    const result = combineLldpResults([devices[0]!], new Set(['leaf-1']), [
+      { ...failure(), isFetching: true },
+    ])
+
+    expect(result).toMatchObject({ successful: 0, failed: 0, pending: 1, completed: 0 })
+  })
+
+  test('test_combineLldpResults_inactive_cached_success_stays_in_byDevice_only', () => {
+    const cached = { Ethernet1: [] }
+    const result = combineLldpResults(devices.slice(0, 2), new Set(['leaf-1']), [
+      success(),
+      success(cached),
+    ])
+
+    expect(result).toMatchObject({ successful: 1, failed: 0, pending: 0, total: 1 })
+    expect(result.byDevice['leaf-2']).toBe(cached)
+  })
+})
+
+describe('retryFailedLldp', () => {
+  test('test_retryFailedLldp_failed_active_ids_retries_only_matching_backend', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const calls = new Map<string, number>()
+    const observe = (backend: 'netbox' | 'infrahub', id: string, enabled = true) => {
+      const key = ['napalm', backend, id, 'get_lldp_neighbors'] as const
+      const observer = new QueryObserver(queryClient, {
+        queryKey: key,
+        queryFn: async () => {
+          calls.set(`${backend}:${id}`, (calls.get(`${backend}:${id}`) ?? 0) + 1)
+          throw new Error('unreachable')
+        },
+        enabled,
+        retry: false,
+      })
+      const unsubscribe = observer.subscribe(() => undefined)
+      return unsubscribe
+    }
+    const unsubscribers = [
+      observe('netbox', 'failed-active'),
+      observe('netbox', 'successful-active'),
+      observe('netbox', 'failed-inactive', false),
+      observe('infrahub', 'failed-active'),
+    ]
+    await vi.waitFor(() => expect(calls.get('netbox:failed-active')).toBe(1))
+    await vi.waitFor(() => expect(calls.get('netbox:successful-active')).toBe(1))
+    await vi.waitFor(() => expect(calls.get('infrahub:failed-active')).toBe(1))
+    queryClient.setQueryData(
+      ['napalm', 'netbox', 'successful-active', 'get_lldp_neighbors'],
+      { Ethernet1: [] },
+    )
+
+    await retryFailedLldp(queryClient, 'netbox', ['failed-active', 'failed-inactive'])
+
+    expect(calls.get('netbox:failed-active')).toBe(2)
+    expect(calls.get('netbox:successful-active')).toBe(1)
+    expect(calls.get('netbox:failed-inactive')).toBeUndefined()
+    expect(calls.get('infrahub:failed-active')).toBe(1)
+    expect(
+      queryClient.getQueryData(['napalm', 'netbox', 'successful-active', 'get_lldp_neighbors']),
+    ).toEqual({ Ethernet1: [] })
+    unsubscribers.forEach((unsubscribe) => unsubscribe())
     queryClient.clear()
   })
 })
