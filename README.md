@@ -27,6 +27,12 @@ at their true U-positions, connected by one continuous mouse-wheel journey.
 - 🔍 **Zoom-through navigation**: scroll into a site on the map and you crossfade into
   its 3D building; keep scrolling toward a rack and you're inside it; scroll out to
   retrace every step. Clicks work as shortcuts; hysteresis prevents level flapping.
+- ⌨️ **Keyboard search**: find sites and devices with Arrow keys, Enter, and Escape.
+  Device search shows how much of your inventory has been indexed, keeps partial
+  results available, and updates as more sites warm in the background.
+- 🪶 **Load 3D only when needed**: the initial map starts without a WebGL context;
+  hovering a site preloads the scene for entry. Initial JavaScript is about 66%
+  smaller than before this change (154 kB versus 454 kB gzip).
 - 🏢 **Procedural site view**: racks laid out in rows per NetBox location inside a
   glass building (NetBox stores no rack coordinates, so the floor plan is schematic).
 - 📐 **Editable floor plan** (opt-in): drag and rotate racks, draw rooms and the floor
@@ -40,13 +46,14 @@ at their true U-positions, connected by one continuous mouse-wheel journey.
   network-role device (switch/leaf/spine/router/firewall; the app never contacts
   devices directly), and entering a rack covers that rack's remaining devices. Links
   missing from NetBox render as dashed cyan cables — an undocumented fabric still
-  shows up — and documented cables always win per link.
+  shows up — and documented cables always win per link. Discovery reports successful,
+  failed, and pending devices; **Retry failed** repeats only unsuccessful requests.
 - 🔎 **Cable trace through patch panels** (NetBox): click any connected port — on a
   switch, a server, or a patch panel itself — and the full end-to-end path lights up
   in 3D, following NetBox's front↔rear port pass-throughs across racks. The device
-  panel draws the route hop by hop (panels included), every hop is clickable to
-  follow the cable rack to rack, and the traced run glows on the overhead tray in
-  the site view. Infrahub has no patch-panel model, so that backend states the gap
+  panel draws the route hop by hop (panels included), with keyboard-accessible
+  buttons to follow the cable rack to rack, and the traced run glows on the overhead
+  tray in the site view. Infrahub has no patch-panel model, so that backend states the gap
   explicitly — the contrast is part of the demo.
 - 📟 **Live device panel**: NAPALM facts, environment sensors, interface up/down
   states (auto-refresh), live green/red cable coloring, and an LLDP-vs-NetBox audit.
@@ -59,11 +66,17 @@ at their true U-positions, connected by one continuous mouse-wheel journey.
 - 🎨 **Role highlighting**: an interactive role legend in the site and rack views toggles
   emphasis per device role.
 - 💾 **Disk-persistent cache**: the proxy's cache is keyed per backend instance and
-  survives restarts, so a restart doesn't re-warm from cold.
+  Infrahub branch and survives restarts, so a restart doesn't re-warm from cold.
+  Concurrent loads share one upstream request; invalidation prevents older requests
+  from replacing newer data.
+- 🔄 **Recoverable site loading**: failed loads offer **Retry**, empty sites are
+  identified explicitly, and background refresh failures keep existing topology
+  visible with a stale-data notice.
 - ⚡ **Live updates** (opt-in): point a NetBox or Infrahub webhook at net3d and edits in
   your source of truth appear in the 3D view within a second or two — the server busts
-  its cache and pushes an invalidation to every open browser over SSE. Without it,
-  changes show up on the cache TTLs (a few minutes) or on reload.
+  its cache and pushes an invalidation to every open browser over SSE. Connection
+  status is visible, reconnecting catches up on missed changes, and a 60-second
+  visible-tab refresh provides a fallback when SSE is unavailable or disconnected.
 
 ## Requirements
 
@@ -91,6 +104,10 @@ pnpm dev                 # API proxy on :3001, app on http://localhost:5173
 pnpm test                # vitest across all packages
 pnpm test:coverage       # full source report; 80% gate on TypeScript logic
 ```
+
+CI runs coverage, typechecking, and the production build. Cache coordination and
+the shared LLDP queue enforce 100% coverage; the full report also includes TSX
+components, which are outside the 80% core-logic gate.
 
 The API token never reaches the browser: a small Fastify proxy holds it, queries
 NetBox GraphQL, normalizes the data, and caches responses.
@@ -200,7 +217,8 @@ editor without allowing writes (nice for public demos). See `.env.example` for d
 
 ### Live updates (optional)
 
-By default net3d refreshes on cache TTLs (2–5 min). To reflect SoT changes in
+Without SSE, the browser refreshes active topology queries every 60 seconds while
+the tab is visible; upstream cache TTLs still apply. To reflect SoT changes in
 near-real-time, set a shared secret and register a webhook:
 
 ```sh
@@ -223,8 +241,10 @@ delivery, so the endpoint is safe to expose alongside the API):
 The browser subscribes to `GET /api/events` (SSE) and refetches exactly what changed:
 NetBox events invalidate per site, Infrahub events invalidate everything (its payloads
 carry no site linkage). Broadcasts are debounced ~1 s so bulk imports coalesce instead
-of stampeding clients. Leave `WEBHOOK_SECRET` unset and the routes don't exist —
-behavior is exactly as before.
+of stampeding clients. The status indicator shows `live`, `reconnecting`, or
+`polling`. Reconnection refreshes affected caches to recover missed events. When
+`WEBHOOK_SECRET` is unset, the webhook/SSE routes are disabled and the browser uses
+the visible-tab refresh fallback instead.
 
 ### Security
 
@@ -279,7 +299,13 @@ packages/
 - **NAPALM calls are live SSH sessions** opened by NetBox (~25 s per device on real
   hardware). net3d bounds concurrency (3 client-side, 8 server-side with 429 shedding)
   and caches LLDP answers for 60 minutes; site-wide discovery is progressive, not
-  blocking, and devices NAPALM can't reach are skipped silently.
+  blocking. Unreachable devices count as failed discovery and can be retried.
+  Leaving a site cancels queued browser requests; this does not guarantee that an
+  SSH operation already started by NetBox is cancelled.
+- **Device search indexes loaded sites**, rather than querying every device on each
+  keystroke. With `PREWARM=1`, incomplete results refresh every 15 seconds while the
+  tab is visible. Without prewarming, coverage stays partial until more sites are
+  loaded; switching backends resets the displayed index coverage.
 - **LLDP hostnames are matched to SoT device names** by stripping the domain and,
   when needed, a site/pod prefix (`par1-cp01-lf1001.example.net` matches device
   `lf1001`), so discovered links resolve even when naming conventions differ.
@@ -299,7 +325,10 @@ packages/
 | No live device data / no LLDP links | The NAPALM plugin isn't installed (optional). |
 | A site is missing from the map | It has no latitude/longitude; reach it via the search box. |
 | Map tiles say `API KEY REQUIRED` | Set `VITE_CARTO_KEY` in `.env` (free key: [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey)) and rebuild/restart; force-refresh, tiles are cached. |
-| NetBox edits take minutes to appear | That's the cache TTLs; for ~1 s propagation set `WEBHOOK_SECRET` and register a webhook (see *Live updates*). |
+| Site loading fails | Use **Retry**; check the proxy/backend connection if the error persists. A failed background refresh keeps the last available topology visible. |
+| Device search misses inventory | Check indexed-site coverage; enable `PREWARM=1` or visit the missing site's detail view. |
+| LLDP discovery is incomplete | Check the failed-device count and use **Retry failed**; verify NAPALM reachability for those devices. |
+| NetBox edits take minutes to appear | The 60-second browser fallback still observes upstream cache TTLs; set `WEBHOOK_SECRET` and register a webhook for prompt invalidation (see *Live updates*). |
 
 ## License
 
