@@ -78,6 +78,28 @@ describe('startLiveUpdates', () => {
     stop()
   })
 
+  test('test_startLiveUpdates_hidden_reconnect_resynchronizes_when_visible', async () => {
+    let fetches = 0
+    queryClient.setQueryData(['site', 'netbox', 'AMS1'], {})
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ['site', 'netbox', 'AMS1'],
+      queryFn: async () => { fetches++; return {} },
+      staleTime: Infinity,
+    })
+    const unsubscribe = observer.subscribe(() => {})
+    const stop = start(true)
+    const source = FakeEventSource.instances[0]!
+    visible = false
+    source.onerror?.()
+    source.onopen?.()
+    visible = true
+    visibilityHandler?.()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(fetches).toBe(1)
+    unsubscribe()
+    stop()
+  })
+
   test('test_startLiveUpdates_poll_refreshes_active_topology_queries_only', async () => {
     queryClient.setQueryData(['site', 'netbox', 'AMS1'], {})
     queryClient.setQueryData(['site', 'netbox', 'CDG1'], {})

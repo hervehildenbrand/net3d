@@ -30,20 +30,26 @@ interface LiveUpdateOptions {
 export function startLiveUpdates(options: LiveUpdateOptions): () => void {
   const { backend, queryClient } = options
   let disconnected = !options.liveUpdatesAvailable
-  const refresh = () => {
-    if (options.isVisible()) void queryClient.invalidateQueries({ predicate: (query) => isActiveTopologyQuery(backend, query) })
+  let resyncPending = false
+  const refresh = (): boolean => {
+    if (!options.isVisible()) return false
+    void queryClient.invalidateQueries({ predicate: (query) => isActiveTopologyQuery(backend, query) })
+    return true
   }
-  const timer = setInterval(() => { if (disconnected) refresh() }, 60_000)
-  const removeVisibilityListener = options.onVisibilityChange(() => { if (disconnected) refresh() })
+  const refreshIfNeeded = () => {
+    if ((disconnected || resyncPending) && refresh()) resyncPending = false
+  }
+  const timer = setInterval(refreshIfNeeded, 60_000)
+  const removeVisibilityListener = options.onVisibilityChange(refreshIfNeeded)
   let source: ReturnType<LiveUpdateOptions['createEventSource']> | undefined
   if (options.liveUpdatesAvailable) {
     options.onStatus('connecting')
     source = options.createEventSource(apiUrl(backend, '/events'))
     source.onopen = () => {
-      const reconnect = disconnected
+      resyncPending = disconnected
       disconnected = false
       options.onStatus('live')
-      if (reconnect) refresh()
+      refreshIfNeeded()
     }
     source.onerror = () => { disconnected = true; options.onStatus('reconnecting') }
     source.onmessage = (msg) => {
