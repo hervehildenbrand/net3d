@@ -1,5 +1,6 @@
-import { describe, expect, test } from 'vitest'
-import { eventToInvalidations } from './useLiveUpdates'
+import { QueryClient, QueryObserver } from '@tanstack/react-query'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { eventToInvalidations, startLiveUpdates } from './useLiveUpdates'
 
 describe('eventToInvalidations', () => {
   test('site scope invalidates that site plus the global lists for the active backend', () => {
@@ -20,5 +21,100 @@ describe('eventToInvalidations', () => {
       { queryKey: ['circuits', 'infrahub'] },
       { queryKey: ['devices', 'infrahub'] },
     ])
+  })
+})
+
+class FakeEventSource {
+  static instances: FakeEventSource[] = []
+  onopen: (() => void) | null = null
+  onerror: (() => void) | null = null
+  onmessage: ((event: MessageEvent) => void) | null = null
+  close = vi.fn()
+  constructor(public url: string) { FakeEventSource.instances.push(this) }
+}
+
+describe('startLiveUpdates', () => {
+  let queryClient: QueryClient
+  let visible: boolean
+  let visibilityHandler: (() => void) | undefined
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    FakeEventSource.instances = []
+    visible = true
+    queryClient = new QueryClient()
+    visibilityHandler = undefined
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const start = (available: boolean, statuses: string[] = []) => startLiveUpdates({
+    backend: 'netbox', liveUpdatesAvailable: available, queryClient,
+    createEventSource: (url) => new FakeEventSource(url),
+    isVisible: () => visible,
+    onVisibilityChange: (handler) => { visibilityHandler = handler; return () => { visibilityHandler = undefined } },
+    onStatus: (status) => statuses.push(status),
+  })
+
+  test('test_startLiveUpdates_disabled_sse_polls_without_event_source', async () => {
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    const stop = start(false)
+    expect(FakeEventSource.instances).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(invalidate).toHaveBeenCalled()
+    stop()
+  })
+
+  test('test_startLiveUpdates_disconnect_reconnect_polls_then_resynchronizes_active_queries', async () => {
+    queryClient.setQueryData(['site', 'netbox', 'AMS1'], {})
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    const statuses: string[] = []
+    const stop = start(true, statuses)
+    const source = FakeEventSource.instances[0]!
+    source.onerror?.()
+    await vi.advanceTimersByTimeAsync(60_000)
+    source.onopen?.()
+    expect(statuses).toEqual(['connecting', 'reconnecting', 'live'])
+    expect(invalidate).toHaveBeenCalled()
+    stop()
+  })
+
+  test('test_startLiveUpdates_poll_refreshes_active_topology_queries_only', async () => {
+    queryClient.setQueryData(['site', 'netbox', 'AMS1'], {})
+    queryClient.setQueryData(['site', 'netbox', 'CDG1'], {})
+    const observer = new QueryObserver(queryClient, { queryKey: ['site', 'netbox', 'AMS1'] })
+    const unsubscribe = observer.subscribe(() => {})
+    const active = queryClient.getQueryCache().find({ queryKey: ['site', 'netbox', 'AMS1'] })!
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    const stop = start(false)
+    await vi.advanceTimersByTimeAsync(60_000)
+    const predicate = invalidate.mock.calls[0]![0]!.predicate!
+    expect(predicate(active)).toBe(true)
+    expect(predicate(queryClient.getQueryCache().find({ queryKey: ['site', 'netbox', 'CDG1'] })!)).toBe(false)
+    unsubscribe()
+    stop()
+  })
+
+  test('test_startLiveUpdates_hidden_document_skips_poll_until_visible', async () => {
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    visible = false
+    const stop = start(false)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(invalidate).not.toHaveBeenCalled()
+    visible = true
+    visibilityHandler?.()
+    expect(invalidate).toHaveBeenCalled()
+    stop()
+  })
+
+  test('test_startLiveUpdates_cleanup_closes_source_and_timers', async () => {
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    const stop = start(true)
+    const source = FakeEventSource.instances[0]!
+    source.onerror?.()
+    stop()
+    expect(source.close).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(invalidate).not.toHaveBeenCalled()
+    expect(visibilityHandler).toBeUndefined()
   })
 })

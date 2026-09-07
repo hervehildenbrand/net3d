@@ -8,9 +8,10 @@ export interface Capabilities {
   /** Backend version string, or null if unknown. */
   version: string | null
   napalmAvailable: boolean
+  liveUpdatesAvailable: boolean
 }
 
-const NO_CAPABILITIES: Capabilities = { backend: 'netbox', version: null, napalmAvailable: false }
+const NO_CAPABILITIES: Capabilities = { backend: 'netbox', version: null, napalmAvailable: false, liveUpdatesAvailable: false }
 
 /** What the active backend can do — NAPALM/LLDP UI hides when live queries are absent. */
 export function useCapabilities(): Capabilities {
