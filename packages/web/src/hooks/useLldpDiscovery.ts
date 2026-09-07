@@ -1,27 +1,83 @@
 import { useQueries } from '@tanstack/react-query'
 import type { LldpNeighbor } from '@net3d/shared'
 import { apiUrl } from '../lib/api'
+import type { Backend } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import type { SiteDevice } from './useSiteDetail'
 
 /** Max NAPALM/LLDP calls in flight from this client — each is a ~25 s SSH behind NetBox. */
 const MAX_CONCURRENT = 3
 
-let inFlight = 0
-const waiters: (() => void)[] = []
+type Release = () => void
 
-async function acquire(): Promise<void> {
-  if (inFlight < MAX_CONCURRENT) {
-    inFlight++
-    return
+export class LldpSemaphore {
+  private inFlight = 0
+  private readonly waiters: Array<{ grant: () => boolean }> = []
+
+  constructor(private readonly maxConcurrent: number) {}
+
+  async acquire(signal: AbortSignal): Promise<Release> {
+    signal.throwIfAborted()
+    if (this.inFlight < this.maxConcurrent) {
+      this.inFlight++
+      return this.releaseOnce()
+    }
+
+    return new Promise<Release>((resolve, reject) => {
+      let settled = false
+      const onAbort = () => {
+        if (settled) return
+        settled = true
+        const index = this.waiters.indexOf(waiter)
+        if (index >= 0) this.waiters.splice(index, 1)
+        reject(signal.reason)
+      }
+      const waiter = {
+        grant: () => {
+          if (settled) return false
+          settled = true
+          signal.removeEventListener('abort', onAbort)
+          resolve(this.releaseOnce())
+          return true
+        },
+      }
+      this.waiters.push(waiter)
+      signal.addEventListener('abort', onAbort, { once: true })
+      if (signal.aborted) onAbort()
+    })
   }
-  await new Promise<void>((resolve) => waiters.push(resolve))
-  inFlight++
+
+  private releaseOnce(): Release {
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      while (this.waiters.length > 0) {
+        if (this.waiters.shift()!.grant()) return
+      }
+      this.inFlight--
+    }
+  }
 }
 
-function release() {
-  inFlight--
-  waiters.shift()?.()
+const lldpSemaphore = new LldpSemaphore(MAX_CONCURRENT)
+
+export async function fetchLldp(
+  backend: Backend,
+  device: Pick<SiteDevice, 'id' | 'name'>,
+  signal: AbortSignal,
+): Promise<Record<string, LldpNeighbor[]>> {
+  const release = await lldpSemaphore.acquire(signal)
+  try {
+    const res = await fetch(apiUrl(backend, `/devices/${device.id}/napalm/get_lldp_neighbors`), {
+      signal,
+    })
+    if (!res.ok) throw new Error(`lldp ${device.name}: HTTP ${res.status}`)
+    const body = await res.json()
+    return body.get_lldp_neighbors as Record<string, LldpNeighbor[]>
+  } finally {
+    release()
+  }
 }
 
 export interface LldpDiscovery {
@@ -42,17 +98,7 @@ export function useLldpDiscovery(devices: SiteDevice[], activeIds: Set<string>):
   const results = useQueries({
     queries: devices.map((d) => ({
       queryKey: ['napalm', backend, d.id, 'get_lldp_neighbors'],
-      queryFn: async () => {
-        await acquire()
-        try {
-          const res = await fetch(apiUrl(backend, `/devices/${d.id}/napalm/get_lldp_neighbors`))
-          if (!res.ok) throw new Error(`lldp ${d.name}: HTTP ${res.status}`)
-          const body = await res.json()
-          return body.get_lldp_neighbors as Record<string, LldpNeighbor[]>
-        } finally {
-          release()
-        }
-      },
+      queryFn: ({ signal }) => fetchLldp(backend, d, signal),
       enabled: activeIds.has(d.id),
       staleTime: 3_600_000,
       retry: false,
