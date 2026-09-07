@@ -96,4 +96,29 @@ describe('GET /api/devices/:id/napalm/:method', () => {
     expect(r1.statusCode).toBe(200)
     expect(r2.statusCode).toBe(200)
   })
+
+  test('test_napalm_concurrent_duplicates_coalesce_before_admission', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    let calls = 0
+    const app = buildApp({
+      netbox: fakeNetbox({
+        napalm: async () => {
+          calls++
+          await gate
+          return { get_facts: { ok: true } }
+        },
+      }),
+      napalmMaxQueue: 1,
+    })
+
+    const first = app.inject({ method: 'GET', url: '/api/devices/1/napalm/get_facts' })
+    const duplicate = app.inject({ method: 'GET', url: '/api/devices/1/napalm/get_facts' })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(calls).toBe(1)
+    release()
+    const responses = await Promise.all([first, duplicate])
+    expect(responses.map((response) => response.statusCode)).toEqual([200, 200])
+    expect(responses[0].json()).toEqual(responses[1].json())
+  })
 })

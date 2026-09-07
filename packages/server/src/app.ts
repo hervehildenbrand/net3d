@@ -80,6 +80,8 @@ export interface AppDeps {
 const PERSISTABLE_KEYS = (key: string): boolean =>
   key === 'sites' || key === 'circuits' || key.startsWith('site:')
 
+class NapalmBusyError extends Error {}
+
 export function buildApp({
   netbox,
   backend = 'netbox',
@@ -232,17 +234,20 @@ export function buildApp({
           return reply.code(400).send({ error: 'method_not_allowed', allowed: Object.keys(NAPALM_METHODS) })
         }
         const cacheKey = `napalm:${id}:${method}`
-        const hit = cache.get(cacheKey)
-        if (hit !== undefined) return hit
-        if (napalmInFlight >= napalmMaxQueue) {
-          return reply.code(429).send({ error: 'napalm_busy' })
-        }
-        napalmInFlight++
         try {
-          const data = await netbox.napalm(Number(id), method)
-          cache.set(cacheKey, data, ttl)
-          return data
+          return await cache.getOrSet(cacheKey, ttl, async () => {
+            if (napalmInFlight >= napalmMaxQueue) throw new NapalmBusyError()
+            napalmInFlight++
+            try {
+              return await netbox.napalm(Number(id), method)
+            } finally {
+              napalmInFlight--
+            }
+          })
         } catch (err) {
+          if (err instanceof NapalmBusyError) {
+            return reply.code(429).send({ error: 'napalm_busy' })
+          }
           if (err instanceof NapalmUnreachableError) {
             // err.message carries the device IP ("cannot connect to <ip>") — keep
             // it server-side only; clients get a generic, non-leaking detail.
@@ -251,8 +256,6 @@ export function buildApp({
           }
           app.log.error(err)
           return reply.code(502).send({ error: 'netbox_unavailable' })
-        } finally {
-          napalmInFlight--
         }
       },
     )

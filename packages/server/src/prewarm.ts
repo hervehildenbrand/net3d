@@ -41,11 +41,12 @@ export async function prewarmCaches(
   ttl: PrewarmTtl,
   concurrency = 2,
 ): Promise<void> {
-  const sites = await netbox.getSites()
-  cache.set('sites', sites, ttl.sites)
+  const sites = await cache.refresh('sites', ttl.sites, () => netbox.getSites())
 
   try {
-    cache.set('circuits', groupCircuitsBySitePair(await netbox.getCircuits()), ttl.circuits)
+    await cache.refresh('circuits', ttl.circuits, async () =>
+      groupCircuitsBySitePair(await netbox.getCircuits()),
+    )
   } catch {
     // circuits are optional eye-candy; keep warming site details
   }
@@ -57,7 +58,7 @@ export async function prewarmCaches(
       const name = names[next++]
       if (name === undefined) break
       try {
-        cache.set(`site:${name}`, await loadSiteDetail(netbox, name), ttl.siteDetail)
+        await cache.refresh(`site:${name}`, ttl.siteDetail, () => loadSiteDetail(netbox, name))
       } catch {
         // site fetch failed (NetBox hiccup); leave any previous entry in place
       }

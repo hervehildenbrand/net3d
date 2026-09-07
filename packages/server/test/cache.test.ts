@@ -45,6 +45,73 @@ describe('TtlCache', () => {
     await expect(cache.getOrSet('k', 1000, fn)).rejects.toThrow('boom')
     expect(await cache.getOrSet('k', 1000, fn)).toBe('ok')
   })
+
+  test('test_getOrSet_concurrent_misses_share_one_load', async () => {
+    const cache = new TtlCache()
+    let release!: (value: string) => void
+    let calls = 0
+    const fn = () => {
+      calls++
+      return new Promise<string>((resolve) => (release = resolve))
+    }
+
+    const first = cache.getOrSet('k', 1000, fn)
+    const second = cache.getOrSet('k', 1000, fn)
+    expect(calls).toBe(1)
+    release('value')
+    await expect(Promise.all([first, second])).resolves.toEqual(['value', 'value'])
+  })
+
+  test('test_refresh_existing_load_shares_one_operation', async () => {
+    const cache = new TtlCache()
+    let release!: (value: string) => void
+    let calls = 0
+    const fn = () => {
+      calls++
+      return new Promise<string>((resolve) => (release = resolve))
+    }
+
+    const foreground = cache.getOrSet('k', 1000, fn)
+    const prewarm = cache.refresh('k', 1000, fn)
+    expect(calls).toBe(1)
+    release('value')
+    await expect(Promise.all([foreground, prewarm])).resolves.toEqual(['value', 'value'])
+  })
+
+  test('test_delete_pending_load_prevents_obsolete_publish_and_clear', async () => {
+    const cache = new TtlCache()
+    let releaseOld!: (value: string) => void
+    let releaseNew!: (value: string) => void
+    let newCalls = 0
+    const oldLoad = cache.getOrSet('k', 1000, () => new Promise<string>((resolve) => (releaseOld = resolve)))
+
+    cache.delete('k')
+    const loadCurrent = () => {
+      newCalls++
+      return new Promise<string>((resolve) => (releaseNew = resolve))
+    }
+    const newLoad = cache.getOrSet('k', 1000, loadCurrent)
+    releaseOld('obsolete')
+    await expect(oldLoad).resolves.toBe('obsolete')
+    expect(cache.peek('k')).toBeUndefined()
+
+    const joinedNewLoad = cache.getOrSet('k', 1000, loadCurrent)
+    expect(newCalls).toBe(1)
+    releaseNew('current')
+    await expect(Promise.all([newLoad, joinedNewLoad])).resolves.toEqual(['current', 'current'])
+    expect(cache.get('k')).toBe('current')
+  })
+
+  test('test_keys_pending_load_includes_pending_key_for_invalidation', async () => {
+    const cache = new TtlCache()
+    let release!: (value: string) => void
+    const load = cache.getOrSet('site:AMS1', 1000, () => new Promise<string>((resolve) => (release = resolve)))
+    expect([...cache.keys()]).toContain('site:AMS1')
+    cache.delete('site:AMS1')
+    release('obsolete')
+    await load
+    expect(cache.peek('site:AMS1')).toBeUndefined()
+  })
 })
 
 describe('TtlCache peek', () => {

@@ -23,7 +23,8 @@ export interface TtlCacheOptions {
 /** In-memory TTL cache. Single-process; swap for redis if the app ever scales out. */
 export class TtlCache {
   private store = new Map<string, Entry>()
-  private refreshing = new Set<string>()
+  private loading = new Map<string, Promise<unknown>>()
+  private generations = new Map<string, number>()
   private readonly persist?: DiskCacheStore
   private readonly shouldPersist: (key: string) => boolean
 
@@ -82,12 +83,32 @@ export class TtlCache {
   /** Force-expire a key so the next getOrSet fetches fresh (no SWR stale-serve). */
   delete(key: string): void {
     this.store.delete(key)
+    this.generations.set(key, (this.generations.get(key) ?? 0) + 1)
+    this.loading.delete(key)
     // ponytail: persisted disk copy left in place — rehydrate happens only at
     // boot and SWR revalidates it immediately; next set() overwrites the file.
   }
 
-  keys(): IterableIterator<string> {
-    return this.store.keys()
+  *keys(): IterableIterator<string> {
+    yield* new Set([...this.store.keys(), ...this.loading.keys()])
+  }
+
+  /** Refresh a key even when its stored value is fresh, sharing any pending load. */
+  refresh<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
+    const pending = this.loading.get(key)
+    if (pending) return pending as Promise<T>
+
+    const generation = this.generations.get(key) ?? 0
+    const promise = fn()
+      .then((value) => {
+        if ((this.generations.get(key) ?? 0) === generation) this.set(key, value, ttlMs)
+        return value
+      })
+      .finally(() => {
+        if (this.loading.get(key) === promise) this.loading.delete(key)
+      })
+    this.loading.set(key, promise)
+    return promise
   }
 
   async getOrSet<T>(
@@ -99,21 +120,13 @@ export class TtlCache {
     if (opts?.staleWhileRevalidate) {
       const entry = this.getStale<T>(key)
       if (entry) {
-        if (!entry.fresh && !this.refreshing.has(key)) {
-          this.refreshing.add(key)
-          void fn()
-            .then((value) => this.set(key, value, ttlMs))
-            .catch(() => {}) // stale value keeps serving; next stale hit retries
-            .finally(() => this.refreshing.delete(key))
-        }
+        if (!entry.fresh) void this.refresh(key, ttlMs, fn).catch(() => {})
         return entry.value
       }
     } else {
       const hit = this.get<T>(key)
       if (hit !== undefined) return hit
     }
-    const value = await fn()
-    this.set(key, value, ttlMs)
-    return value
+    return this.refresh(key, ttlMs, fn)
   }
 }
