@@ -214,10 +214,17 @@ function TracePathDiagram({ trace, onJump }: { trace: TracePath; onJump?: (devic
             </div>
             <div style={{ flex: 1, minWidth: 0, paddingBottom: i < rows.length - 1 ? 8 : 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                <span
+                <button
+                  type="button"
+                  disabled={!jump}
                   onClick={jump}
                   title={jump ? 'go to this device' : undefined}
                   style={{
+                    border: 0,
+                    padding: 0,
+                    background: 'transparent',
+                    font: 'inherit',
+                    textAlign: 'left',
                     color: '#1e293b',
                     fontWeight: 600,
                     overflowWrap: 'anywhere',
@@ -227,7 +234,7 @@ function TracePathDiagram({ trace, onJump }: { trace: TracePath; onJump?: (devic
                   }}
                 >
                   {r.deviceName ?? '?'}
-                </span>
+                </button>
                 <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{r.ports.join(' ⇄ ')}</span>
               </div>
               <div style={{ color: '#94a3b8', fontSize: 10 }}>
@@ -401,13 +408,20 @@ export function DevicePanel({
           const traceable = backend === 'netbox' && traceableCables.has(p.cableId)
           const isTraced = !!activeTrace && activeTrace.cableIds.includes(p.cableId)
           return (
-            <div
+            <button
+              type="button"
+              disabled={!traceable}
               key={p.cableId}
               onClick={traceable ? () => (isTraced ? clearTrace() : handleTrace(p.interfaceName, p.cableId)) : undefined}
               onMouseEnter={traceable ? () => setHoverCable(p.cableId) : undefined}
               onMouseLeave={traceable ? () => setHoverCable(null) : undefined}
               title={traceable ? 'trace this cable end-to-end, through patch panels' : undefined}
               style={{
+                border: 0,
+                font: 'inherit',
+                color: 'inherit',
+                textAlign: 'left',
+                width: 'calc(100% + 12px)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
@@ -415,10 +429,10 @@ export function DevicePanel({
                 margin: '0 -6px',
                 borderRadius: 4,
                 cursor: traceable ? 'pointer' : undefined,
-                background: isTraced ? '#fef3c7' : hoverCable === p.cableId ? '#f1f5f9' : undefined,
+                background: isTraced ? '#fef3c7' : hoverCable === p.cableId ? '#f1f5f9' : 'transparent',
               }}
             >
-              <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ flex: 1, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                 <span style={{ color: p.kind === 'mgmt' ? theme.cable.mgmt : '#64748b' }}>
                   {p.interfaceName}
                   {speedByCable.has(p.cableId) && (
@@ -428,11 +442,11 @@ export function DevicePanel({
                 <span style={{ textAlign: 'right', wordBreak: 'break-all' }}>
                   {`→ ${p.remoteRackName ? `${p.remoteRackName} / ` : ''}${p.remoteDeviceName ?? '?'} : ${p.remoteInterfaceName ?? '?'}`}
                 </span>
-              </div>
+              </span>
               {traceable && (
                 <span style={{ color: isTraced ? theme.cable.highlight : '#cbd5e1', fontSize: 11 }}>↯</span>
               )}
-            </div>
+            </button>
           )
         })}
       </Section>
