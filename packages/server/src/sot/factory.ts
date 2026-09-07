@@ -10,6 +10,7 @@ export type SoTBackend = 'netbox' | 'infrahub'
 
 export interface SoTConfig {
   backend: SoTBackend
+  topologyTimeoutMs: number
   netbox: { url?: string; token?: string; tlsVerify: boolean }
   infrahub: { url?: string; token?: string; branch: string; tlsVerify: boolean }
 }
@@ -20,8 +21,13 @@ export function getSoTConfigFromEnv(env: NodeJS.ProcessEnv = process.env): SoTCo
   if (raw !== 'netbox' && raw !== 'infrahub') {
     throw new Error(`SOT_BACKEND must be "netbox" or "infrahub" (got "${raw}")`)
   }
+  const topologyTimeoutMs = Number(env.TOPOLOGY_TIMEOUT_MS ?? 120_000)
+  if (!Number.isSafeInteger(topologyTimeoutMs) || topologyTimeoutMs <= 0 || topologyTimeoutMs > 2_147_483_647) {
+    throw new Error('TOPOLOGY_TIMEOUT_MS must be a positive integer no greater than 2147483647')
+  }
   return {
     backend: raw,
+    topologyTimeoutMs,
     netbox: {
       url: env.NETBOX_URL,
       token: env.NETBOX_TOKEN,
@@ -44,11 +50,11 @@ export function createSoTClient(config: SoTConfig): SoTClient {
     if (!url || !token) {
       throw new Error('INFRAHUB_URL and INFRAHUB_TOKEN must be set when SOT_BACKEND=infrahub')
     }
-    return createInfrahubClient(url, token, { branch, tlsVerify })
+    return createInfrahubClient(url, token, { branch, tlsVerify, topologyTimeoutMs: config.topologyTimeoutMs })
   }
   const { url, token, tlsVerify } = config.netbox
   if (!url || !token) {
     throw new Error('NETBOX_URL and NETBOX_TOKEN must be set (see .env.example)')
   }
-  return createNetBoxClient(url, token, { tlsVerify })
+  return createNetBoxClient(url, token, { tlsVerify, topologyTimeoutMs: config.topologyTimeoutMs })
 }

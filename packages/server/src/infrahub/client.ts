@@ -46,6 +46,8 @@ export interface InfrahubClientOptions {
   branch?: string
   /** TLS cert verification; disable only for an internal/self-signed CA. */
   tlsVerify?: boolean
+  fetch?: typeof fetch
+  topologyTimeoutMs?: number
 }
 
 const SITE_RE = /^[\w.-]+$/
@@ -67,7 +69,8 @@ export function createInfrahubClient(
   opts: InfrahubClientOptions = {},
 ): SoTClient {
   const branch = opts.branch ?? 'main'
-  const doFetch = makeFetch(opts.tlsVerify !== false)
+  const doFetch = opts.fetch ?? makeFetch(opts.tlsVerify !== false)
+  const topologyTimeoutMs = opts.topologyTimeoutMs ?? 120_000
   const headers = { 'X-INFRAHUB-KEY': token, 'Content-Type': 'application/json', Accept: 'application/json' }
 
   async function graphql<T>(query: string): Promise<T> {
@@ -75,6 +78,7 @@ export function createInfrahubClient(
       method: 'POST',
       headers,
       body: JSON.stringify({ query }),
+      signal: AbortSignal.timeout(topologyTimeoutMs),
     })
     if (!res.ok) throw new Error(`Infrahub GraphQL HTTP ${res.status}`)
     const body = (await res.json()) as { data?: T; errors?: { message: string }[] }

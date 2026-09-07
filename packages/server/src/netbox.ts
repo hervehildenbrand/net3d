@@ -201,10 +201,13 @@ export function netboxFetch(tlsVerify: boolean): typeof fetch {
 export function createNetBoxClient(
   baseUrl: string,
   token: string,
-  opts: { tlsVerify?: boolean } = {},
+  opts: { tlsVerify?: boolean; fetch?: typeof fetch; topologyTimeoutMs?: number } = {},
 ): SoTClient {
   // verification on by default; only an explicit tlsVerify:false relaxes it
-  const doFetch = netboxFetch(opts.tlsVerify !== false)
+  const doFetch = opts.fetch ?? netboxFetch(opts.tlsVerify !== false)
+  const topologyTimeoutMs = opts.topologyTimeoutMs ?? 120_000
+  const topologySignal = () => AbortSignal.timeout(topologyTimeoutMs)
+  const statusSignal = () => AbortSignal.timeout(5_000)
   // Detect the GraphQL dialect once (lazily, on first filtered query) and memoize.
   // Defaults to v3 if NetBox is unreachable, so the app still boots when it's down.
   let majorPromise: Promise<NetBoxMajor> | null = null
@@ -214,6 +217,7 @@ export function createNetBoxClient(
         try {
           const res = await doFetch(`${baseUrl}/api/status/`, {
             headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
+            signal: statusSignal(),
           })
           if (!res.ok) return 3
           const body = (await res.json()) as { 'netbox-version'?: string }
@@ -233,6 +237,7 @@ export function createNetBoxClient(
     try {
       const res = await doFetch(`${baseUrl}/api/dcim/sites/?limit=1000`, {
         headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
+        signal: topologySignal(),
       })
       if (!res.ok) return counts
       const body = (await res.json()) as {
@@ -256,6 +261,7 @@ export function createNetBoxClient(
     try {
       const res = await doFetch(`${baseUrl}/api/dcim/cables/?site=${encodeURIComponent(site.toLowerCase())}&limit=1`, {
         headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
+        signal: topologySignal(),
       })
       if (!res.ok) return null
       const body = (await res.json()) as { count?: number }
@@ -274,6 +280,7 @@ export function createNetBoxClient(
         Accept: 'application/json',
       },
       body: JSON.stringify({ query }),
+      signal: topologySignal(),
     })
     if (!res.ok) throw new Error(`NetBox GraphQL HTTP ${res.status}`)
     const body = (await res.json()) as { data?: T; errors?: { message: string }[] }
@@ -377,6 +384,7 @@ export function createNetBoxClient(
     async getStatus() {
       const res = await doFetch(`${baseUrl}/api/status/`, {
         headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
+        signal: statusSignal(),
       })
       if (!res.ok) throw new Error(`NetBox status HTTP ${res.status}`)
       const body = (await res.json()) as { 'netbox-version'?: string; plugins?: Record<string, unknown> }

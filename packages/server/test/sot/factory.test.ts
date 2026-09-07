@@ -3,6 +3,21 @@ import { createSoTClient, getSoTConfigFromEnv } from '../../src/sot/factory'
 import { NapalmUnreachableError } from '../../src/sot/errors'
 
 describe('getSoTConfigFromEnv', () => {
+  test('test_getSoTConfigFromEnv_topology_timeout_defaults_to_120_seconds', () => {
+    expect(getSoTConfigFromEnv({}).topologyTimeoutMs).toBe(120_000)
+  })
+
+  test('test_getSoTConfigFromEnv_valid_topology_timeout_uses_override', () => {
+    expect(getSoTConfigFromEnv({ TOPOLOGY_TIMEOUT_MS: '2500' }).topologyTimeoutMs).toBe(2_500)
+  })
+
+  test.each(['0', '-1', '1.5', 'abc', '2147483648'])(
+    'test_getSoTConfigFromEnv_invalid_topology_timeout_%s_throws',
+    (value) => {
+      expect(() => getSoTConfigFromEnv({ TOPOLOGY_TIMEOUT_MS: value })).toThrow(/TOPOLOGY_TIMEOUT_MS/)
+    },
+  )
+
   test('defaults to the netbox backend when SOT_BACKEND is unset', () => {
     const cfg = getSoTConfigFromEnv({ NETBOX_URL: 'http://nb', NETBOX_TOKEN: 't' })
     expect(cfg.backend).toBe('netbox')

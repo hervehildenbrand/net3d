@@ -75,7 +75,10 @@ export async function verifyConnection(
   // 1. REST /api/status/ — proves the URL resolves and the token is accepted.
   let statusRes: Response
   try {
-    statusRes = await fetchImpl(`${baseUrl}/api/status/`, { headers })
+    statusRes = await fetchImpl(`${baseUrl}/api/status/`, {
+      headers,
+      signal: AbortSignal.timeout(5_000),
+    })
   } catch (err) {
     const { message, hint } = networkFailure(err)
     throw new ConnectionCheckError(message, hint)
@@ -105,6 +108,7 @@ export async function verifyConnection(
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: '{ __typename }' }),
+      signal: AbortSignal.timeout(5_000),
     })
   } catch (err) {
     const { message, hint } = networkFailure(err)
