@@ -192,11 +192,11 @@ export function buildApp({
       try {
         const status = await cache.getOrSet('meta', CACHE_TTL.sites, () => netbox.getStatus())
         // layout flags are server-config, not SoT status — merge per response.
-        return { ...status, layoutEditable, layoutPreview }
+        return { ...status, layoutEditable, layoutPreview, liveUpdatesAvailable: !!webhookSecret }
       } catch (err) {
         app.log.warn(err)
         // showcase degrades gracefully: no capabilities ≠ broken app
-        return { backend, version: null, napalmAvailable: false, layoutEditable, layoutPreview }
+        return { backend, version: null, napalmAvailable: false, layoutEditable, layoutPreview, liveUpdatesAvailable: !!webhookSecret }
       }
     })
 
