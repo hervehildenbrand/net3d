@@ -161,6 +161,8 @@ docker compose up --build     # then open http://localhost:8080
 
 - Change the published port with `NET3D_PORT` (e.g. `NET3D_PORT=9000 docker compose up`).
 - Pre-warm caches for snappier first loads with `PREWARM=1` in `.env`.
+- Topology requests time out after 120 seconds by default. Override this for either
+  backend with a positive integer `TOPOLOGY_TIMEOUT_MS` value in milliseconds.
 - World-map tiles: CARTO requires a (free) API key for its basemaps — without one the
   map shows an "API KEY REQUIRED" watermark. Get a key at
   [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey) and set
