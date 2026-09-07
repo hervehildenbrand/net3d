@@ -8,6 +8,12 @@ export default defineConfig({
       include: ['packages/*/src/**/*.{ts,tsx}'],
       reporter: ['text-summary', 'json', 'json-summary', 'html'],
       thresholds: {
+        'packages/server/src/cache.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
         // Unit-test gate for application logic; the report also includes TSX UI.
         'packages/*/src/**/*.ts': {
           lines: 80,
