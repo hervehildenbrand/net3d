@@ -31,9 +31,7 @@ export function deviceIndexQueryOptions(backend: Backend) {
       const coverage = query.state.data
       return coverage &&
         coverage.prewarmEnabled &&
-        coverage.indexedSites < coverage.totalSites &&
-        typeof document !== 'undefined' &&
-        document.visibilityState === 'visible'
+        coverage.indexedSites < coverage.totalSites
         ? 15_000
         : false
     },

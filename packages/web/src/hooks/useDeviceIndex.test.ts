@@ -46,17 +46,31 @@ describe('deviceIndexQueryOptions', () => {
     const interval = observer.options.refetchInterval
     const query = client.getQueryCache().find({ queryKey: ['devices', 'netbox'], exact: true })!
     expect(typeof interval === 'function' ? interval(query as never) : interval).toBe(15_000)
+    expect(observer.options.refetchIntervalInBackground).toBe(false)
 
     unsubscribe()
     client.clear()
   })
 
+  test('test_device_index_hidden_document_delegates_pause_to_query_observer', async () => {
+    vi.stubGlobal('document', { visibilityState: 'hidden' })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(1, 2)))
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await client.fetchQuery(deviceIndexQueryOptions('netbox'))
+    const observer = new QueryObserver(client, deviceIndexQueryOptions('netbox'))
+    const interval = observer.options.refetchInterval
+    const query = client.getQueryCache().find({ queryKey: ['devices', 'netbox'], exact: true })!
+
+    expect(typeof interval === 'function' ? interval(query as never) : interval).toBe(15_000)
+    expect(observer.options.refetchIntervalInBackground).toBe(false)
+    client.clear()
+  })
+
   test.each([
-    ['hidden document', 'hidden', 1, 2, true],
-    ['complete coverage', 'visible', 2, 2, true],
-    ['disabled prewarm', 'visible', 1, 2, false],
-  ])('test_device_index_%s_does_not_poll', async (_scenario, visibilityState, indexed, total, prewarm) => {
-    vi.stubGlobal('document', { visibilityState })
+    ['complete coverage', 2, 2, true],
+    ['disabled prewarm', 1, 2, false],
+  ])('test_device_index_%s_does_not_poll', async (_scenario, indexed, total, prewarm) => {
+    vi.stubGlobal('document', { visibilityState: 'visible' })
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(indexed, total, prewarm)))
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     await client.fetchQuery(deviceIndexQueryOptions('netbox'))
