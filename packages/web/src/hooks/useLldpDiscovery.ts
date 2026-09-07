@@ -62,22 +62,31 @@ export class LldpSemaphore {
 
 const lldpSemaphore = new LldpSemaphore(MAX_CONCURRENT)
 
+export async function withLldpSlot<T>(
+  signal: AbortSignal,
+  request: () => Promise<T>,
+): Promise<T> {
+  const release = await lldpSemaphore.acquire(signal)
+  try {
+    return await request()
+  } finally {
+    release()
+  }
+}
+
 export async function fetchLldp(
   backend: Backend,
   device: Pick<SiteDevice, 'id' | 'name'>,
   signal: AbortSignal,
 ): Promise<Record<string, LldpNeighbor[]>> {
-  const release = await lldpSemaphore.acquire(signal)
-  try {
+  return withLldpSlot(signal, async () => {
     const res = await fetch(apiUrl(backend, `/devices/${device.id}/napalm/get_lldp_neighbors`), {
       signal,
     })
     if (!res.ok) throw new Error(`lldp ${device.name}: HTTP ${res.status}`)
     const body = await res.json()
     return body.get_lldp_neighbors as Record<string, LldpNeighbor[]>
-  } finally {
-    release()
-  }
+  })
 }
 
 export interface LldpDiscovery {
