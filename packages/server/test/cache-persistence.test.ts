@@ -16,11 +16,11 @@ function fakeStore(initial: CacheEntry[] = []): DiskCacheStore & { writes: Cache
 }
 
 describe('TtlCache write-through', () => {
-  test('set() write-through forwards value and computed expiry', () => {
+  test('test_set_default_persistence_forwards_value_and_expiry', () => {
     vi.useFakeTimers()
     const now = Date.now()
     const store = fakeStore()
-    const cache = new TtlCache({ persist: store, shouldPersist: () => true })
+    const cache = new TtlCache({ persist: store })
     cache.set('site:AMS1', { racks: [1] }, 1000)
     expect(store.writes).toEqual([{ key: 'site:AMS1', value: { racks: [1] }, expiresAt: now + 1000 }])
     vi.useRealTimers()
