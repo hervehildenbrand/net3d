@@ -1,4 +1,5 @@
-import { useQueries } from '@tanstack/react-query'
+import { useCallback } from 'react'
+import { useQueries, type UseQueryResult } from '@tanstack/react-query'
 import type { LldpNeighbor } from '@net3d/shared'
 import { apiUrl } from '../lib/api'
 import type { Backend } from '../lib/api'
@@ -104,7 +105,22 @@ export interface LldpDiscovery {
  */
 export function useLldpDiscovery(devices: SiteDevice[], activeIds: Set<string>): LldpDiscovery {
   const backend = useAppStore((s) => s.backend)
-  const results = useQueries({
+  const combine = useCallback((results: UseQueryResult<Record<string, LldpNeighbor[]>>[]) => {
+    const byDevice: LldpDiscovery['byDevice'] = {}
+    let completed = 0
+    results.forEach((r, i) => {
+      const d = devices[i]!
+      if (activeIds.has(d.id) && (r.isSuccess || r.isError)) completed++
+      if (r.data) byDevice[d.name] = r.data
+    })
+    return {
+      byDevice,
+      completed,
+      total: activeIds.size,
+      discovering: activeIds.size > 0 && completed < activeIds.size,
+    }
+  }, [devices, activeIds])
+  return useQueries({
     queries: devices.map((d) => ({
       queryKey: ['napalm', backend, d.id, 'get_lldp_neighbors'],
       queryFn: ({ signal }) => fetchLldp(backend, d, signal),
@@ -113,20 +129,6 @@ export function useLldpDiscovery(devices: SiteDevice[], activeIds: Set<string>):
       retry: false,
       gcTime: 3_600_000,
     })),
+    combine,
   })
-
-  const byDevice: Record<string, Record<string, LldpNeighbor[]>> = {}
-  let completed = 0
-  results.forEach((r, i) => {
-    const d = devices[i]!
-    if (activeIds.has(d.id) && (r.isSuccess || r.isError)) completed++
-    if (r.data) byDevice[d.name] = r.data
-  })
-
-  return {
-    byDevice,
-    completed,
-    total: activeIds.size,
-    discovering: activeIds.size > 0 && completed < activeIds.size,
-  }
 }
