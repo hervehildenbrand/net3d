@@ -3,7 +3,7 @@ import { CameraControls } from '@react-three/drei'
 import { useAppStore } from '../store/useAppStore'
 import { useEditStore } from '../store/useEditStore'
 import { useSiteDetail } from '../hooks/useSiteDetail'
-import { useSiteLayout } from './SiteLevel'
+import { useComputedSiteLayout } from '../hooks/useComputedSiteLayout'
 
 const SIGNAL_INTERVAL_MS = 120
 
@@ -22,7 +22,7 @@ export function CameraRig() {
   const editModeActive = useEditStore((s) => s.editModeActive)
   const topDownView = useEditStore((s) => s.topDownView)
   const { data: siteDetail } = useSiteDetail(level !== 'map' ? siteName : null)
-  const { placements, bounds } = useSiteLayout(siteDetail?.racks)
+  const { placements, bounds } = useComputedSiteLayout(siteDetail?.racks)
   const handleCameraSignals = useAppStore((s) => s.handleCameraSignals)
   const lastSignal = useRef(0)
   // True while a *programmatic* fly-in/out is animating. The nav machine reads

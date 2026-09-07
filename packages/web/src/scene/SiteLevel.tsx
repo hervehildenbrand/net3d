@@ -1,16 +1,15 @@
 import { useMemo, useState } from 'react'
 import { Billboard, Instance, Instances, Text } from '@react-three/drei'
 import {
-  applyLayoutOverrides,
   computeRoomStats,
   type LldpCableSegment,
   type RackPlacement,
 } from '@net3d/shared'
 import type { SiteCable, SitePower, SiteRack } from '../hooks/useSiteDetail'
-import { useSiteLayoutQuery } from '../hooks/useSiteLayout'
 import { theme } from '../theme'
 import { useAppStore } from '../store/useAppStore'
 import { useEditStore } from '../store/useEditStore'
+import { useComputedSiteLayout } from '../hooks/useComputedSiteLayout'
 import { EditableRacks } from './EditableRacks'
 import { Rooms } from './Rooms'
 import { RoomDrawer } from './RoomDrawer'
@@ -25,26 +24,6 @@ import type { HeatmapView } from './RackLevel'
 
 /** Hide individual rack labels once the camera is farther than span * this. */
 const RACK_LABEL_THRESHOLD = 0.9
-
-export function useSiteLayout(racks: SiteRack[] | undefined) {
-  // Custom positions are a property of the site, not the active backend, so the
-  // override is fetched by site name and merged onto the schematic auto-layout.
-  // A null layout (no saved plan) yields the unchanged auto-layout.
-  const siteName = useAppStore((s) => s.selectedSiteName)
-  const { data: layout } = useSiteLayoutQuery(siteName)
-  return useMemo(() => {
-    const applied = applyLayoutOverrides(
-      (racks ?? []).map((r) => ({
-        id: r.id,
-        name: r.name,
-        uHeight: r.uHeight,
-        location: r.location,
-      })),
-      layout ?? null,
-    )
-    return { placements: applied.placements, bounds: applied.bounds, rooms: applied.rooms }
-  }, [racks, layout])
-}
 
 function Racks({
   placements,
@@ -260,7 +239,7 @@ export function SiteLevel({
   const selectedRoomId = useEditStore((s) => s.selectedRoomId)
   const selectRoom = useEditStore((s) => s.selectRoom)
   const editFloor = useEditStore((s) => s.floor)
-  const { placements, bounds, rooms } = useSiteLayout(racks)
+  const { placements, bounds, rooms } = useComputedSiteLayout(racks)
   const size = {
     x: bounds.max.x - bounds.min.x,
     y: bounds.max.y - bounds.min.y,

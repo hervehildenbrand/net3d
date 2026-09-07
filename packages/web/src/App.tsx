@@ -1,5 +1,4 @@
-import { useEffect, useMemo } from 'react'
-import { Canvas } from '@react-three/fiber'
+import { Suspense, useEffect, useMemo } from 'react'
 import {
   commitRateToSpeedBucket,
   compassBearing,
@@ -10,9 +9,8 @@ import type { DcLink } from './scene/dclinks'
 import { MapLayer } from './map/MapLayer'
 import { useLldpDiscovery } from './hooks/useLldpDiscovery'
 import { useCapabilities } from './hooks/useCapabilities'
-import { SiteLevel, useSiteLayout } from './scene/SiteLevel'
-import { RackLevel } from './scene/RackLevel'
-import { CameraRig } from './scene/CameraRig'
+import { useComputedSiteLayout } from './hooks/useComputedSiteLayout'
+import { LazySiteScene } from './scene/lazySiteScene'
 import { useSites } from './hooks/useSites'
 import { connectionErrorMessage } from './connectionError'
 import { useCircuits } from './hooks/useCircuits'
@@ -30,11 +28,11 @@ import { PowerLegend } from './components/PowerLegend'
 import { BackendSwitcher } from './components/BackendSwitcher'
 import { EditToolbar } from './components/EditToolbar'
 import { useEditStore } from './store/useEditStore'
+import { SceneErrorBoundary } from './components/SceneErrorBoundary'
 import { computeSpecsRange } from './lib/specsHeatmap'
 import { collectSubnets } from './lib/subnetColoring'
 import { tracePowerChain } from './lib/powerChain'
 import { computeActiveLldpIds } from './lib/lldpScope'
-import { SceneErrorBoundary } from './components/SceneErrorBoundary'
 
 const hudStyle: React.CSSProperties = {
   position: 'absolute',
@@ -95,7 +93,7 @@ export function App() {
   const { data: siteDetail, isLoading: siteLoading } = useSiteDetail(
     level !== 'map' ? selectedSiteName : null,
   )
-  const { placements } = useSiteLayout(siteDetail?.racks)
+  const { placements } = useComputedSiteLayout(siteDetail?.racks)
   // Raw saved layout (rooms + floor) to seed the editor when entering edit mode.
   const { data: savedLayout } = useSiteLayoutQuery(level !== 'map' ? selectedSiteName : null)
   const editModeActive = useEditStore((s) => s.editModeActive)
@@ -276,46 +274,33 @@ export function App() {
           pointerEvents: inScene ? 'auto' : 'none',
         }}
       >
-        <SceneErrorBoundary>
-          <Canvas frameloop="demand" camera={{ position: [8, 8, 12], fov: 50 }}>
-            <ambientLight intensity={0.9} />
-            {inScene && selectedSiteName && siteDetail && (
-              <SiteLevel
-                racks={siteDetail.racks}
-                cables={siteDetail.cables}
+        {inScene && (
+          <SceneErrorBoundary>
+            <Suspense fallback={null}>
+              <LazySiteScene
+                level={level}
+                selectedSiteName={selectedSiteName}
+                siteDetail={siteDetail}
                 lldpSegments={lldpSegments}
-                siteName={selectedSiteName}
                 onRackClick={zoomToRack}
-                visible={level === 'site'}
                 highlightedRoles={sceneRoles}
                 powerVisible={powerVisible}
-                power={siteDetail.power}
                 heatmap={heatmap}
                 powerChainRackIds={powerChain?.rackIds ?? null}
-                selectedPanel={selectedPowerSource?.kind === 'panel' ? selectedPowerSource.name : null}
+                selectedPowerSource={selectedPowerSource}
                 onPanelClick={onPanelClick}
                 dcLinks={dcLinks}
                 dcLinksVisible={dcLinksVisible}
-              />
-            )}
-            {level === 'rack' && selectedRack && selectedPlacement && (
-              <RackLevel
-                rack={selectedRack}
-                placement={selectedPlacement}
-                cables={siteDetail?.cables ?? []}
-                lldpSegments={lldpSegments}
+                selectedRack={selectedRack}
+                selectedPlacement={selectedPlacement}
                 napalmAvailable={capabilities.napalmAvailable}
                 onDeviceClick={selectDevice}
                 selectedDeviceId={selectedDeviceId}
-                visible
-                heatmap={heatmap}
-                highlightedRoles={sceneRoles}
                 siteSubnets={siteSubnets}
               />
-            )}
-            <CameraRig />
-          </Canvas>
-        </SceneErrorBoundary>
+            </Suspense>
+          </SceneErrorBoundary>
+        )}
       </div>
 
       {/* Sites menu (left edge): all sites grouped by region, one click from any level. */}

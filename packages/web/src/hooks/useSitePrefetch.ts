@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { apiUrl } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
+import { preloadSiteScene } from '../scene/lazySiteScene'
 
 /**
  * Warm the site-detail query before the user commits to entering a site
@@ -15,6 +16,7 @@ export function useSitePrefetch() {
 
   return useCallback(
     (siteName: string) => {
+      void preloadSiteScene()
       void queryClient.prefetchQuery({
         // must match useSiteDetail's key so the map→site transition is a cache hit
         queryKey: ['site', backend, siteName],
