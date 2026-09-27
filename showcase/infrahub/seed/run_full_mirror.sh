@@ -11,7 +11,7 @@
 # 8 spines, 2 cores, etc. PoP per-site server_racks overrides come from
 # datacenters.json automatically.
 set -uo pipefail
-HERE="/Users/hervehildenbrand/Code/net3d/showcase/infrahub"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PY="$HERE/.venv/bin/python"
 SEED="$HERE/seed/seed_infrahub.py"
 

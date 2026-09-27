@@ -8,10 +8,10 @@ const device = (over: Partial<SiteDevice> = {}): SiteDevice => ({
   name: 'edge-router-1',
   position: 20,
   face: 'FRONT',
-  roleName: 'router_rtcore',
+  roleName: 'router_core',
   roleColor: '9c27b0',
   uHeight: 1,
-  model: 'ptx10001_36mr',
+  model: 'mx304',
   manufacturer: 'Juniper',
   isFullDepth: true,
   status: 'active',
@@ -26,7 +26,7 @@ const device = (over: Partial<SiteDevice> = {}): SiteDevice => ({
 
 const rack = (over: Partial<SiteRack> = {}): SiteRack => ({
   id: '376',
-  name: 'C32-WAN1',
+  name: 'rack-a01',
   uHeight: 47,
   location: null,
   devices: [device()],
@@ -57,7 +57,7 @@ describe('buildDeviceIndex', () => {
         siteDetail([
           rack({
             id: 'rack-9',
-            name: 'C32-WAN1',
+            name: 'rack-a01',
             devices: [device({ id: 'd1', name: 'spine-01', position: 42, status: 'offline' })],
           }),
         ]),
@@ -69,11 +69,11 @@ describe('buildDeviceIndex', () => {
       name: 'spine-01',
       siteName: 'ams1',
       rackId: 'rack-9',
-      rackName: 'C32-WAN1',
+      rackName: 'rack-a01',
       position: 42,
-      roleName: 'router_rtcore',
+      roleName: 'router_core',
       roleColor: '9c27b0',
-      model: 'ptx10001_36mr',
+      model: 'mx304',
       status: 'offline',
     })
   })

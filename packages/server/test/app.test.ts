@@ -26,16 +26,16 @@ const SITES: NetBoxSite[] = [
 ]
 
 const CIRCUITS: SiteCircuit[] = [
-  { id: '315', cid: 'PA3-PAR1-pos1', provider: 'apo', siteA: 'pa3', siteZ: 'par1',
+  { id: '315', cid: 'FRA1-PAR1-001', provider: 'acme', siteA: 'fra1', siteZ: 'par1',
     commitRate: 100_000_000, status: 'active', description: null },
-  { id: '9', cid: 'PA3-PAR1-pos10', provider: 'apo', siteA: 'par1', siteZ: 'pa3',
+  { id: '9', cid: 'FRA1-PAR1-010', provider: 'acme', siteA: 'par1', siteZ: 'fra1',
     commitRate: 10_000_000, status: 'active', description: null },
 ]
 
 const RACKS: SiteRack[] = [
   {
     id: '376',
-    name: 'C32-WAN1',
+    name: 'rack-a01',
     uHeight: 47,
     location: null,
     devices: [
@@ -44,10 +44,10 @@ const RACKS: SiteRack[] = [
         name: 'edge-router-1',
         position: 20,
         face: 'FRONT',
-        roleName: 'router_rtcore',
+        roleName: 'router_core',
         roleColor: '9c27b0',
         uHeight: 1,
-        model: 'ptx10001_36mr',
+        model: 'mx304',
         manufacturer: 'Juniper',
         isFullDepth: true,
         status: 'active',
@@ -68,8 +68,8 @@ const CABLES: SiteCable[] = [
     type: 'cat6',
     status: 'CONNECTED',
     color: '',
-    a: { kind: 'device', name: 'eth1', deviceName: 'cn12001', rackName: 'compute_6', ifaceType: '25gbase-x-sfp28', termType: 'interface', pairedPort: null },
-    b: { kind: 'device', name: 'Te0/1', deviceName: 'swm1001', rackName: 'compute_6', ifaceType: '25gbase-x-sfp28', termType: 'interface', pairedPort: null },
+    a: { kind: 'device', name: 'eth1', deviceName: 'srv-c06-01', rackName: 'rack-c06', ifaceType: '25gbase-x-sfp28', termType: 'interface', pairedPort: null },
+    b: { kind: 'device', name: 'Te0/1', deviceName: 'mgmt-sw1', rackName: 'rack-c06', ifaceType: '25gbase-x-sfp28', termType: 'interface', pairedPort: null },
   },
 ]
 
@@ -219,7 +219,7 @@ describe('GET /api/circuits', () => {
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual([
       {
-        siteA: 'pa3',
+        siteA: 'fra1',
         siteZ: 'par1',
         count: 2,
         circuitIds: ['315', '9'],
@@ -271,11 +271,11 @@ describe('GET /api/devices', () => {
       name: 'edge-router-1',
       siteName: 'site-a',
       rackId: '376',
-      rackName: 'C32-WAN1',
+      rackName: 'rack-a01',
       position: 20,
-      roleName: 'router_rtcore',
+      roleName: 'router_core',
       roleColor: '9c27b0',
-      model: 'ptx10001_36mr',
+      model: 'mx304',
       status: 'active',
     })
     expect(index.map((e) => e.siteName).sort()).toEqual(['site-a', 'site-c'])

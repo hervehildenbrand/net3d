@@ -332,8 +332,8 @@ packages/
   tab is visible. Without prewarming, coverage stays partial until more sites are
   loaded; switching backends resets the displayed index coverage.
 - **LLDP hostnames are matched to SoT device names** by stripping the domain and,
-  when needed, a site/pod prefix (`par1-cp01-lf1001.example.net` matches device
-  `lf1001`), so discovered links resolve even when naming conventions differ.
+  when needed, a site/pod prefix (`site1-pod1-lf901.example.net` matches device
+  `lf901`), so discovered links resolve even when naming conventions differ.
 - Sites without latitude/longitude don't appear on the map but stay reachable through
   the search box.
 

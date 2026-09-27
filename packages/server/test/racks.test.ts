@@ -6,10 +6,10 @@ const device = (over: Partial<RawRack['devices'][number]> = {}): RawRack['device
   name: 'edge-router-1',
   position: 20,
   face: 'FRONT',
-  role: { name: 'router_rtcore', color: '9c27b0' },
+  role: { name: 'router_core', color: '9c27b0' },
   device_type: {
     u_height: 1,
-    model: 'ptx10001_36mr',
+    model: 'mx304',
     is_full_depth: true,
     manufacturer: { name: 'Juniper' },
   },
@@ -18,7 +18,7 @@ const device = (over: Partial<RawRack['devices'][number]> = {}): RawRack['device
 
 const rack = (over: Partial<RawRack> = {}): RawRack => ({
   id: '376',
-  name: 'C32-WAN1',
+  name: 'rack-a01',
   u_height: 47,
   location: null,
   devices: [device()],
@@ -30,7 +30,7 @@ describe('normalizeRawRacks', () => {
     const [r] = normalizeRawRacks([rack()])
     expect(r).toEqual({
       id: '376',
-      name: 'C32-WAN1',
+      name: 'rack-a01',
       uHeight: 47,
       location: null,
       devices: [
@@ -39,10 +39,10 @@ describe('normalizeRawRacks', () => {
           name: 'edge-router-1',
           position: 20,
           face: 'FRONT',
-          roleName: 'router_rtcore',
+          roleName: 'router_core',
           roleColor: '9c27b0',
           uHeight: 1,
-          model: 'ptx10001_36mr',
+          model: 'mx304',
           manufacturer: 'Juniper',
           isFullDepth: true,
           status: 'active',

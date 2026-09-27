@@ -34,7 +34,7 @@ const short = (h: string) => h.split('.')[0]!.toLowerCase()
 /**
  * Resolve an LLDP-reported hostname to a known device key. LLDP often reports
  * '<site>-<pod>-<name>.<domain>' while the SoT names the device just '<name>'
- * (prod: 'par1-cp01-lf1001.infra.eu.ginfra.net' vs NetBox 'lf1001'), so after
+ * (e.g. 'site1-pod1-lf901.example.net' vs NetBox 'lf901'), so after
  * an exact short-name match, fall back to a '-<name>' suffix match.
  */
 // ponytail: linear scan per neighbor; index the keys if sites grow past ~10k devices

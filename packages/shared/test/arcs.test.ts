@@ -50,15 +50,15 @@ describe('greatCircleArc', () => {
 describe('groupCircuitsBySitePair', () => {
   const detail = { commitRate: null, status: 'active', description: null }
   const circuits = [
-    { id: '1', cid: 'c1', provider: 'apo', siteA: 'pa3', siteZ: 'par1', ...detail },
-    { id: '2', cid: 'c2', provider: 'apo', siteA: 'par1', siteZ: 'pa3', ...detail }, // reversed = same pair
+    { id: '1', cid: 'c1', provider: 'acme', siteA: 'fra1', siteZ: 'par1', ...detail },
+    { id: '2', cid: 'c2', provider: 'acme', siteA: 'par1', siteZ: 'fra1', ...detail }, // reversed = same pair
     { id: '3', cid: 'c3', provider: 'x', siteA: 'ams', siteZ: 'als', ...detail },
     { id: '4', cid: 'c4', provider: 'x', siteA: 'lon', siteZ: 'lon', ...detail }, // same-site: dropped
   ]
 
   test('groups regardless of A/Z direction', () => {
     const groups = groupCircuitsBySitePair(circuits)
-    const pa = groups.find((g) => g.siteA === 'pa3' && g.siteZ === 'par1')
+    const pa = groups.find((g) => g.siteA === 'fra1' && g.siteZ === 'par1')
     expect(pa?.count).toBe(2)
     expect(pa?.circuitIds).toEqual(['1', '2'])
   })

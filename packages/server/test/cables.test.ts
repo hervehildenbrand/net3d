@@ -13,8 +13,8 @@ const cable = (over: Partial<RawCable> = {}): RawCable => ({
   type: 'cat6',
   status: 'CONNECTED',
   color: '',
-  a_terminations: [ifaceTerm('cn12001', 'compute_6', 'eth1')],
-  b_terminations: [ifaceTerm('swm1001', 'compute_6', 'Te0/1')],
+  a_terminations: [ifaceTerm('srv-c06-01', 'rack-c06', 'eth1')],
+  b_terminations: [ifaceTerm('mgmt-sw1', 'rack-c06', 'Te0/1')],
   ...over,
 })
 
@@ -26,8 +26,8 @@ describe('normalizeRawCables', () => {
       type: 'cat6',
       status: 'CONNECTED',
       color: '',
-      a: { kind: 'device', name: 'eth1', deviceName: 'cn12001', rackName: 'compute_6', ifaceType: '25gbase-x-sfp28', termType: 'interface', pairedPort: null },
-      b: { kind: 'device', name: 'Te0/1', deviceName: 'swm1001', rackName: 'compute_6', ifaceType: '25gbase-x-sfp28', termType: 'interface', pairedPort: null },
+      a: { kind: 'device', name: 'eth1', deviceName: 'srv-c06-01', rackName: 'rack-c06', ifaceType: '25gbase-x-sfp28', termType: 'interface', pairedPort: null },
+      b: { kind: 'device', name: 'Te0/1', deviceName: 'mgmt-sw1', rackName: 'rack-c06', ifaceType: '25gbase-x-sfp28', termType: 'interface', pairedPort: null },
     })
   })
 

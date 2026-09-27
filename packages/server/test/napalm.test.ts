@@ -51,7 +51,7 @@ describe('GET /api/devices/:id/napalm/:method', () => {
     const app = buildApp({
       netbox: fakeNetbox({
         napalm: async () => {
-          throw new NapalmUnreachableError('cannot connect to 172.21.210.144')
+          throw new NapalmUnreachableError('cannot connect to 192.0.2.20')
         },
       }),
     })

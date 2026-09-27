@@ -61,8 +61,7 @@ It is idempotent (every node upserts by HFID), so it is safe to re-run.
 
 ```bash
 # from the repo root
-scripts/dev-restart.sh infrahub        # uses .env.showcase-infrahub (SOT_BACKEND=infrahub)
-# or: pnpm dev:showcase-infrahub
+pnpm dev:showcase-infrahub   # uses .env.showcase-infrahub (SOT_BACKEND=infrahub)
 ```
 
 Open http://localhost:5173 and pick a seeded site.

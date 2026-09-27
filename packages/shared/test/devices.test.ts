@@ -3,7 +3,7 @@ import { deviceTransform, U_METERS, type RackPlacement } from '../src'
 
 const rack: RackPlacement = {
   rackId: '376',
-  name: 'C32-WAN1',
+  name: 'rack-a01',
   location: null,
   x: 10,
   z: -4,

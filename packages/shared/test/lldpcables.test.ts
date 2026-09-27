@@ -85,31 +85,31 @@ describe('lldpToSegments', () => {
   })
 })
 
-describe('lldpToSegments prefixed-FQDN remotes (prod naming)', () => {
-  // Real prod shape: NetBox names the device 'lf1001' but LLDP reports
-  // 'par1-cp01-lf1001.infra.eu.ginfra.net'. The remote must still resolve.
+describe('lldpToSegments prefixed-FQDN remotes (site/pod naming)', () => {
+  // Typical fabric shape: NetBox names the device 'lf901' but LLDP reports
+  // 'site1-pod1-lf901.example.net'. The remote must still resolve.
   const fabricLocations = {
-    lf1001: { rackId: 'compute_1', rackName: 'COMPUTE_1' },
-    sp1001: { rackId: 'distri_data_1', rackName: 'DISTRI_DATA_1' },
+    lf901: { rackId: 'rack_a', rackName: 'RACK_A' },
+    sp901: { rackId: 'rack_b', rackName: 'RACK_B' },
   }
 
   test('remote FQDN with site/pod prefix resolves to the NetBox device', () => {
     const segs = lldpToSegments(
-      { sp1001: { 'Ethernet3/1/1': [{ hostname: 'par1-cp01-lf1001.infra.eu.ginfra.net', port: 'Ethernet49/1' }] } },
+      { sp901: { 'Ethernet3/1/1': [{ hostname: 'site1-pod1-lf901.example.net', port: 'Ethernet49/1' }] } },
       fabricLocations,
       [],
     )
     expect(segs).toHaveLength(1)
-    expect(segs[0]!.remoteDeviceName).toBe('lf1001')
+    expect(segs[0]!.remoteDeviceName).toBe('lf901')
     expect(segs[0]!.scope).toBe('inter-rack')
-    expect(segs[0]!.remoteRackId).toBe('compute_1')
+    expect(segs[0]!.remoteRackId).toBe('rack_a')
   })
 
   test('both ends reporting with prefixed names still collapse to one segment', () => {
     const segs = lldpToSegments(
       {
-        sp1001: { 'Ethernet3/1/1': [{ hostname: 'par1-cp01-lf1001.infra.eu.ginfra.net', port: 'Ethernet49/1' }] },
-        lf1001: { 'Ethernet49/1': [{ hostname: 'par1-dd01-sp1001.infra.eu.ginfra.net', port: 'Ethernet3/1/1' }] },
+        sp901: { 'Ethernet3/1/1': [{ hostname: 'site1-pod1-lf901.example.net', port: 'Ethernet49/1' }] },
+        lf901: { 'Ethernet49/1': [{ hostname: 'site1-pod2-sp901.example.net', port: 'Ethernet3/1/1' }] },
       },
       fabricLocations,
       [],
@@ -119,7 +119,7 @@ describe('lldpToSegments prefixed-FQDN remotes (prod naming)', () => {
 
   test('unrelated hostname sharing a suffix-like tail stays external', () => {
     const segs = lldpToSegments(
-      { sp1001: { 'Ethernet3/9/1': [{ hostname: 'corp-shelf1001.other.net', port: 'ge-0/0/0' }] } },
+      { sp901: { 'Ethernet3/9/1': [{ hostname: 'corp-shelf901.other.net', port: 'ge-0/0/0' }] } },
       fabricLocations,
       [],
     )
