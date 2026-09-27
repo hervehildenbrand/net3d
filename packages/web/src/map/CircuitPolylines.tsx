@@ -152,7 +152,7 @@ export function CircuitPolylines({
           </Polyline>
         )
       })}
-      <ArcLabels lines={lines} live={live} />
+      {!!live?.size && <ArcLabels lines={lines} live={live} />}
     </>
   )
 }
