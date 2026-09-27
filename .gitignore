@@ -29,3 +29,7 @@ specs/
 /CLAUDE.md
 /scripts/dev-restart.sh
 /deploy/
+
+# self-host telemetry (README "Live telemetry"): local config, may hold credentials
+/collector.yaml
+/docker-compose.override.yml

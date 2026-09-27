@@ -16,3 +16,6 @@ deploy/
 **/*.env
 **/.cache
 **/.data
+# self-host telemetry files (README "Live telemetry"): runtime-only, never baked in
+collector.yaml
+docker-compose.override.yml

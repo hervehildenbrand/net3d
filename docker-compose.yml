@@ -3,8 +3,9 @@
 #   cp .env.example .env        # set NETBOX_URL + NETBOX_TOKEN
 #   docker compose up --build   # then open http://localhost:8080
 #
-# Compose reads NETBOX_* from the same .env. Only the NetBox settings are
-# passed into the container — HOST/PORT/WEB_DIST are baked into the image.
+# Compose reads the settings below from the same .env. Only the variables
+# listed under `environment:` reach the container — HOST/PORT/WEB_DIST are
+# baked into the image.
 services:
   net3d:
     build:
@@ -26,8 +27,9 @@ services:
       # Live updates (off by default). When set, NetBox/Infrahub webhooks can push
       # cache invalidations that reach open browsers over SSE — see README "Live updates".
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
-      # Live link telemetry (off by default). Must be reachable from inside the
-      # container (a compose service or routable host) — not the host's 127.0.0.1.
+      # Live link telemetry (off by default) — see docs/telemetry.md. Point it at a
+      # collector service in this Compose project (http://<service>:<port>) or a
+      # routable host; 127.0.0.1 here is the net3d container itself.
       NETSTATEX_URL: ${NETSTATEX_URL:-}
       NETSTATEX_TOKEN: ${NETSTATEX_TOKEN:-}
     restart: unless-stopped

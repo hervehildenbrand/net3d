@@ -77,9 +77,10 @@ at their true U-positions, connected by one continuous mouse-wheel journey.
   its cache and pushes an invalidation to every open browser over SSE. Connection
   status is visible, reconnecting catches up on missed changes, and a 60-second
   visible-tab refresh provides a fallback when SSE is unavailable or disconnected.
-- 📡 **Live telemetry** (opt-in): point net3d at a netstatex gNMI collector to show
-  real-time link rx/tx and utilisation on cables and per-port rates in the device
-  panel — see "Live telemetry" below.
+- 📡 **Live telemetry** (opt-in): point net3d at a telemetry collector that speaks a
+  small [two-endpoint contract](docs/telemetry.md) to show real-time link rx/tx and
+  utilisation on cables, map circuit arcs and room DC links, and per-port rates in the
+  device panel — see "Live telemetry" below.
 
 ## Requirements
 
@@ -254,12 +255,42 @@ the visible-tab refresh fallback instead.
 Set `NETSTATEX_URL` (and optional `NETSTATEX_TOKEN`) to color cables by live gNMI %
 utilisation in the rack and site views, and show live rx/tx rates per port in the
 device panel; a port goes grey only when its telemetry is stale. The data comes from a
-netstatex gNMI collector that the **server** polls — the browser never talks to it,
-and device addresses/raw counters are never exposed in API responses. Keying is by
-exact match on NetBox device name and interface name, so netstatex must use the same
-names. The browser polls `GET /api/telemetry/sites/:site` every 2 s only while the
-'live' cable colouring is on or a device panel is open; `GET /api/meta` reports
-`telemetryAvailable` so the UI can hide the feature when `NETSTATEX_URL` is unset.
+telemetry collector that the **server** polls — netstatex (a gNMI collector) or any
+collector implementing the two-endpoint contract in [docs/telemetry.md](docs/telemetry.md).
+The browser never talks to it, and device addresses/raw counters are never exposed in
+API responses. Keying is by exact match on the device and interface names in your
+source of truth (NetBox or Infrahub), so the collector must use the same names. The
+browser polls `GET /api/telemetry/sites/:site` every 2 s only while the 'live' cable
+colouring is on or a device panel is open. `GET /api/meta` reports
+`telemetryAvailable: true` only when `NETSTATEX_URL` is set; otherwise the telemetry
+routes don't exist and nothing polls.
+
+**With Docker Compose**, run the collector as a service of the same Compose project
+with no published port — e.g. in a `docker-compose.override.yml` next to
+`docker-compose.yml`, which `docker compose up` merges automatically. That file and
+`collector.yaml` are git-ignored and never copied into the net3d image:
+
+```yaml
+services:
+  collector:
+    image: your-collector-image   # any collector speaking docs/telemetry.md
+    # Listen on 0.0.0.0:8090 inside the container. No `ports:` on purpose:
+    # only net3d, on the same Compose network, can reach it.
+    volumes:
+      - ./collector.yaml:/etc/collector.yaml:ro   # devices + credentials: mounted, not baked in
+    restart: unless-stopped
+```
+
+Then in `.env` — the service name, not `127.0.0.1` (inside the net3d container that is
+net3d itself):
+
+```sh
+NETSTATEX_URL=http://collector:8090
+# Only if the collector requires a bearer token:
+# NETSTATEX_TOKEN=
+```
+
+For the manual Node run, a collector on the same host is `http://127.0.0.1:8090`.
 
 **Map and room views**: the Leaflet map shows inter-site circuits as arcs whose colour
 reflects the busiest member circuit (by % utilisation). Each live arc displays an
@@ -269,7 +300,9 @@ radiating toward peer sites show live utilisation the same way when the Layers p
 has "DC links" visible and cable colouring set to "live". All live views share a
 logarithmic colour scale (0.01 · 0.1 · 1 · 10 · 100 %) so low-utilisation links remain
 visually distinct. The map polls `GET /api/telemetry/circuits` every 5 s while visible
-(foreground only).
+(foreground only). Circuits go live when their terminations are cabled directly to
+router interfaces — see
+[docs/telemetry.md](docs/telemetry.md#how-rates-are-matched-to-cables).
 
 ### Security
 
