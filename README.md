@@ -77,6 +77,9 @@ at their true U-positions, connected by one continuous mouse-wheel journey.
   its cache and pushes an invalidation to every open browser over SSE. Connection
   status is visible, reconnecting catches up on missed changes, and a 60-second
   visible-tab refresh provides a fallback when SSE is unavailable or disconnected.
+- 📡 **Live telemetry** (opt-in): point net3d at a netstatex gNMI collector to show
+  real-time link rx/tx and utilisation on cables and per-port rates in the device
+  panel — see "Live telemetry" below.
 
 ## Requirements
 
@@ -245,6 +248,28 @@ of stampeding clients. The status indicator shows `live`, `reconnecting`, or
 `polling`. Reconnection refreshes affected caches to recover missed events. When
 `WEBHOOK_SECRET` is unset, the webhook/SSE routes are disabled and the browser uses
 the visible-tab refresh fallback instead.
+
+### Live telemetry (optional)
+
+Set `NETSTATEX_URL` (and optional `NETSTATEX_TOKEN`) to color cables by live gNMI %
+utilisation in the rack and site views, and show live rx/tx rates per port in the
+device panel; a port goes grey only when its telemetry is stale. The data comes from a
+netstatex gNMI collector that the **server** polls — the browser never talks to it,
+and device addresses/raw counters are never exposed in API responses. Keying is by
+exact match on NetBox device name and interface name, so netstatex must use the same
+names. The browser polls `GET /api/telemetry/sites/:site` every 2 s only while the
+'live' cable colouring is on or a device panel is open; `GET /api/meta` reports
+`telemetryAvailable` so the UI can hide the feature when `NETSTATEX_URL` is unset.
+
+**Map and room views**: the Leaflet map shows inter-site circuits as arcs whose colour
+reflects the busiest member circuit (by % utilisation). Each live arc displays an
+always-on Gbps label (busiest arcs labelled first, labels repositioned on zoom/pan).
+Hovering an arc shows per-circuit rates and a live total. In the room view, DC links
+radiating toward peer sites show live utilisation the same way when the Layers panel
+has "DC links" visible and cable colouring set to "live". All live views share a
+logarithmic colour scale (0.01 · 0.1 · 1 · 10 · 100 %) so low-utilisation links remain
+visually distinct. The map polls `GET /api/telemetry/circuits` every 5 s while visible
+(foreground only).
 
 ### Security
 

@@ -26,4 +26,8 @@ services:
       # Live updates (off by default). When set, NetBox/Infrahub webhooks can push
       # cache invalidations that reach open browsers over SSE — see README "Live updates".
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
+      # Live link telemetry (off by default). Must be reachable from inside the
+      # container (a compose service or routable host) — not the host's 127.0.0.1.
+      NETSTATEX_URL: ${NETSTATEX_URL:-}
+      NETSTATEX_TOKEN: ${NETSTATEX_TOKEN:-}
     restart: unless-stopped

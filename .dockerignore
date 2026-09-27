@@ -10,3 +10,9 @@ showcase/
 Dockerfile
 docker-compose.yml
 .dockerignore
+# local-only operator files (git-ignored) must never reach an image
+scripts/
+deploy/
+**/*.env
+**/.cache
+**/.data
