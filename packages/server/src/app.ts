@@ -3,14 +3,24 @@ import fastifyStatic from '@fastify/static'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import { timingSafeEqual } from 'node:crypto'
-import { groupCircuitsBySitePair, SITE_LAYOUT_VERSION, validateLayoutInput, type SiteLayout } from '@net3d/shared'
+import {
+  circuitLinks,
+  groupCircuitsBySitePair,
+  mapTelemetryToCables,
+  SITE_LAYOUT_VERSION,
+  validateLayoutInput,
+  type SiteLayout,
+  type SiteTelemetry,
+} from '@net3d/shared'
 import { TtlCache } from './cache'
 import { NapalmUnreachableError } from './netbox'
 import type { SoTClient } from './sot/client'
+import type { Site } from './sot/types'
 import type { DiskCacheStore } from './persistence'
 import type { LayoutStore } from './layout-store'
 import { loadSiteDetail, prewarmCaches, type SiteDetail } from './prewarm'
 import { buildDeviceIndex } from './devices'
+import type { NetstatexClient } from './netstatex'
 import { SseBroadcaster } from './events'
 import {
   parseNetboxWebhook,
@@ -73,6 +83,8 @@ export interface AppDeps {
   layoutPreview?: boolean
   /** Shared secret for SoT webhooks; unset = webhook + SSE routes disabled (404). */
   webhookSecret?: string
+  /** gNMI telemetry collector (netstatex); unset = telemetry route absent. */
+  netstatex?: NetstatexClient
 }
 
 // SWR-served payloads worth persisting. napalm:* is live device state with a short
@@ -96,6 +108,7 @@ export function buildApp({
   layoutEditable = false,
   layoutPreview = false,
   webhookSecret,
+  netstatex,
 }: AppDeps): FastifyInstance {
   const app = Fastify({ logger })
   const cache = new TtlCache(persist ? { persist, shouldPersist: PERSISTABLE_KEYS } : undefined)
@@ -192,11 +205,25 @@ export function buildApp({
       try {
         const status = await cache.getOrSet('meta', CACHE_TTL.sites, () => netbox.getStatus())
         // layout flags are server-config, not SoT status — merge per response.
-        return { ...status, layoutEditable, layoutPreview, liveUpdatesAvailable: !!webhookSecret }
+        return {
+          ...status,
+          layoutEditable,
+          layoutPreview,
+          liveUpdatesAvailable: !!webhookSecret,
+          telemetryAvailable: !!netstatex,
+        }
       } catch (err) {
         app.log.warn(err)
         // showcase degrades gracefully: no capabilities ≠ broken app
-        return { backend, version: null, napalmAvailable: false, layoutEditable, layoutPreview, liveUpdatesAvailable: !!webhookSecret }
+        return {
+          backend,
+          version: null,
+          napalmAvailable: false,
+          layoutEditable,
+          layoutPreview,
+          liveUpdatesAvailable: !!webhookSecret,
+          telemetryAvailable: !!netstatex,
+        }
       }
     })
 
@@ -302,6 +329,89 @@ export function buildApp({
         return reply.code(502).send({ error: 'netbox_unavailable' })
       }
     })
+
+    if (netstatex) {
+      // Shared helpers for telemetry routes — extracted so site and circuit routes
+      // reuse the same device-list and per-device caches.
+      const knownDevices = (): Promise<Set<string>> =>
+        cache.getOrSet('telemetry:devices', 30_000, () => netstatex.deviceNames()).then((arr) => new Set(arr))
+
+      const fetchDevices = async (
+        names: string[],
+        what: string,
+      ): Promise<{ devices: SiteTelemetry['devices']; failed: boolean }> => {
+        const results = await Promise.allSettled(
+          names.map((n) => cache.getOrSet(`telemetry:dev:${n}`, 1_000, () => netstatex.interfaces(n))),
+        )
+        const devices = Object.fromEntries(
+          results.flatMap((r, i) => (r.status === 'fulfilled' ? [[names[i]!, r.value] as const] : [])),
+        )
+        const failed = results.some((r) => r.status === 'rejected')
+        if (failed) app.log.warn(`telemetry: ${results.filter((r) => r.status === 'rejected').length}/${results.length} device fetches failed for ${what}`)
+        return { devices, failed }
+      }
+
+      app.get<{ Params: { site: string } }>(
+        '/api/telemetry/sites/:site',
+        // 2 s polling per viewer would drain the shared 300/min bucket (every viewer is 127.0.0.1
+        // behind nginx). Upstream cost is bounded by the caches below and NetBox is never touched.
+        { config: { rateLimit: false } },
+        async (req, reply) => {
+          // read-only view of what GET /api/sites/:name cached (like /api/devices) — never loads on demand
+          const detail = cache.peek<SiteDetail>(`site:${req.params.site}`)
+          if (!detail) return reply.code(404).send({ error: 'unknown_site' })
+          let known: Set<string>
+          try {
+            known = await knownDevices()
+          } catch (err) {
+            app.log.warn(`netstatex unavailable: ${(err as Error).message}`)
+            return reply.code(503).send({ error: 'telemetry_unavailable' })
+          }
+          const names = detail.racks.flatMap((r) => r.devices.map((d) => d.name)).filter((n) => known.has(n))
+          const { devices, failed } = await fetchDevices(names, `site ${req.params.site}`)
+          // an empty answer tells the client to stop polling — never send it because of an outage
+          if (!Object.keys(devices).length && failed) {
+            return reply.code(503).send({ error: 'telemetry_unavailable' })
+          }
+          return { devices } satisfies SiteTelemetry
+        },
+      )
+
+      app.get(
+        '/api/telemetry/circuits',
+        { config: { rateLimit: false } },
+        async (_req, reply) => {
+          try {
+            return await cache.getOrSet('telemetry:circuits', 1_000, async () => {
+              // Collect circuit cables from all cached site details — never loads NetBox on demand.
+              // Cold cache → empty result; warm cache populates as prewarm runs.
+              const sites = cache.peek<Site[]>('sites') ?? []
+              const allCables = sites.flatMap((s) => cache.peek<SiteDetail>(`site:${s.name}`)?.cables ?? [])
+              const links = circuitLinks(allCables)
+              if (!links.length) return { circuits: {} }
+
+              // Only fetch devices that appear in circuit links AND are monitored
+              const known = await knownDevices()
+              const names = [
+                ...new Set(
+                  links.flatMap((l) => [l.a?.deviceName, l.b?.deviceName].filter((n): n is string => !!n && known.has(n))),
+                ),
+              ]
+
+              const { devices, failed } = await fetchDevices(names, 'circuits')
+              if (!Object.keys(devices).length && failed) {
+                throw new Error('telemetry_unavailable')
+              }
+
+              return { circuits: Object.fromEntries(mapTelemetryToCables({ devices }, links)) }
+            })
+          } catch (err) {
+            app.log.warn(`netstatex unavailable: ${(err as Error).message}`)
+            return reply.code(503).send({ error: 'telemetry_unavailable' })
+          }
+        },
+      )
+    }
 
     // User-edited floor plans. Backend-agnostic (keyed by site name) and gated:
     // writes require layoutEditable so the default deploy stays a read-only viewer.

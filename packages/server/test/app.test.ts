@@ -137,7 +137,7 @@ describe('GET /api/meta', () => {
     const app = buildApp({ netbox: fakeNetbox() })
     const res = await app.inject({ method: 'GET', url: '/api/meta' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ backend: 'netbox', version: '3.7.8', napalmAvailable: true, layoutEditable: false, layoutPreview: false, liveUpdatesAvailable: false })
+    expect(res.json()).toEqual({ backend: 'netbox', version: '3.7.8', napalmAvailable: true, layoutEditable: false, layoutPreview: false, liveUpdatesAvailable: false, telemetryAvailable: false })
   })
 
   test('degrades to no-capabilities instead of failing when the backend is down', async () => {
@@ -150,13 +150,19 @@ describe('GET /api/meta', () => {
     })
     const res = await app.inject({ method: 'GET', url: '/api/meta' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ backend: 'netbox', version: null, napalmAvailable: false, layoutEditable: false, layoutPreview: false, liveUpdatesAvailable: false })
+    expect(res.json()).toEqual({ backend: 'netbox', version: null, napalmAvailable: false, layoutEditable: false, layoutPreview: false, liveUpdatesAvailable: false, telemetryAvailable: false })
   })
 
   test('test_meta_webhooks_enabled_reports_live_updates_available', async () => {
     const app = buildApp({ netbox: fakeNetbox(), webhookSecret: 'secret' })
     const res = await app.inject({ method: 'GET', url: '/api/meta' })
     expect(res.json().liveUpdatesAvailable).toBe(true)
+  })
+
+  test('test_meta_netstatex_configured_reports_telemetry_available', async () => {
+    const app = buildApp({ netbox: fakeNetbox(), netstatex: { deviceNames: async () => [], interfaces: async () => ({}) } })
+    const res = await app.inject({ method: 'GET', url: '/api/meta' })
+    expect(res.json().telemetryAvailable).toBe(true)
   })
 })
 
