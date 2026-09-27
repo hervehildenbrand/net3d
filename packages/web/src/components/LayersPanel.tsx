@@ -198,6 +198,8 @@ export function LayersPanel({
   // rack->site nav (only zoomToMap resets it) — fall back to 'medium' so a button
   // is always shown active. Display-only: never writes back to the store.
   const activeCableMode = cableModes.includes(cableColorMode) ? cableColorMode : 'medium'
+  // Only the third ('live') button needs wrapping; without telemetry the row keeps its original layout.
+  const wrap = telemetryAvailable ? 'wrap' : undefined
 
   const selectColor = (mode: ColorMode) => {
     // Entering Specs with no metric chosen yet lands on the first available one,
@@ -310,11 +312,11 @@ export function LayersPanel({
         </button>
       )}
       {cableModes.length > 1 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, padding: '3px 2px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, padding: '3px 2px', flexWrap: wrap }}>
           <span style={{ color: theme.text.primary }}>Cables</span>
           <div
-            style={{ display: 'flex', gap: 4, marginLeft: 'auto', flexWrap: 'wrap' }}
-            title={`color cables by ${cableModes.map((m) => cableModeLabel[m]).join(' or by ')}`}
+            style={{ display: 'flex', gap: 4, marginLeft: 'auto', flexWrap: wrap }}
+            title={`color ${level === 'rack' ? 'rack ' : ''}cables by ${cableModes.map((m) => cableModeLabel[m]).join(' or by ')}`}
           >
             {cableModes.map((m) => (
               <button

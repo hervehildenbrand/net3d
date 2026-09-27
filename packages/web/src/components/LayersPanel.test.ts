@@ -68,3 +68,18 @@ test('test_LayersPanel_live_mode_shows_utilization_legend', () => {
   expect(html).toContain('100 %')
   expect(html).toContain('stale')
 })
+
+test('test_LayersPanel_rack_without_telemetry_renders_original_cables_row', () => {
+  const html = renderToStaticMarkup(createElement(LayersPanel, props({ level: 'rack' })))
+  // exact element from the release before live telemetry existed
+  expect(html).toContain(
+    '<div style="display:flex;gap:4px;margin-left:auto" title="color rack cables by physical medium or by interface line rate">',
+  )
+  expect(html).not.toContain('flex-wrap')
+})
+
+test('test_LayersPanel_rack_with_telemetry_wraps_three_cable_modes', () => {
+  const html = renderToStaticMarkup(createElement(LayersPanel, props({ level: 'rack', telemetryAvailable: true })))
+  expect(html).toContain('>live<')
+  expect(html).toContain('flex-wrap:wrap')
+})
