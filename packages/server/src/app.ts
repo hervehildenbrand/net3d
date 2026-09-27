@@ -210,7 +210,8 @@ export function buildApp({
           layoutEditable,
           layoutPreview,
           liveUpdatesAvailable: !!webhookSecret,
-          telemetryAvailable: !!netstatex,
+          // present only with a collector: off, the payload matches a build without telemetry
+          ...(netstatex && { telemetryAvailable: true }),
         }
       } catch (err) {
         app.log.warn(err)
@@ -222,7 +223,7 @@ export function buildApp({
           layoutEditable,
           layoutPreview,
           liveUpdatesAvailable: !!webhookSecret,
-          telemetryAvailable: !!netstatex,
+          ...(netstatex && { telemetryAvailable: true }),
         }
       }
     })
