@@ -10,12 +10,14 @@ import {
   type LldpNeighbor,
   groupTraceHops,
   isInterfaceEnd,
+  type LiveIface,
   type TraceCable,
   type TracePath,
 } from '@net3d/shared'
 import { useCapabilities } from '../hooks/useCapabilities'
 import { UnreachableError, useNapalm } from '../hooks/useNapalm'
 import { useSiteDetail, type SiteCable, type SiteDevice, type SiteRack } from '../hooks/useSiteDetail'
+import { ifaceLive } from '../lib/liveTelemetry'
 import { deriveRedundancy, deviceFeedSides } from '../lib/powerOverlay'
 import { useAppStore } from '../store/useAppStore'
 import { theme } from '../theme'
@@ -260,6 +262,7 @@ export function DevicePanel({
   cables,
   rack,
   napalmAvailable = true,
+  telemetry,
   onClose,
 }: {
   device: SiteDevice
@@ -268,6 +271,8 @@ export function DevicePanel({
   rack?: SiteRack
   /** When the NetBox NAPALM plugin is absent, only the NetBox section renders. */
   napalmAvailable?: boolean
+  /** Live gNMI rates for this device's interfaces, keyed by interface name. */
+  telemetry?: Record<string, LiveIface>
   onClose: () => void
 }) {
   const liveId = napalmAvailable ? device.id : null
@@ -407,6 +412,7 @@ export function DevicePanel({
         {ports.map((p) => {
           const traceable = backend === 'netbox' && traceableCables.has(p.cableId)
           const isTraced = !!activeTrace && activeTrace.cableIds.includes(p.cableId)
+          const live = ifaceLive(telemetry?.[p.interfaceName])
           return (
             <button
               type="button"
@@ -437,6 +443,11 @@ export function DevicePanel({
                   {p.interfaceName}
                   {speedByCable.has(p.cableId) && (
                     <span style={{ color: '#94a3b8', marginLeft: 6 }}>{speedByCable.get(p.cableId)}</span>
+                  )}
+                  {live && (
+                    <span style={{ marginLeft: 6, color: theme.text.secondary }}>
+                      <span style={{ color: live.color }}>●</span> {live.text}
+                    </span>
                   )}
                 </span>
                 <span style={{ textAlign: 'right', wordBreak: 'break-all' }}>

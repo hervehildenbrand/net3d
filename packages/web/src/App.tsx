@@ -3,12 +3,15 @@ import {
   commitRateToSpeedBucket,
   compassBearing,
   lldpToSegments,
+  mapTelemetryToCables,
   type RackLocation,
 } from '@net3d/shared'
 import type { DcLink } from './scene/dclinks'
 import { MapLayer } from './map/MapLayer'
 import { useLldpDiscovery } from './hooks/useLldpDiscovery'
 import { useCapabilities } from './hooks/useCapabilities'
+import { useSiteTelemetry } from './hooks/useSiteTelemetry'
+import { useCircuitTelemetry } from './hooks/useCircuitTelemetry'
 import { useComputedSiteLayout } from './hooks/useComputedSiteLayout'
 import { LazySiteScene } from './scene/lazySiteScene'
 import { useSites } from './hooks/useSites'
@@ -35,6 +38,7 @@ import { computeSpecsRange } from './lib/specsHeatmap'
 import { collectSubnets } from './lib/subnetColoring'
 import { tracePowerChain } from './lib/powerChain'
 import { computeActiveLldpIds } from './lib/lldpScope'
+import { groupLive } from './lib/liveTelemetry'
 
 const hudStyle: React.CSSProperties = {
   position: 'absolute',
@@ -188,6 +192,22 @@ export function App() {
     [siteDetail],
   )
   const capabilities = useCapabilities()
+  // Map-level circuit telemetry: polled while map is visible, or while at site
+  // level with DC links showing in live mode — so room DC links have rates.
+  const circuitLive = useCircuitTelemetry(
+    capabilities.telemetryAvailable &&
+      (level === 'map' || (level === 'site' && cableColorMode === 'live' && dcLinksVisible)),
+  )
+  // Live gNMI utilisation, polled only while it can be shown: the 'live' cable
+  // mode is active, or a selected device's own panel wants per-interface rates.
+  const telemetry = useSiteTelemetry(
+    selectedSiteName,
+    capabilities.telemetryAvailable && !!siteDetail && (cableColorMode === 'live' || !!selectedDevice),
+  )
+  const cableLive = useMemo(
+    () => (cableColorMode === 'live' && telemetry && siteDetail ? mapTelemetryToCables(telemetry, siteDetail.cables) : undefined),
+    [cableColorMode, telemetry, siteDetail],
+  )
   const activeLldpIds = useMemo(
     () =>
       computeActiveLldpIds(capabilities.napalmAvailable, level, siteDetail?.racks ?? [], selectedRack),
@@ -233,10 +253,20 @@ export function App() {
           count: g.count,
           bucket: commitRateToSpeedBucket(g.maxCommitRate ?? null),
           bearingDeg,
+          cids: (g.circuits ?? []).map((c) => c.cid),
         },
       ]
     })
   }, [sites, selectedSiteName, circuitGroups])
+
+  // Decorate DC links with live utilisation when active; pass-through otherwise.
+  const dcLinksShown = useMemo(
+    () =>
+      cableColorMode === 'live' && circuitLive
+        ? dcLinks.map((l) => ({ ...l, live: groupLive(l.cids, circuitLive) }))
+        : dcLinks,
+    [dcLinks, circuitLive, cableColorMode],
+  )
 
   const inScene = level !== 'map'
 
@@ -254,7 +284,7 @@ export function App() {
         }}
       >
         {sites && (
-          <MapLayer sites={sites} circuitGroups={circuitGroups ?? []} onSiteSelect={zoomToSite} />
+          <MapLayer sites={sites} circuitGroups={circuitGroups ?? []} circuitLive={circuitLive} onSiteSelect={zoomToSite} />
         )}
       </div>
 
@@ -291,7 +321,7 @@ export function App() {
                 powerChainRackIds={powerChain?.rackIds ?? null}
                 selectedPowerSource={selectedPowerSource}
                 onPanelClick={onPanelClick}
-                dcLinks={dcLinks}
+                dcLinks={dcLinksShown}
                 dcLinksVisible={dcLinksVisible}
                 selectedRack={selectedRack}
                 selectedPlacement={selectedPlacement}
@@ -299,6 +329,7 @@ export function App() {
                 onDeviceClick={selectDevice}
                 selectedDeviceId={selectedDeviceId}
                 siteSubnets={siteSubnets}
+                cableLive={cableLive}
               />
             </Suspense>
           </SceneErrorBoundary>
@@ -353,6 +384,7 @@ export function App() {
           cables={siteDetail?.cables ?? []}
           rack={selectedRack}
           napalmAvailable={capabilities.napalmAvailable}
+          telemetry={telemetry?.devices[selectedDevice.name]}
           onClose={() => selectDevice(null)}
         />
       )}
@@ -390,6 +422,7 @@ export function App() {
           onToggleDcLinks={toggleDcLinks}
           ipLabelsVisible={ipLabelsVisible}
           onToggleIpLabels={toggleIpLabels}
+          telemetryAvailable={capabilities.telemetryAvailable}
         />
       )}
 

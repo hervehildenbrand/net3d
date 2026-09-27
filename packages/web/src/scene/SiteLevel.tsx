@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Billboard, Instance, Instances, Text } from '@react-three/drei'
 import {
   computeRoomStats,
+  type CableLive,
   type LldpCableSegment,
   type RackPlacement,
 } from '@net3d/shared'
@@ -205,6 +206,7 @@ export function SiteLevel({
   onPanelClick,
   dcLinks = [],
   dcLinksVisible = false,
+  cableLive,
 }: {
   racks: SiteRack[]
   cables: SiteCable[]
@@ -229,6 +231,8 @@ export function SiteLevel({
   dcLinks?: DcLink[]
   /** DC-links overlay on: render the labelled peer links radiating from the roof. */
   dcLinksVisible?: boolean
+  /** Live gNMI utilisation per cable id, when 'Color by: live' is active. */
+  cableLive?: Map<string, CableLive>
 }) {
   const colorMode = useAppStore((s) => s.colorMode)
   // In edit mode the live working copy (mutated during a drag) drives the racks.
@@ -370,7 +374,7 @@ export function SiteLevel({
       )}
       {!editModeActive && <RoomLabels racks={racks} placements={placements} />}
       {!editModeActive && (
-        <SiteCables placements={placements} cables={cables} lldpSegments={lldpSegments} />
+        <SiteCables placements={placements} cables={cables} lldpSegments={lldpSegments} cableLive={cableLive} />
       )}
       <Billboard position={[center.x, size.y + 0.6, center.z]}>
         <Text fontSize={0.5} color={theme.text.primary} anchorX="center">

@@ -1,5 +1,5 @@
 import { Canvas } from '@react-three/fiber'
-import type { LldpCableSegment, RackPlacement } from '@net3d/shared'
+import type { CableLive, LldpCableSegment, RackPlacement } from '@net3d/shared'
 import type { PowerSource } from '../lib/powerChain'
 import type { SiteDetailData, SiteRack } from '../hooks/useSiteDetail'
 import type { ViewLevel } from '../store/useAppStore'
@@ -28,6 +28,8 @@ interface SiteSceneProps {
   onDeviceClick: (deviceId: string | null) => void
   selectedDeviceId: string | null
   siteSubnets: string[]
+  /** Live gNMI utilisation per cable id, when 'Color by: live' is active. */
+  cableLive?: Map<string, CableLive>
 }
 
 export default function SiteScene({
@@ -35,6 +37,7 @@ export default function SiteScene({
   highlightedRoles, powerVisible, heatmap, powerChainRackIds,
   selectedPowerSource, onPanelClick, dcLinks, dcLinksVisible, selectedRack,
   selectedPlacement, napalmAvailable, onDeviceClick, selectedDeviceId, siteSubnets,
+  cableLive,
 }: SiteSceneProps) {
   return (
     <Canvas frameloop="demand" camera={{ position: [8, 8, 12], fov: 50 }}>
@@ -56,6 +59,7 @@ export default function SiteScene({
             onPanelClick={onPanelClick}
             dcLinks={dcLinks}
             dcLinksVisible={dcLinksVisible}
+            cableLive={cableLive}
           />
         )}
         {level === 'rack' && selectedRack && selectedPlacement && (
@@ -71,6 +75,7 @@ export default function SiteScene({
             heatmap={heatmap}
             highlightedRoles={highlightedRoles}
             siteSubnets={siteSubnets}
+            cableLive={cableLive}
           />
         )}
         <CameraRig />

@@ -16,6 +16,7 @@ import {
   portSlotLayout,
   STUB_LENGTH_M,
   summarizeDestinations,
+  type CableLive,
   type CableMedium,
   type EthSpeedBucket,
   type DeviceBox,
@@ -24,6 +25,7 @@ import {
   type Vec3,
 } from '@net3d/shared'
 import type { CableEndpoint, SiteCable, SiteRack } from '../hooks/useSiteDetail'
+import { bundleColor, liveColor } from '../lib/liveTelemetry'
 import { useAppStore, type CableColorMode } from '../store/useAppStore'
 import { theme } from '../theme'
 
@@ -60,6 +62,7 @@ export function RackCables({
   placement,
   cables,
   liveStatus,
+  cableLive,
   lldpSegments = [],
   showConnectivity = true,
   highlightDeviceName = null,
@@ -68,6 +71,8 @@ export function RackCables({
   placement: RackPlacement
   cables: SiteCable[]
   liveStatus?: Map<string, 'up' | 'down'>
+  /** Live gNMI utilisation per cable id, when 'Color by: live' is active. */
+  cableLive?: Map<string, CableLive>
   /** LLDP-discovered intra-rack links — rendered dashed. */
   lldpSegments?: LldpCableSegment[]
   /** Render the documented intra-rack cabling (server↔leaf/OOB) at all. */
@@ -163,7 +168,7 @@ export function RackCables({
       return {
         id: c.id,
         // in speed mode color even mgmt links by their line rate (1G); medium mode keeps the amber mgmt hue
-        color: mgmt && cableColorMode === 'medium' ? theme.cable.mgmt : cableColor(c, cableColorMode),
+        color: mgmt && cableColorMode !== 'speed' ? theme.cable.mgmt : cableColor(c, cableColorMode),
         mgmt,
         devices: [c.a!.deviceName!, c.b!.deviceName!],
         points: intraRackCablePath(a, b, {
@@ -204,7 +209,7 @@ export function RackCables({
         return {
           id: o.cable.id,
           remote: o.remote,
-          color: isMgmt && cableColorMode === 'medium' ? theme.cable.mgmt : cableColor(o.cable, cableColorMode),
+          color: isMgmt && cableColorMode !== 'speed' ? theme.cable.mgmt : cableColor(o.cable, cableColorMode),
           points: bundleConvergencePath(localAttach, { bundleX, rearZ, exitY, exitZ }).map(
             (p) => [p.x, p.y, p.z] as [number, number, number],
           ),
@@ -242,7 +247,9 @@ export function RackCables({
   return (
     <>
       {intraLines.map((l) => {
+        const tel = cableLive?.get(l.id)
         const live = liveStatus?.get(l.id)
+        const lit = !!(tel || live)
         // trace highlighting takes precedence over device hover/selection
         const emphasis = tracedCableIds
           ? tracedCableIds.has(l.id)
@@ -253,9 +260,10 @@ export function RackCables({
               ? 'hi'
               : 'lo'
             : 'none'
-        // live up/down wins; else the focused bundle reads as one accent colour
-        const color =
-          live === 'up'
+        // gNMI utilisation wins; else live up/down; else the focused bundle reads as one accent colour
+        const color = tel
+          ? liveColor(tel)
+          : live === 'up'
             ? '#16a34a'
             : live === 'down'
               ? '#dc2626'
@@ -267,12 +275,12 @@ export function RackCables({
             key={l.id}
             points={l.points}
             color={color}
-            lineWidth={emphasis === 'hi' ? 3 : live ? 2.5 : 1.5}
+            lineWidth={emphasis === 'hi' ? 3 : lit ? 2.5 : 1.5}
             dashed={l.mgmt}
             dashSize={0.04}
             gapSize={0.025}
             transparent
-            opacity={emphasis === 'hi' ? 1 : emphasis === 'lo' ? 0.08 : live ? 1 : 0.5}
+            opacity={emphasis === 'hi' ? 1 : emphasis === 'lo' ? 0.08 : lit ? 1 : 0.5}
           />
         )
       })}
@@ -295,19 +303,20 @@ export function RackCables({
         return (
           <group key={`out-${b.device}`}>
             {b.lines.map((ln, i) => {
+              const tel = cableLive?.get(ln.id)
               // per-line emphasis for traced cables
               const lineEmphasis = tracedCableIds
                 ? tracedCableIds.has(ln.id)
                   ? 'hi'
                   : 'lo'
                 : bundleEmphasis
-              const lineOpacity = lineEmphasis === 'hi' ? 1 : lineEmphasis === 'lo' ? 0.06 : 0.3
+              const lineOpacity = lineEmphasis === 'hi' ? 1 : lineEmphasis === 'lo' ? 0.06 : tel ? 0.9 : 0.3
               return (
                 <Line
                   key={i}
                   points={ln.points}
-                  color={lineEmphasis === 'hi' ? theme.cable.highlight : ln.color}
-                  lineWidth={lineEmphasis === 'hi' ? 2.5 : 1}
+                  color={tel ? liveColor(tel) : lineEmphasis === 'hi' ? theme.cable.highlight : ln.color}
+                  lineWidth={lineEmphasis === 'hi' ? 2.5 : tel ? 2 : 1}
                   dashed
                   dashSize={0.03}
                   gapSize={0.02}
@@ -375,11 +384,14 @@ export function SiteCables({
   placements,
   cables,
   lldpSegments = [],
+  cableLive,
 }: {
   placements: RackPlacement[]
   cables: SiteCable[]
   /** LLDP-discovered inter-rack links — rendered as dashed trays. */
   lldpSegments?: LldpCableSegment[]
+  /** Live gNMI utilisation per cable id, when 'Color by: live' is active. */
+  cableLive?: Map<string, CableLive>
 }) {
   const activeTrace = useAppStore((s) => s.activeTrace)
   // an active trace's inter-rack cables render as their own emphasized runs
@@ -435,7 +447,7 @@ export function SiteCables({
   }, [placements, lldpSegments])
   const lines = useMemo(() => {
     const byRack = new Map(placements.map((p) => [p.name, p]))
-    const pairs = new Map<string, { a: RackPlacement; b: RackPlacement; count: number }>()
+    const pairs = new Map<string, { a: RackPlacement; b: RackPlacement; ids: string[] }>()
     for (const c of cables) {
       const ra = c.a?.rackName
       const rb = c.b?.rackName
@@ -445,14 +457,15 @@ export function SiteCables({
       if (!pa || !pb) continue
       const key = [ra, rb].sort().join('|')
       const e = pairs.get(key)
-      if (e) e.count++
-      else pairs.set(key, { a: pa, b: pb, count: 1 })
+      if (e) e.ids.push(c.id)
+      else pairs.set(key, { a: pa, b: pb, ids: [c.id] })
     }
     const trayY = Math.max(...placements.map((p) => p.height), 2) + TRAY_CLEARANCE_M
-    const maxCount = Math.max(1, ...[...pairs.values()].map((p) => p.count))
-    return [...pairs.entries()].map(([key, { a, b, count }]) => ({
+    const maxCount = Math.max(1, ...[...pairs.values()].map((p) => p.ids.length))
+    return [...pairs.entries()].map(([key, { a, b, ids }]) => ({
       key,
-      intensity: 0.35 + 0.65 * (count / maxCount),
+      ids,
+      intensity: 0.35 + 0.65 * (ids.length / maxCount),
       points: interRackCablePath(
         { x: a.x, y: a.height, z: a.z },
         { x: b.x, y: b.height, z: b.z },
@@ -463,16 +476,19 @@ export function SiteCables({
 
   return (
     <>
-      {lines.map((l) => (
-        <Line
-          key={l.key}
-          points={l.points}
-          color={CABLE_FALLBACK}
-          lineWidth={1.5}
-          transparent
-          opacity={activeTrace ? l.intensity * 0.15 : l.intensity}
-        />
-      ))}
+      {lines.map((l) => {
+        const c = cableLive ? bundleColor(l.ids, cableLive) : null
+        return (
+          <Line
+            key={l.key}
+            points={l.points}
+            color={c ?? CABLE_FALLBACK}
+            lineWidth={c ? 2.5 : 1.5}
+            transparent
+            opacity={activeTrace ? l.intensity * 0.15 : c ? 1 : l.intensity}
+          />
+        )
+      })}
       {traceLines.map((l) => (
         <Line
           key={l.key}

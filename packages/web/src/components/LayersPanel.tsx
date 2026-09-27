@@ -8,6 +8,7 @@ import type { CableColorMode, ColorMode, ViewLevel } from '../store/useAppStore'
 import { theme } from '../theme'
 import { RoleLegend } from './RoleLegend'
 import { SpecsHeatmapLegend } from './SpecsHeatmapLegend'
+import { UtilLegend } from './UtilLegend'
 
 const panelStyle: React.CSSProperties = {
   position: 'absolute',
@@ -109,6 +110,12 @@ interface ColorOption {
   label: string
 }
 
+const cableModeLabel: Record<CableColorMode, string> = {
+  medium: 'physical medium',
+  speed: 'interface line rate',
+  live: 'live gNMI utilisation',
+}
+
 /**
  * The unified Layers control (top-right at site/rack level): a single-select
  * "Color by" dimension plus independent overlay toggles. Replaces the formerly
@@ -139,6 +146,7 @@ export function LayersPanel({
   onToggleDcLinks,
   ipLabelsVisible,
   onToggleIpLabels,
+  telemetryAvailable = false,
 }: {
   level: ViewLevel
   /** Role-list scope: the rack(s) currently in view (per-level). */
@@ -166,6 +174,8 @@ export function LayersPanel({
   onToggleDcLinks: () => void
   ipLabelsVisible: boolean
   onToggleIpLabels: () => void
+  /** Whether a gNMI/netstatex collector is configured, unlocking the 'live' cable mode. */
+  telemetryAvailable?: boolean
 }) {
   const specsRacks = metricRacks ?? racks
   const roles = useMemo(() => collectSiteRoles(racks), [racks])
@@ -181,6 +191,13 @@ export function LayersPanel({
   // tints racks by their dominant subnet, rack view tints each device box).
   if (level === 'rack' && statuses.length > 0) colorOptions.push({ mode: 'status', label: 'Status' })
   if (subnets.length > 0) colorOptions.push({ mode: 'subnet', label: 'Subnet' })
+
+  const cableModes: CableColorMode[] = level === 'rack' ? ['medium', 'speed'] : ['medium']
+  if (telemetryAvailable) cableModes.push('live')
+  // A mode picked at rack level (e.g. 'speed') may not be offered here after a
+  // rack->site nav (only zoomToMap resets it) — fall back to 'medium' so a button
+  // is always shown active. Display-only: never writes back to the store.
+  const activeCableMode = cableModes.includes(cableColorMode) ? cableColorMode : 'medium'
 
   const selectColor = (mode: ColorMode) => {
     // Entering Specs with no metric chosen yet lands on the first available one,
@@ -292,20 +309,28 @@ export function LayersPanel({
           <span style={{ flex: 1, color: theme.text.primary }}>IP labels</span>
         </button>
       )}
-      {level === 'rack' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, padding: '3px 2px' }}>
+      {cableModes.length > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, padding: '3px 2px', flexWrap: 'wrap' }}>
           <span style={{ color: theme.text.primary }}>Cables</span>
-          <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }} title="color rack cables by physical medium or by interface line rate">
-            {(['medium', 'speed'] as CableColorMode[]).map((m) => (
+          <div
+            style={{ display: 'flex', gap: 4, marginLeft: 'auto', flexWrap: 'wrap' }}
+            title={`color cables by ${cableModes.map((m) => cableModeLabel[m]).join(' or by ')}`}
+          >
+            {cableModes.map((m) => (
               <button
                 key={m}
                 onClick={() => onCableColorMode(m)}
-                style={{ ...segBtn, ...(cableColorMode === m ? segOn : {}) }}
+                style={{ ...segBtn, ...(activeCableMode === m ? segOn : {}) }}
               >
                 {m}
               </button>
             ))}
           </div>
+        </div>
+      )}
+      {cableColorMode === 'live' && (
+        <div style={{ marginTop: 8 }}>
+          <UtilLegend />
         </div>
       )}
     </div>

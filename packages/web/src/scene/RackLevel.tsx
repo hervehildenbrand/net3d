@@ -9,6 +9,7 @@ import {
   mapInterfacesToCables,
   portNamesFromLinks,
   portSlotLayout,
+  type CableLive,
   type LldpCableSegment,
   type RackPlacement,
 } from '@net3d/shared'
@@ -135,6 +136,7 @@ export function RackLevel({
   heatmap = null,
   highlightedRoles,
   siteSubnets = [],
+  cableLive,
 }: {
   rack: SiteRack
   placement: RackPlacement
@@ -150,6 +152,8 @@ export function RackLevel({
   highlightedRoles: Set<string>
   /** Site-wide subnet list, so 'Color by: Subnet' assigns stable colors across racks. */
   siteSubnets?: string[]
+  /** Live gNMI utilisation per cable id, when 'Color by: live' is active. */
+  cableLive?: Map<string, CableLive>
 }) {
   const [hovered, setHovered] = useState<string | null>(null)
   const connectivityVisible = useAppStore((s) => s.connectivityVisible)
@@ -348,6 +352,7 @@ export function RackLevel({
         placement={placement}
         cables={cables}
         liveStatus={liveStatus}
+        cableLive={cableLive}
         lldpSegments={lldpSegments}
         // power overlay takes over the rear channel — fade data cabling while it's on
         showConnectivity={connectivityVisible && !powerVisible}

@@ -20,8 +20,8 @@ export type ViewLevel = 'map' | 'site' | 'rack'
  */
 export type ColorMode = 'none' | 'role' | 'specs' | 'capacity' | 'status' | 'subnet'
 
-/** How rack-view cables are colored: by physical medium (fiber/copper/…) or by line rate. */
-export type CableColorMode = 'medium' | 'speed'
+/** How cables are colored: by physical medium (fiber/copper/…), by line rate (rack view only), or by live gNMI utilisation (rack and site view). */
+export type CableColorMode = 'medium' | 'speed' | 'live'
 
 /** Map zoom to land on when exiting a site — just below the re-arm threshold. */
 const MAP_RETURN_ZOOM = 13
@@ -106,7 +106,7 @@ interface AppState {
   /** Status filter (rack view): device statuses to hide. Empty = show all. */
   hiddenStatuses: Set<string>
   toggleHiddenStatus: (status: string) => void
-  /** Rack-view cable coloring: by physical medium (default) or by interface line rate. */
+  /** Cable coloring (rack and site view): by physical medium (default), by interface line rate (rack view only), or by live gNMI utilisation. */
   cableColorMode: CableColorMode
   setCableColorMode: (mode: CableColorMode) => void
   /** Rack view: render each device's primary IP as a label. */

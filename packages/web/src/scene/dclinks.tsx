@@ -1,5 +1,5 @@
 import { Billboard, Line, Text } from '@react-three/drei'
-import { bearingToGroundOffset, speedBucketToWidth, type SpeedBucket } from '@net3d/shared'
+import { bearingToGroundOffset, formatBps, speedBucketToWidth, type SpeedBucket } from '@net3d/shared'
 import { theme } from '../theme'
 
 export interface DcLink {
@@ -11,6 +11,10 @@ export interface DcLink {
   bucket: SpeedBucket
   /** Compass bearing (deg, from north) this site → peer; null when coords are missing. */
   bearingDeg: number | null
+  /** Circuit IDs that make up this link group. */
+  cids: string[]
+  /** Live utilisation data when available. */
+  live?: { color: string; bps: number | null } | null
 }
 
 /**
@@ -42,7 +46,7 @@ export function SiteDcLinks({
           <group key={l.peerName}>
             <Line
               points={[start, end]}
-              color={theme.map.circuit}
+              color={l.live?.color ?? theme.map.circuit}
               lineWidth={Math.max(speedBucketToWidth(l.bucket), 2)}
               transparent
               opacity={0.85}
@@ -50,11 +54,11 @@ export function SiteDcLinks({
             />
             <mesh position={end} raycast={() => null}>
               <sphereGeometry args={[0.15, 12, 12]} />
-              <meshBasicMaterial color={theme.map.circuit} toneMapped={false} />
+              <meshBasicMaterial color={l.live?.color ?? theme.map.circuit} toneMapped={false} />
             </mesh>
             <Billboard position={[end[0], end[1] + 0.35, end[2]]}>
               <Text fontSize={0.32} color={theme.text.secondary} anchorX="center" anchorY="bottom">
-                {`→ ${l.peerName} (${l.count})`}
+                {`→ ${l.peerName} (${l.count})${l.live?.bps != null ? ` · ${formatBps(l.live.bps)}` : ''}`}
               </Text>
             </Billboard>
           </group>

@@ -406,6 +406,11 @@ describe('cableColorMode', () => {
     useAppStore.getState().zoomToMap()
     expect(useAppStore.getState().cableColorMode).toBe('medium')
   })
+
+  test('test_setCableColorMode_live_sets_live', () => {
+    useAppStore.getState().setCableColorMode('live')
+    expect(useAppStore.getState().cableColorMode).toBe('live')
+  })
 })
 
 describe('hiddenStatuses', () => {

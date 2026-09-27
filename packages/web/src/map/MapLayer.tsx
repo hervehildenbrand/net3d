@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { CircleMarker, MapContainer, Pane, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import { computeMapBounds, type CircuitGroup } from '@net3d/shared'
+import { computeMapBounds, type CircuitGroup, type CableLive } from '@net3d/shared'
 import type { Site } from '../hooks/useSites'
 import { useSitePrefetch } from '../hooks/useSitePrefetch'
 import { useAppStore } from '../store/useAppStore'
@@ -88,10 +88,12 @@ function FitToSites({ sites }: { sites: Site[] }) {
 export function MapLayer({
   sites,
   circuitGroups,
+  circuitLive,
   onSiteSelect,
 }: {
   sites: Site[]
   circuitGroups: CircuitGroup[]
+  circuitLive: Map<string, CableLive> | undefined
   onSiteSelect: (name: string) => void
 }) {
   const setMapView = useAppStore((s) => s.setMapView)
@@ -114,7 +116,7 @@ export function MapLayer({
       <MapViewRestorer />
       {/* Links sit in a lower pane so site markers (upper pane) win the click. */}
       <Pane name="circuits" style={{ zIndex: 399 }}>
-        <CircuitPolylines sites={sites} groups={circuitGroups} />
+        <CircuitPolylines sites={sites} groups={circuitGroups} live={circuitLive} />
       </Pane>
       <Pane name="sites" style={{ zIndex: 401 }}>
         {geocoded.map((s) => {
@@ -152,7 +154,7 @@ export function MapLayer({
         ))}
       </Pane>
     </MapContainer>
-    <MapLegend />
+    <MapLegend live={!!circuitLive?.size} />
     </>
   )
 }
