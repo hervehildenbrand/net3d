@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
-import { apiUrl } from '../lib/api'
+import { queryOptions, useQuery } from '@tanstack/react-query'
+import { apiUrl, type Backend } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 
 export interface Capabilities {
@@ -20,17 +20,22 @@ const NO_CAPABILITIES: Capabilities = {
   telemetryAvailable: false,
 }
 
-/** What the active backend can do — NAPALM/LLDP UI hides when live queries are absent. */
-export function useCapabilities(): Capabilities {
-  const backend = useAppStore((s) => s.backend)
-  const { data } = useQuery<Capabilities>({
-    queryKey: ['meta', backend],
-    queryFn: async () => {
+export function capabilitiesQueryOptions(backend: Backend) {
+  return queryOptions({
+    queryKey: ['meta', backend] as const,
+    queryFn: async (): Promise<Capabilities> => {
       const res = await fetch(apiUrl(backend, '/meta'))
       if (!res.ok) return NO_CAPABILITIES
-      return res.json()
+      // A flag the server omits (telemetryAvailable when no collector is configured) reads as
+      // false: callers hand these straight to react-query `enabled`, where undefined means on.
+      return { ...NO_CAPABILITIES, ...(await res.json()) }
     },
     staleTime: Infinity,
   })
-  return data ?? NO_CAPABILITIES
+}
+
+/** What the active backend can do — NAPALM/LLDP UI hides when live queries are absent. */
+export function useCapabilities(): Capabilities {
+  const backend = useAppStore((s) => s.backend)
+  return useQuery(capabilitiesQueryOptions(backend)).data ?? NO_CAPABILITIES
 }
