@@ -53,3 +53,16 @@ export function formatCommitRate(kbps: number | null): string {
   if (kbps >= 1_000_000) return `${kbps / 1_000_000} Gbps`
   return `${kbps / 1_000} Mbps`
 }
+
+/** Human-readable live rate in bits/sec (e.g. 12.3e9 -> "12.3 Gbps"). */
+export function formatBps(bps: number): string {
+  const units = ['bps', 'kbps', 'Mbps', 'Gbps', 'Tbps']
+  let value = bps
+  let i = 0
+  while (value >= 999.95 && i < 4) {
+    value /= 1000
+    i++
+  }
+  const rounded = i === 0 ? Math.round(value) : +value.toFixed(1)
+  return `${rounded} ${units[i]}`
+}

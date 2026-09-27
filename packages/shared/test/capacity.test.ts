@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   commitRateToSpeedBucket,
+  formatBps,
   formatCommitRate,
   interfaceSpeedBucket,
   speedBucketToLabel,
@@ -68,5 +69,14 @@ describe('labels', () => {
     expect(formatCommitRate(10_000_000)).toBe('10 Gbps')
     expect(formatCommitRate(500_000)).toBe('500 Mbps')
     expect(formatCommitRate(null)).toBe('unknown')
+  })
+
+  test('test_formatBps_scales_and_rounds', () => {
+    expect(formatBps(0)).toBe('0 bps')
+    expect(formatBps(950.4)).toBe('950 bps')
+    expect(formatBps(999_950)).toBe('1 Mbps')
+    expect(formatBps(1_250_000_000)).toBe('1.3 Gbps')
+    expect(formatBps(12.3e9)).toBe('12.3 Gbps')
+    expect(formatBps(4e11)).toBe('400 Gbps')
   })
 })
