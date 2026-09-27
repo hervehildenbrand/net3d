@@ -6,7 +6,7 @@ import { netboxFetch } from './netbox'
 import { createSoTClient, getSoTConfigFromEnv } from './sot/factory'
 import { createDiskCacheStore } from './persistence'
 import { createLayoutStore } from './layout-store'
-import { createNetstatexClient } from './netstatex'
+import { netstatexFromEnv } from './netstatex'
 
 const {
   PORT,
@@ -24,8 +24,6 @@ const {
   LAYOUT_PREVIEW,
   FRAME_ANCESTORS,
   WEBHOOK_SECRET,
-  NETSTATEX_URL,
-  NETSTATEX_TOKEN,
 } = process.env
 
 // Which source of truth, and its connection details (NETBOX_* / INFRAHUB_*).
@@ -99,8 +97,8 @@ async function main() {
   // Sandbox: expose the editor for local play without persistence (Save disabled).
   const layoutPreview = LAYOUT_PREVIEW === '1' || LAYOUT_PREVIEW === 'true'
 
-  // Live gNMI link telemetry via a netstatex collector; unset/empty = feature off.
-  const netstatex = NETSTATEX_URL ? createNetstatexClient(NETSTATEX_URL, NETSTATEX_TOKEN || undefined) : undefined
+  // Live gNMI link telemetry via a netstatex collector; unset/blank = feature off.
+  const netstatex = netstatexFromEnv()
 
   const app = buildApp({
     netbox: sot,

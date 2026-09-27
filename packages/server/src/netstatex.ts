@@ -35,3 +35,9 @@ export function createNetstatexClient(baseUrl: string, token?: string) {
 }
 
 export type NetstatexClient = ReturnType<typeof createNetstatexClient>
+
+/** The collector configured by NETSTATEX_URL / NETSTATEX_TOKEN; an unset or blank URL means the feature is off. */
+export function netstatexFromEnv(env: NodeJS.ProcessEnv = process.env): NetstatexClient | undefined {
+  const url = env.NETSTATEX_URL?.trim()
+  return url ? createNetstatexClient(url, env.NETSTATEX_TOKEN?.trim() || undefined) : undefined
+}

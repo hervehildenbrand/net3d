@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { createNetstatexClient, type NetstatexClient } from '../src/netstatex'
+import { createNetstatexClient, netstatexFromEnv, type NetstatexClient } from '../src/netstatex'
 import { buildApp } from '../src/app'
 import type { NetBoxClient, NetBoxSite, SiteRack } from '../src/netbox'
 
@@ -85,6 +85,43 @@ describe('createNetstatexClient', () => {
     const client = createNetstatexClient('http://nsx:8090')
     await expect(client.deviceNames()).rejects.toThrow()
     await expect(client.interfaces('r1')).rejects.toThrow()
+  })
+})
+
+describe('netstatexFromEnv', () => {
+  test('test_netstatexFromEnv_unset_returns_undefined', () => {
+    expect(netstatexFromEnv({})).toBeUndefined()
+  })
+
+  test('test_netstatexFromEnv_empty_or_blank_url_returns_undefined', () => {
+    expect(netstatexFromEnv({ NETSTATEX_URL: '' })).toBeUndefined()
+    expect(netstatexFromEnv({ NETSTATEX_URL: '   ' })).toBeUndefined()
+  })
+
+  test('test_netstatexFromEnv_token_without_url_returns_undefined', () => {
+    expect(netstatexFromEnv({ NETSTATEX_TOKEN: 'tok' })).toBeUndefined()
+  })
+
+  test('test_netstatexFromEnv_valid_url_and_token_are_trimmed_and_sent', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json([]))
+
+    await netstatexFromEnv({ NETSTATEX_URL: ' http://nsx:8090/ ', NETSTATEX_TOKEN: ' tok ' })!.deviceNames()
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'http://nsx:8090/api/v1/devices',
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer tok' }) }),
+    )
+  })
+
+  test('test_netstatexFromEnv_unset_or_blank_token_sends_no_authorization', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json([]))
+
+    for (const NETSTATEX_TOKEN of [undefined, '', '  ']) {
+      await netstatexFromEnv({ NETSTATEX_URL: 'http://nsx:8090', NETSTATEX_TOKEN })!.deviceNames()
+    }
+
+    expect(fetchSpy).toHaveBeenCalledTimes(3)
+    for (const [, init] of fetchSpy.mock.calls) expect(init?.headers).not.toHaveProperty('Authorization')
   })
 })
 
