@@ -37,9 +37,9 @@ export interface CableLive {
 
 /**
  * Map live gNMI interface rates onto documented cables. Each direction prefers that side's
- * own tx rate, falling back to the peer's rx when that side isn't itself monitored or is
- * stale. Cables with no monitored end, or whose rates are still initializing, are absent
- * from the result (render as today).
+ * own tx rate, falling back to the peer's rx when that side isn't itself monitored or its
+ * tx rate is null. Cables with no monitored end, or whose rates are still initializing, are
+ * absent from the result (render as today).
  */
 // ponytail: direct cables only (both ends' own ports), no patch-panel trace fan-out; add via the cable-trace path if panels matter
 export function mapTelemetryToCables(telemetry: SiteTelemetry, cables: CableLike[]): Map<string, CableLive> {
