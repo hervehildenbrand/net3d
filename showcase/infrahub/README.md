@@ -57,6 +57,17 @@ ONLY_SITES=IAD1,AMS1,SIN1,MIA1 SERVER_RACKS=8 SERVERS_PER_RACK=18 \
 
 It is idempotent (every node upserts by HFID), so it is safe to re-run.
 
+Circuit ends are cabled to core-router WAN ports by the same planner as the
+NetBox showcase, at the end of every circuits pass (including `CIRCUITS_ONLY`).
+Which circuit lands on which `et-0/0/N` depends on the seeded circuit set: a
+full mirror matches the NetBox showcase port for port, while the default 4-site
+subset puts different circuits (and rates) on the same port names. To cable an
+instance seeded before that, without re-seeding it:
+
+```bash
+CIRCUIT_CABLES_ONLY=1 ./.venv/bin/python seed/seed_infrahub.py
+```
+
 ## 3. Run net3d against it
 
 ```bash

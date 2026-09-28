@@ -36,6 +36,7 @@ NB_SEED = Path(__file__).resolve().parents[2] / "seed"  # showcase/seed
 sys.path.insert(0, str(NB_SEED))
 from server_roles import SERVER_ROLE_DEFS, server_role, server_device_type_slug  # noqa: E402
 from power import FEED_ELECTRICAL, PDU_ROLE, feed_name, feed_type, panel_name, pdu_name  # noqa: E402
+from circuit_ports import plan_circuit_ports  # noqa: E402
 
 DATA = NB_SEED / "data"
 
@@ -61,6 +62,9 @@ CIRCUITS_ONLY = os.environ.get("CIRCUITS_ONLY", "") in ("1", "true")
 # One-off cleanup: delete cables that duplicate an endpoint pair (left over from
 # earlier re-seeds before cable creation became idempotent).
 DEDUPE_CABLES = os.environ.get("DEDUPE_CABLES", "") in ("1", "true")
+# Cable circuit ends to core WAN ports on an instance seeded before that existed,
+# without re-seeding sites or circuits.
+CIRCUIT_CABLES_ONLY = os.environ.get("CIRCUIT_CABLES_ONLY", "") in ("1", "true")
 
 RACK_HEIGHT = 42
 OOB_SWITCH_POS = 40
@@ -465,6 +469,73 @@ def seed_circuits(dcs, sites, providers):
                 })
             made += 1
     print(f"   {made} circuits", flush=True)
+    # every circuits pass (normal and CIRCUITS_ONLY) ends with its cables in place
+    seed_circuit_cables()
+
+
+def seed_circuit_cables():
+    """Cable each circuit end straight to its planned core WAN port (circuit_ports.py),
+    so live telemetry on that port colours the map arc and the room DC link.
+
+    Idempotent: WAN interfaces upsert by HFID and a port whose cable already reaches
+    its planned endpoint is kept. A CIRCUITS_ONLY rebuild deletes every endpoint,
+    which leaves the old cables dangling (endpoint_b emptied, on_delete no-action),
+    so any other cable on a WAN port is dropped and re-made. Normal-mode re-seeds can
+    duplicate endpoints (CircuitEndpoint has no HFID): any copy of the planned
+    {cid}-{side} endpoint counts as reached.
+    """
+    print("== circuit cables ==", flush=True)
+    data = _retry(lambda: client.execute_graphql(query=(
+        '{ CircuitCircuit { edges { node { cid { value } commit_rate { value } '
+        'endpoints { edges { node { id term_side { value } site { node { name { value } } } } } } } } } '
+        'DcimDevice(role__name__value: "Core") { edges { node { id name { value } } } } }')))
+    cores = {e["node"]["name"]["value"]: e["node"]["id"] for e in data["DcimDevice"]["edges"]}
+    circuits, ep_ids = [], defaultdict(list)  # ep_ids: (cid, side) -> endpoint ids
+    for e in data["CircuitCircuit"]["edges"]:
+        c, sites = e["node"], {}
+        cid = c["cid"]["value"]
+        for ep in (x["node"] for x in c["endpoints"]["edges"]):
+            side = ep["term_side"]["value"]
+            ep_ids[(cid, side)].append(ep["id"])
+            if (ep.get("site") or {}).get("node"):
+                sites[side] = ep["site"]["node"]["name"]["value"]
+        if "A" in sites and "Z" in sites:
+            circuits.append({"cid": cid, "a_site": sites["A"], "z_site": sites["Z"],
+                             "commit_rate_kbps": c["commit_rate"]["value"]})
+    ports = [p for p in plan_circuit_ports(circuits) if p["device"] in cores]
+    if not ports:
+        print("   no circuits or core routers — nothing to cable", flush=True)
+        return
+
+    nodes = batch_upsert([("DcimInterface", {"device": cores[p["device"]], "name": p["iface"],
+                                             "interface_type": p["type"]}) for p in ports])
+    iface_id = {(n.device.id, n.name.value): n.id for n in nodes}
+    ids = ", ".join(f'"{i}"' for i in iface_id.values())
+    found = _retry(lambda: client.execute_graphql(query=(
+        f'{{ DcimCable(endpoint_a__ids: [{ids}]) {{ edges {{ node {{ id '
+        f'endpoint_a {{ node {{ id }} }} endpoint_b {{ node {{ id }} }} }} }} }} }}')))
+    on_port = defaultdict(list)  # WAN iface id -> [(cable id, far endpoint id or None)]
+    for e in found["DcimCable"]["edges"]:
+        n = e["node"]
+        far = ((n.get("endpoint_b") or {}).get("node") or {}).get("id")
+        on_port[n["endpoint_a"]["node"]["id"]].append((n["id"], far))
+
+    # ponytail: only cables on currently planned ports are reconciled; a port that
+    # drops out of the plan (circuit set shrank) keeps its cable until wiped by hand.
+    stale, specs = [], []
+    for p in ports:
+        iid = iface_id[(cores[p["device"]], p["iface"])]
+        want = ep_ids[(p["cid"], p["side"])]
+        keep = next((cab for cab, far in on_port[iid] if far in want), None)
+        stale += [cab for cab, _ in on_port[iid] if cab != keep]
+        if keep is None:
+            specs.append(("DcimCable", {"status": "connected", "cable_type": "smf",
+                                        "endpoint_a": iid, "endpoint_b": min(want)}))
+    for cab in stale:
+        _retry(lambda cab=cab: client.get(kind="DcimCable", id=cab).delete())
+    batch_upsert(specs)
+    print(f"   {len(specs)} circuit cables ({len(ports) - len(specs)} already present, "
+          f"{len(stale)} stale dropped)", flush=True)
 
 
 def main():
@@ -486,6 +557,13 @@ def main():
                 _retry(lambda b=batch: list(b.execute()))
             print(f"   deleted {len(nodes)} duplicate cables", flush=True)
         print("Done (dedupe cables).", flush=True)
+        return
+
+    # Circuit-cables-only: cable the existing circuits to core WAN ports. No site or
+    # circuit writes, so it is safe on any instance (e.g. one seeded before cabling).
+    if CIRCUIT_CABLES_ONLY:
+        seed_circuit_cables()
+        print("Done (circuit cables only).", flush=True)
         return
 
     # Circuits-only: don't (re)seed sites — read the ones already in Infrahub and
