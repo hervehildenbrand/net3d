@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { labelBox, placeLabels, contrastText, wcagContrast } from './arcLabels'
+import { labelBox, placeSlidingLabels, contrastText, wcagContrast, type SlidingLabel } from './arcLabels'
 import { specsColor } from '../lib/specsHeatmap'
 import { theme } from '../theme'
 
@@ -67,56 +67,55 @@ describe('contrastText', () => {
   })
 })
 
-describe('placeLabels', () => {
-  it('test_placeLabels_disjoint_keeps_all', () => {
-    // Three boxes far apart should all be kept
-    const boxes = [
-      { key: 'a', x: 0, y: 0, w: 10, h: 10, priority: 1 },
-      { key: 'b', x: 100, y: 0, w: 10, h: 10, priority: 2 },
-      { key: 'c', x: 200, y: 0, w: 10, h: 10, priority: 3 },
+describe('placeSlidingLabels', () => {
+  const box = (key: string, x: number, y: number, priority: number) =>
+    ({ key, x, y, w: 30, h: 20, priority })
+
+  it('test_placeSlidingLabels_first_candidate_free_index_0', () => {
+    const labels: SlidingLabel[] = [
+      { key: 'a', priority: 10, candidates: [box('a', 0, 0, 10), box('a', 100, 0, 10)] },
     ]
-    const kept = placeLabels(boxes)
-    expect(kept.size).toBe(3)
-    expect(kept.has('a')).toBe(true)
-    expect(kept.has('b')).toBe(true)
-    expect(kept.has('c')).toBe(true)
+    const result = placeSlidingLabels(labels)
+    expect(result.get('a')).toBe(0)
   })
 
-  it('test_placeLabels_overlap_keeps_busiest', () => {
-    // Two overlapping boxes: higher priority wins
-    const boxes = [
-      { key: 'low', x: 0, y: 0, w: 50, h: 50, priority: 10 },
-      { key: 'high', x: 25, y: 25, w: 50, h: 50, priority: 100 },
+  it('test_placeSlidingLabels_first_on_marker_second_free_index_1', () => {
+    const labels: SlidingLabel[] = [
+      { key: 'a', priority: 10, candidates: [box('a', 0, 0, 10), box('a', 100, 0, 10)] },
     ]
-    const kept = placeLabels(boxes)
-    expect(kept.size).toBe(1)
-    expect(kept.has('high')).toBe(true)
-    expect(kept.has('low')).toBe(false)
+    const markers = [{ x: 10, y: 10, r: 15 }] // overlaps first candidate
+    const result = placeSlidingLabels(labels, markers)
+    expect(result.get('a')).toBe(1)
   })
 
-  it('test_placeLabels_drops_box_overlapping_any_kept', () => {
-    // A middle-priority box overlaps the highest, so it's dropped even if it doesn't overlap the lowest
-    const boxes = [
-      { key: 'high', x: 0, y: 0, w: 30, h: 30, priority: 100 },
-      { key: 'mid', x: 20, y: 20, w: 30, h: 30, priority: 50 },    // overlaps high
-      { key: 'low', x: 200, y: 0, w: 30, h: 30, priority: 10 },   // far away, no overlap
+  it('test_placeSlidingLabels_busier_label_claims_spot_other_slides', () => {
+    // Both labels want (0,0) as first choice; busy wins that spot, light slides to its second
+    const labels: SlidingLabel[] = [
+      { key: 'busy', priority: 100, candidates: [box('busy', 0, 0, 100), box('busy', 200, 0, 100)] },
+      { key: 'light', priority: 10, candidates: [box('light', 0, 0, 10), box('light', 100, 0, 10)] },
     ]
-    const kept = placeLabels(boxes)
-    expect(kept.size).toBe(2)
-    expect(kept.has('high')).toBe(true)
-    expect(kept.has('low')).toBe(true)
-    expect(kept.has('mid')).toBe(false)
+    const result = placeSlidingLabels(labels)
+    expect(result.get('busy')).toBe(0)
+    expect(result.get('light')).toBe(1)
   })
 
-  it('test_placeLabels_avoids_markers', () => {
-    // A box over a marker is dropped
-    const boxes = [
-      { key: 'a', x: 0, y: 0, w: 30, h: 30, priority: 100 },   // over marker
-      { key: 'b', x: 200, y: 0, w: 30, h: 30, priority: 50 },  // clear
+  it('test_placeSlidingLabels_no_free_candidate_key_absent', () => {
+    const labels: SlidingLabel[] = [
+      { key: 'blocked', priority: 10, candidates: [box('blocked', 0, 0, 10)] },
     ]
-    const markers = [{ x: 10, y: 10, r: 12 }] // marker at (10,10) radius 12
-    const kept = placeLabels(boxes, markers)
-    expect(kept.has('a')).toBe(false) // dropped, over marker
-    expect(kept.has('b')).toBe(true)
+    const markers = [{ x: 10, y: 10, r: 20 }]
+    const result = placeSlidingLabels(labels, markers)
+    expect(result.has('blocked')).toBe(false)
+  })
+
+  it('test_placeSlidingLabels_ties_keep_input_order', () => {
+    // Same priority: first in input order gets placed first
+    const labels: SlidingLabel[] = [
+      { key: 'first', priority: 50, candidates: [box('first', 0, 0, 50)] },
+      { key: 'second', priority: 50, candidates: [box('second', 10, 0, 50)] }, // overlaps first
+    ]
+    const result = placeSlidingLabels(labels)
+    expect(result.get('first')).toBe(0)
+    expect(result.has('second')).toBe(false) // all candidates blocked by 'first'
   })
 })

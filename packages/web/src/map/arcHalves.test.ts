@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { screenAngleDeg, showArrows, splitArc, spreadPoints } from './arcHalves'
+import { halfCandidates, screenAngleDeg, showArrows, splitArc, spreadPoints } from './arcHalves'
 
 describe('splitArc', () => {
   test('test_splitArc_halves_meet_at_the_middle_point', () => {
@@ -94,5 +94,34 @@ describe('spreadPoints', () => {
     const kept = spreadPoints(points, 10)
     expect(kept.has('first')).toBe(true)
     expect(kept.has('second')).toBe(false)
+  })
+})
+
+describe('halfCandidates', () => {
+  test('test_halfCandidates_A_half_starts_at_middle_alternates_toward_ends', () => {
+    // A half is 0..24 (midAt = to = 24), middle interior is 12
+    const result = halfCandidates(0, 24, 24)
+    expect(result.slice(0, 6)).toEqual([12, 13, 11, 14, 10, 15])
+    // Should contain exactly indices 1..23 (interior points, not endpoints)
+    expect(result.sort((a, b) => a - b)).toEqual(Array.from({ length: 23 }, (_, i) => i + 1))
+  })
+
+  test('test_halfCandidates_Z_half_prefers_toward_midpoint_on_tie', () => {
+    // Z half is 24..48 (midAt = from = 24), middle interior is 36
+    const result = halfCandidates(24, 48, 24)
+    // First is 36, then alternate but prefer toward 24 (smaller indices)
+    expect(result.slice(0, 4)).toEqual([36, 35, 37, 34])
+    // Should contain exactly 25..47
+    expect(result.sort((a, b) => a - b)).toEqual(Array.from({ length: 23 }, (_, i) => i + 25))
+  })
+
+  test('test_halfCandidates_short_half_single_interior', () => {
+    // Half is 0..2, only interior point is 1
+    expect(halfCandidates(0, 2, 2)).toEqual([1])
+  })
+
+  test('test_halfCandidates_too_short_empty', () => {
+    // Half is 0..1, no interior points
+    expect(halfCandidates(0, 1, 1)).toEqual([])
   })
 })

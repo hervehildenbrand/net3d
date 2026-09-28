@@ -4,15 +4,54 @@
  */
 
 /** Split an arc's points at its middle point; both halves keep that point so they meet. */
-export function splitArc<P>(points: P[]): { a: P[]; z: P[]; mid: P; aLabel: P; zLabel: P } {
+export function splitArc<P>(points: P[]): { a: P[]; z: P[]; mid: P; midIndex: number; aLabel: P; zLabel: P } {
   const m = Math.floor(points.length / 2)
   return {
     a: points.slice(0, m + 1),
     z: points.slice(m),
     mid: points[m]!,
+    midIndex: m,
     aLabel: points[Math.floor(m / 2)]!,
     zLabel: points[m + Math.floor((points.length - 1 - m) / 2)]!,
   }
+}
+
+/**
+ * Indices of a half-arc's interior points in placement preference order: the half's middle first, then
+ * alternating one step toward each end (closer to the arc midpoint first on ties), never the half's two end points.
+ * @param from - inclusive start index of the half
+ * @param to - inclusive end index of the half
+ * @param midAt - which end is the arc's midpoint (from or to)
+ */
+export function halfCandidates(from: number, to: number, midAt: number): number[] {
+  // Interior points only (exclude endpoints)
+  const start = from + 1
+  const end = to - 1
+  if (start > end) return []
+
+  const mid = Math.floor((start + end) / 2)
+  const result: number[] = [mid]
+  let lo = mid - 1
+  let hi = mid + 1
+
+  // Determine which direction is "toward midAt" to prefer on ties
+  const preferLow = midAt === from
+
+  while (lo >= start || hi <= end) {
+    if (lo >= start && hi <= end) {
+      // Both valid: prefer the one toward midAt
+      if (preferLow) {
+        result.push(lo--, hi++)
+      } else {
+        result.push(hi++, lo--)
+      }
+    } else if (lo >= start) {
+      result.push(lo--)
+    } else if (hi <= end) {
+      result.push(hi++)
+    }
+  }
+  return result
 }
 
 /** Screen angle in degrees (clockwise, as screen y grows downward) of the direction from `from` to `to`. */

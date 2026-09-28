@@ -14,8 +14,8 @@ import {
 import type { Site } from '../hooks/useSites'
 import { theme } from '../theme'
 import { dirLive, formatPct, type DirGroup } from '../lib/liveTelemetry'
-import { labelBox, placeLabels, contrastText, type LabelBox, type MarkerCircle } from './arcLabels'
-import { screenAngleDeg, showArrows, splitArc, spreadPoints } from './arcHalves'
+import { labelBox, placeSlidingLabels, contrastText, type LabelBox, type MarkerCircle, type SlidingLabel } from './arcLabels'
+import { halfCandidates, screenAngleDeg, showArrows, splitArc, spreadPoints } from './arcHalves'
 
 type LatLng = [number, number]
 
@@ -39,8 +39,8 @@ function lineDirs(l: LineData, live: Map<string, CircuitLive>): { a: DirGroup; z
   return a && z ? { a, z } : null
 }
 
-/** Screen radius kept clear around each site marker (dot is 7 px + 2 px stroke; the rest is breathing room). */
-const MARKER_RADIUS = 14
+/** Screen radius kept clear around each site marker (dot is 7 px + 2 px stroke; extra for sub-pixel rendering). */
+const MARKER_RADIUS = 18
 /** Screen radius kept clear around the arrowheads at an arc's midpoint. */
 const ARROW_RADIUS = 9
 /** Minimum distance between kept arrow pairs; two arrowheads are ~20 px tip to tail. */
@@ -61,7 +61,7 @@ interface Arrow {
   color: string
 }
 
-type Bead = LabelBox & { bps: number; color: string; at: LatLng }
+type Bead = { key: string; bps: number; color: string; at: LatLng }
 
 /** Per-direction arrowheads and rate beads for live links; beads de-overlapped on zoom/move. */
 function ArcLabels({ lines, live, sites }: { lines: LineData[]; live: Map<string, CircuitLive>; sites: Site[] }) {
@@ -83,7 +83,7 @@ function ArcLabels({ lines, live, sites }: { lines: LineData[]; live: Map<string
       })
 
     const arrows: Arrow[] = []
-    const boxes: Bead[] = []
+    const slidingLabels: (SlidingLabel & { bps: number; color: string; positions: LatLng[] })[] = []
     // site circles for showArrows check (only MARKER_RADIUS site markers, not arrow avoid-circles)
     const siteCircles = markers.slice()
 
@@ -102,7 +102,7 @@ function ArcLabels({ lines, live, sites }: { lines: LineData[]; live: Map<string
     for (const l of lines) {
       const dirs = lineDirs(l, live)
       if (!dirs) continue
-      const { a, z, mid, aLabel, zLabel } = l.halves
+      const { a, z, mid, midIndex } = l.halves
       const m = px(mid)
       const aPx = px(a[0]!)
       const zPx = px(z.at(-1)!)
@@ -119,13 +119,22 @@ function ArcLabels({ lines, live, sites }: { lines: LineData[]; live: Map<string
         })
       }
 
-      for (const [d, at, from] of [
-        [dirs.a, aLabel, l.siteA],
-        [dirs.z, zLabel, l.siteZ],
+      // Build sliding labels for each direction
+      const text = (bps: number) => formatBps(bps)
+      for (const [d, halfFrom, halfTo, site] of [
+        [dirs.a, 0, midIndex, l.siteA],
+        [dirs.z, midIndex, l.positions.length - 1, l.siteZ],
       ] as const) {
         if (d.bps === null) continue
-        const p = px(at)
-        boxes.push({ ...labelBox(`${l.key}@${from}`, formatBps(d.bps), p.x, p.y, d.bps), bps: d.bps, color: d.color, at })
+        const key = `${l.key}@${site}`
+        const indices = halfCandidates(halfFrom, halfTo, midIndex)
+        const candidates: LabelBox[] = indices.map((i) => {
+          const p = px(l.positions[i]!)
+          return labelBox(key, text(d.bps!), p.x, p.y, d.bps!)
+        })
+        if (candidates.length > 0) {
+          slidingLabels.push({ key, priority: d.bps, candidates, bps: d.bps, color: d.color, positions: indices.map((i) => l.positions[i]!) })
+        }
       }
     }
 
@@ -137,8 +146,15 @@ function ArcLabels({ lines, live, sites }: { lines: LineData[]; live: Map<string
       markers.push({ x: c.x, y: c.y, r: ARROW_RADIUS })
     }
 
-    const kept = placeLabels(boxes, markers) // busiest first, clear of sites and arrowheads
-    return { arrows, beads: boxes.filter((b) => kept.has(b.key)) }
+    // Place sliding labels: each bead slides to its first free candidate
+    const placed = placeSlidingLabels(slidingLabels, markers)
+    const beads: Bead[] = []
+    for (const sl of slidingLabels) {
+      const idx = placed.get(sl.key)
+      if (idx === undefined) continue
+      beads.push({ key: sl.key, bps: sl.bps, color: sl.color, at: sl.positions[idx]! })
+    }
+    return { arrows, beads }
   }, [tick, lines, live, map, sites])
 
   return (

@@ -10,7 +10,7 @@
 const CHAR_WIDTH = 5.8
 const PADDING_X = 6
 const BORDER = 2
-const MARGIN = 2 // tight gap between labels for de-overlap
+const MARGIN = 4 // breathing room for sub-pixel rendering
 const LABEL_HEIGHT = 18 + BORDER * 2 + MARGIN * 2 // pill + border + margin
 
 export interface LabelBox {
@@ -20,6 +20,13 @@ export interface LabelBox {
   w: number
   h: number
   priority: number
+}
+
+/** A label that may sit at any of several candidate boxes, tried in order. */
+export interface SlidingLabel {
+  key: string
+  priority: number
+  candidates: LabelBox[] // same key/priority on every candidate; x/y = top-left
 }
 
 /**
@@ -88,21 +95,26 @@ function hitsMarker(box: LabelBox, m: MarkerCircle): boolean {
 }
 
 /**
- * Greedy de-overlap: sort boxes by priority descending, keep a box iff it overlaps
- * no kept box and no site marker. Returns the set of kept keys.
+ * Greedy placement, busiest first (stable for ties): each label takes its FIRST candidate that overlaps no site
+ * marker and no already-placed label; labels with no free candidate are dropped.
+ * Returns key -> index of the chosen candidate.
  */
-export function placeLabels(boxes: LabelBox[], markers: MarkerCircle[] = []): Set<string> {
-  const sorted = [...boxes].sort((a, b) => b.priority - a.priority)
+export function placeSlidingLabels(labels: SlidingLabel[], markers: MarkerCircle[] = []): Map<string, number> {
+  const sorted = labels
+    .map((l, i) => ({ ...l, idx: i }))
+    .sort((a, b) => b.priority - a.priority || a.idx - b.idx)
   const kept: LabelBox[] = []
-  const result = new Set<string>()
+  const result = new Map<string, number>()
 
-  for (const box of sorted) {
-    // Skip if overlaps any marker
-    if (markers.some((m) => hitsMarker(box, m))) continue
-    // Skip if overlaps any kept label
-    if (kept.some((k) => overlaps(box, k))) continue
-    kept.push(box)
-    result.add(box.key)
+  for (const label of sorted) {
+    for (let i = 0; i < label.candidates.length; i++) {
+      const box = label.candidates[i]!
+      if (markers.some((m) => hitsMarker(box, m))) continue
+      if (kept.some((k) => overlaps(box, k))) continue
+      kept.push(box)
+      result.set(label.key, i)
+      break
+    }
   }
 
   return result
