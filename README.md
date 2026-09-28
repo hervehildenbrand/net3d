@@ -266,8 +266,8 @@ API responses. Keying is by exact match on the device and interface names in you
 source of truth (NetBox or Infrahub), so the collector must use the same names. The
 browser polls `GET /api/telemetry/sites/:site` every 2 s only while the 'live' cable
 colouring is on or a device panel is open. `GET /api/meta` reports
-`telemetryAvailable: true` only when `NETSTATEX_URL` is set; otherwise the telemetry
-routes don't exist and nothing polls.
+`telemetryAvailable: true` only when `NETSTATEX_URL` is set to a non-blank value;
+otherwise the telemetry routes don't exist and nothing polls.
 
 **With Docker Compose**, run the collector as a service of the same Compose project
 with no published port — e.g. in a `docker-compose.override.yml` next to

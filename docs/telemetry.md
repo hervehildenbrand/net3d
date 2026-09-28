@@ -113,13 +113,14 @@ has loaded so far (for example, sites someone has opened).
 | Route | Response | Polled |
 |---|---|---|
 | `GET /api/telemetry/sites/:site` | `{ "devices": { "<device>": { "<interface>": { "rxBps", "txBps", "capacityBps", "stale" } } } }` | every 2 s, only while the **live** cable colouring is on or a device panel is open |
-| `GET /api/telemetry/circuits` | `{ "circuits": { "<circuit id>": { "pct", "bps", "stale" } } }` | every 5 s, only while the map is visible, or in a site with **live** colouring and **DC links** shown |
+| `GET /api/telemetry/circuits` | `{ "circuits": { "<cid>": { "pct", "bps", "stale" } } }` | every 5 s, only while the map is visible, or in a site with **live** colouring and **DC links** shown |
 
 Polling pauses in background tabs. Both routes only read what net3d has already cached
 from the source of truth; they never query it. `{ "devices": {} }` means "no monitored
-device at this site", and the browser stops polling that site. Errors: `404
-unknown_site` (site not loaded yet) and `503 telemetry_unavailable` (the device list
-failed, or every device call failed; a partial failure returns what succeeded).
+device at this site", and the browser stops polling that site. Errors: `GET
+/api/telemetry/sites/:site` answers `404 unknown_site` when the site isn't loaded yet;
+both routes answer `503 telemetry_unavailable` when the device list failed, or every
+device call failed (a partial failure returns what succeeded).
 
 Both routes skip net3d's per-IP rate limit, because every viewer polls and viewers
 behind one reverse proxy share one IP. Server-side caches bound the collector load
