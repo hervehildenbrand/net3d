@@ -3,7 +3,7 @@
 // Stdlib only; showcase/ is outside the Docker build context, so this never reaches the net3d image.
 import { createServer } from 'node:http'
 import { pathToFileURL } from 'node:url'
-import { buildInventory, interfacesAt } from './model.mjs'
+import { buildInventory, interfacesAt, MONITORED_ROLES, protocolsFor } from './model.mjs'
 
 const warn = (err) => console.warn(`telemetry-sim: ${err.message}`)
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -41,7 +41,7 @@ async function discover(net3dUrls) {
       while (next < list.length) {
         const site = list[next++]
         const detail = await get(`${base}/api/sites/${encodeURIComponent(site.name)}`)
-        if (detail) sites.push({ lon: site.longitude ?? 0, detail })
+        if (detail) sites.push({ name: site.name, lon: site.longitude ?? 0, detail })
       }
     }
     await Promise.all([worker(), worker()])
@@ -53,9 +53,14 @@ async function discover(net3dUrls) {
  * Discover until net3d yields a monitored device, then serve the collector contract. Rediscover every
  * refreshMs; after an incomplete round (any failed call) retry sooner, backing off from retryMs to 60 s,
  * so a site whose first load failed is not left without live data until the next full refresh.
+ * @param opts.lsdbEnabled - if false, /isis/topology returns empty, adjacencies have null hostnames
+ * @param opts.ospfEnabled - if false, /ospf/adjacencies returns 404
+ * @param opts.monitoredRoles - Set of role names to consider monitored (default: from env or MONITORED_ROLES)
  */
-export async function start({ net3dUrls, host = '127.0.0.1', port = 8090, refreshMs = 600_000, retryMs = 2_000 }) {
+export async function start({ net3dUrls, host = '127.0.0.1', port = 8090, refreshMs = 600_000, retryMs = 2_000, lsdbEnabled = true, ospfEnabled = true, monitoredRoles = null }) {
   let inv = new Map()
+  let protocols = { links: [], isisAdjacencies: [], isisTopology: { sources: [], nodes: [], links: [] }, ospfAdjacencies: [] }
+  let lastGoodSites = []
   let backoff = retryMs
   /** One discovery round; resolves to the delay before the next one. */
   const refresh = async () => {
@@ -65,6 +70,11 @@ export async function start({ net3dUrls, host = '127.0.0.1', port = 8090, refres
       // merge, never replace: a site that failed this round keeps serving its last good devices
       // ponytail: devices are never dropped; restart the sim after reseeding a smaller fabric
       inv = new Map([...inv, ...buildInventory(found.sites)])
+      // Merge site details for protocolsFor (keyed by site name)
+      const siteMap = new Map(lastGoodSites.map((s) => [s.name, s]))
+      for (const s of found.sites) siteMap.set(s.name, s)
+      lastGoodSites = [...siteMap.values()]
+      protocols = protocolsFor(lastGoodSites, { lsdb: lsdbEnabled, ospf: ospfEnabled }, monitoredRoles ?? MONITORED_ROLES)
       failed = found.failed
     } catch (err) {
       warn(err) // malformed payload: keep serving what we have
@@ -90,9 +100,29 @@ export async function start({ net3dUrls, host = '127.0.0.1', port = 8090, refres
     // ponytail: net3d only sends GET; any method gets the same answer
     const path = req.url.split('?')[0]
     const m = /^\/api\/v1\/devices\/([^/]+)\/interfaces$/.exec(path)
-    const body =
-      path === '/api/v1/devices' ? [...inv.keys()].map((name) => ({ name })) : m && interfacesAt(inv, decode(m[1]), Date.now())
-    res.writeHead(body ? 200 : 404, { 'Content-Type': 'application/json' })
+    let body
+    let status = 200
+    if (path === '/api/v1/devices') {
+      body = [...inv.keys()].map((name) => ({ name }))
+    } else if (m) {
+      body = interfacesAt(inv, decode(m[1]), Date.now())
+    } else if (path === '/api/v1/links' || path === '/links') {
+      body = protocols.links
+    } else if (path === '/api/v1/isis/adjacencies' || path === '/isis/adjacencies') {
+      body = protocols.isisAdjacencies
+    } else if (path === '/api/v1/isis/topology' || path === '/isis/topology') {
+      body = protocols.isisTopology
+    } else if (path === '/api/v1/ospf/adjacencies' || path === '/ospf/adjacencies') {
+      if (!ospfEnabled) {
+        status = 404
+        body = { error: { code: 'NOT_FOUND' } }
+      } else {
+        body = protocols.ospfAdjacencies
+      }
+    } else {
+      body = null
+    }
+    res.writeHead(body !== null ? status : 404, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify(body ?? { error: { code: 'NOT_FOUND' } }))
   })
   await new Promise((resolve, reject) => server.once('error', reject).listen(port, host, resolve))
@@ -117,8 +147,11 @@ export async function start({ net3dUrls, host = '127.0.0.1', port = 8090, refres
 // `node showcase/telemetry-sim/sim.mjs` (pnpm sim:telemetry), configured by env — see README.md
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.on('SIGTERM', () => process.exit(0)) // as a container's PID 1, node would otherwise ignore SIGTERM
-  const { NET3D_URLS = 'http://127.0.0.1:3001', HOST = '127.0.0.1', PORT = '8090', REFRESH_MS = '600000' } = process.env
+  const { NET3D_URLS = 'http://127.0.0.1:3001', HOST = '127.0.0.1', PORT = '8090', REFRESH_MS = '600000', SIM_LSDB, SIM_OSPF, SIM_MONITORED } = process.env
   const net3dUrls = NET3D_URLS.split(',').map((u) => u.trim().replace(/\/+$/, '')).filter(Boolean)
-  await start({ net3dUrls, host: HOST, port: Number(PORT), refreshMs: Number(REFRESH_MS) })
+  const lsdbEnabled = SIM_LSDB !== '0'
+  const ospfEnabled = SIM_OSPF !== '0'
+  const monitoredRoles = SIM_MONITORED ? new Set(SIM_MONITORED.split(',').map((r) => r.trim()).filter(Boolean)) : null
+  await start({ net3dUrls, host: HOST, port: Number(PORT), refreshMs: Number(REFRESH_MS), lsdbEnabled, ospfEnabled, monitoredRoles })
   console.log(`telemetry-sim: serving http://${HOST}:${PORT}/api/v1 for ${net3dUrls.join(', ')}`)
 }

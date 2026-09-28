@@ -111,3 +111,86 @@ test('test_start_unknownDevice_returns404', async () => {
   assert.equal(res.status, 404)
   assert.deepEqual(await res.json(), { error: { code: 'NOT_FOUND' } })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 12: Topology routes
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('test_start_failedSiteRound_keepsPreviousLinks', async () => {
+  // After a failed refresh, /links still serves the last good set
+  const flaky = await fakeNet3d(true)
+  const s = await start({ net3dUrls: [flaky.url], port: 0, refreshMs: 10, retryMs: 5 })
+  // Fetch links while healthy
+  const before = await fetch(simUrl(s, '/links'))
+  assert.equal(before.status, 200)
+  const linksBefore = await before.json()
+  assert.ok(Array.isArray(linksBefore) && linksBefore.length > 0, 'should have links initially')
+  // Make net3d unavailable and wait for a failed refresh
+  flaky.state.healthy = false
+  const calls = flaky.state.siteListCalls
+  while (flaky.state.siteListCalls < calls + 2) await tick()
+  // Links should still be served
+  const after = await fetch(simUrl(s, '/links'))
+  assert.equal(after.status, 200)
+  const linksAfter = await after.json()
+  assert.deepEqual(linksAfter.length, linksBefore.length, 'links count unchanged after failed refresh')
+  await s.close()
+  flaky.server.close()
+})
+
+test('test_start_getLinks_servesProtocolEndpoints', async () => {
+  // The simulator serves /links, /isis/adjacencies, /isis/topology
+  const [links, isis, topo] = await Promise.all([
+    fetch(simUrl(sim, '/links')).then((r) => r.json()),
+    fetch(simUrl(sim, '/isis/adjacencies')).then((r) => r.json()),
+    fetch(simUrl(sim, '/isis/topology')).then((r) => r.json()),
+  ])
+  assert.ok(Array.isArray(links), '/links should return an array')
+  assert.ok(Array.isArray(isis), '/isis/adjacencies should return an array')
+  assert.ok(topo.sources && topo.nodes && topo.links, '/isis/topology should have sources, nodes, links')
+  // Check that the fixture data produces something meaningful
+  const coreLinks = links.filter((l) => l.a.device?.includes('core') || l.b?.device?.includes('core'))
+  assert.ok(coreLinks.length > 0, 'should have core device links')
+})
+
+test('test_start_ospfDisabled_returns404', async () => {
+  // With SIM_OSPF=0, /ospf/adjacencies returns 404
+  const down = await fakeNet3d(true)
+  const s = await start({ net3dUrls: [down.url], port: 0, ospfEnabled: false })
+  const res = await fetch(simUrl(s, '/ospf/adjacencies'))
+  assert.equal(res.status, 404)
+  assert.deepEqual(await res.json(), { error: { code: 'NOT_FOUND' } })
+  await s.close()
+  down.server.close()
+})
+
+test('test_start_sitesWithSameLongitude_bothSurviveMerge', async () => {
+  // C-T12-4: site merge must be keyed by name, not longitude - two sites at same lon both survive
+  // The bug: protocolsFor receives lastGoodSites which merges by lon, so one site overwrites the other
+  const sameLonSites = [{ name: 'SITE-A', longitude: 0 }, { name: 'SITE-B', longitude: 0 }]
+  const sameLonDetails = {
+    'SITE-A': detail([['site-a-core-01', 'Core'], ['site-a-spine-01', 'Spine']], [
+      { id: '1', a: port('site-a-core-01', 'et-0/0/0'), b: port('site-a-spine-01', 'Ethernet1') },
+    ]),
+    'SITE-B': detail([['site-b-core-01', 'Core'], ['site-b-spine-01', 'Spine']], [
+      { id: '2', a: port('site-b-core-01', 'et-0/0/0'), b: port('site-b-spine-01', 'Ethernet1') },
+    ]),
+  }
+  const sameLonNet3d = createServer((req, res) => {
+    const path = decodeURIComponent(req.url)
+    const site = path.replace('/api/sites/', '')
+    const body = path === '/api/sites' ? sameLonSites : sameLonDetails[site]
+    res.writeHead(body ? 200 : 404, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(body ?? { error: 'not found' }))
+  })
+  await new Promise((resolve) => sameLonNet3d.listen(0, '127.0.0.1', resolve))
+  const sameLonUrl = `http://127.0.0.1:${sameLonNet3d.address().port}`
+  const s = await start({ net3dUrls: [sameLonUrl], port: 0 })
+  // Check that /links has data from BOTH sites (if merged by lon, only one site's data survives)
+  const links = await (await fetch(simUrl(s, '/links'))).json()
+  const devicesInLinks = new Set(links.flatMap((l) => [l.a.device, l.b.device]).filter(Boolean))
+  assert.ok(devicesInLinks.has('site-a-core-01'), 'links should include site-a devices')
+  assert.ok(devicesInLinks.has('site-b-core-01'), 'links should include site-b devices')
+  await s.close()
+  sameLonNet3d.close()
+})
