@@ -27,8 +27,12 @@ interface LineData {
   mid: [number, number]
 }
 
-/** Site marker radius in screen pixels (matches SiteMarkers icon size). */
+/** Screen radius kept clear around each site marker (dot is 7 px + 2 px stroke; the rest is breathing room). */
 const MARKER_RADIUS = 14
+
+/** Rate pill; background and text colour are appended per label. */
+const PILL_STYLE =
+  "display:inline-flex;width:max-content;transform:translate(-50%,-50%);font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:11px;font-variant-numeric:tabular-nums;padding:2px 6px;border-radius:9px;border:2px solid rgba(255,255,255,0.95);box-shadow:0 0 0 1px rgba(0,0,0,0.08);white-space:nowrap;line-height:1.2"
 
 /** Arc labels showing Gbps on live links; de-overlapped on zoom/move. */
 function ArcLabels({
@@ -76,8 +80,6 @@ function ArcLabels({
     return boxes.filter((b) => kept.has(b.key))
   }, [tick, lines, live, map, sites])
 
-  const pillStyle = "display:inline-flex;width:max-content;transform:translate(-50%,-50%);font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:11px;font-variant-numeric:tabular-nums;padding:2px 6px;border-radius:9px;border:2px solid rgba(255,255,255,0.95);box-shadow:0 0 0 1px rgba(0,0,0,0.08);white-space:nowrap;line-height:1.2"
-
   return (
     <Pane name="arcLabels" style={{ zIndex: 400 }}>
       {visible.map((v) => {
@@ -93,7 +95,7 @@ function ArcLabels({
             icon={divIcon({
               className: '',
               iconSize: [0, 0],
-              html: `<div style="${pillStyle};color:${textColor};background:${v.color}"><span style="font-weight:600">${value}</span><span style="font-weight:400;margin-left:2px">${unit}</span></div>`,
+              html: `<div style="${PILL_STYLE};color:${textColor};background:${v.color}"><span style="font-weight:600">${value}</span><span style="font-weight:400;margin-left:2px">${unit}</span></div>`,
             })}
           />
         )
