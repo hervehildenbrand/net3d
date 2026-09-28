@@ -188,6 +188,7 @@ function fakeNetstatex(overrides: Partial<NetstatexClient> = {}): NetstatexClien
   return {
     deviceNames: vi.fn(async () => ['edge-router-1', 'r2', 'r3']),
     interfaces: vi.fn(async () => ({ 'et-0/0/0': { rxBps: 1, txBps: 2, capacityBps: 10, stale: false } })),
+    topology: vi.fn(async () => ({ facts: [], nodeSids: {} })),
     ...overrides,
   }
 }

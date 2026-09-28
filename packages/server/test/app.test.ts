@@ -160,7 +160,7 @@ describe('GET /api/meta', () => {
   })
 
   test('test_meta_netstatex_configured_reports_telemetry_available', async () => {
-    const app = buildApp({ netbox: fakeNetbox(), netstatex: { deviceNames: async () => [], interfaces: async () => ({}) } })
+    const app = buildApp({ netbox: fakeNetbox(), netstatex: { deviceNames: async () => [], interfaces: async () => ({}), topology: async () => ({ facts: [], nodeSids: {} }) } })
     const res = await app.inject({ method: 'GET', url: '/api/meta' })
     expect(res.json().telemetryAvailable).toBe(true)
   })
