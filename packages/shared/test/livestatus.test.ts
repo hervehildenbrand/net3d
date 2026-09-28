@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { circuitLinks, mapInterfacesToCables, mapTelemetryToCables } from '../src/livestatus'
+import { circuitDirections, circuitEnds, circuitLinks, mapInterfacesToCables, mapTelemetryToCables } from '../src/livestatus'
 import type { SiteTelemetry } from '../src/livestatus'
 
 const cables = [
@@ -260,6 +260,82 @@ describe('circuitLinks', () => {
       id: 'CID1',
       a: { deviceName: 'rt1', name: 'et-0/0/0' },
       b: null,
+    })
+  })
+})
+
+describe('circuitEnds', () => {
+  const dev = (deviceName: string, name = 'et-0/0/5') => ({ kind: 'device', name, deviceName })
+  const cir = (cid: string) => ({ kind: 'circuit', name: cid, deviceName: null })
+
+  test('test_circuitEnds_locates_each_end_by_the_site_whose_cables_reach_it', () => {
+    const ends = circuitEnds([
+      { site: 'ams1', cables: [{ a: cir('C1'), b: dev('r-ams') }] },
+      { site: 'par1', cables: [{ a: dev('r-par'), b: cir('C1') }] },
+    ])
+    expect(ends).toEqual([
+      { cid: 'C1', site: 'ams1', deviceName: 'r-ams', name: 'et-0/0/5' },
+      { cid: 'C1', site: 'par1', deviceName: 'r-par', name: 'et-0/0/5' },
+    ])
+  })
+
+  test('test_circuitEnds_keeps_first_port_per_circuit_and_site', () => {
+    const ends = circuitEnds([
+      { site: 'ams1', cables: [{ a: cir('C1'), b: dev('r-ams', 'et-0/0/5') }, { a: cir('C1'), b: dev('r-ams', 'et-0/0/6') }] },
+    ])
+    expect(ends).toEqual([{ cid: 'C1', site: 'ams1', deviceName: 'r-ams', name: 'et-0/0/5' }])
+  })
+
+  test('test_circuitEnds_ignores_cables_without_a_circuit_and_a_named_device_end', () => {
+    const ends = circuitEnds([
+      { site: 'ams1', cables: [{ a: dev('r-ams'), b: dev('sw-ams') }, { a: cir('C1'), b: { kind: 'device', name: 'p1', deviceName: null } }, { a: null, b: cir('C2') }] },
+    ])
+    expect(ends).toEqual([])
+  })
+})
+
+describe('circuitDirections', () => {
+  const ends = [
+    { cid: 'C1', site: 'ams1', deviceName: 'r-ams', name: 'et-0/0/5' },
+    { cid: 'C1', site: 'par1', deviceName: 'r-par', name: 'et-0/0/5' },
+  ]
+  const port = (txBps: number | null, rxBps: number | null) => ({ 'et-0/0/5': { txBps, rxBps, capacityBps: 1e11, stale: false } })
+
+  test('test_circuitDirections_both_ends_use_each_sites_own_tx', () => {
+    const dirs = circuitDirections({ devices: { 'r-ams': port(2e9, 1e9), 'r-par': port(4e9, 3e9) } }, ends)
+    expect(dirs.get('C1')).toEqual({ ams1: { bps: 2e9, pct: 2 }, par1: { bps: 4e9, pct: 4 } })
+  })
+
+  test('test_circuitDirections_null_tx_falls_back_to_far_rx', () => {
+    const dirs = circuitDirections({ devices: { 'r-ams': port(null, 1e9), 'r-par': port(4e9, 3e9) } }, ends)
+    expect(dirs.get('C1')).toEqual({ ams1: { bps: 3e9, pct: 3 }, par1: { bps: 4e9, pct: 4 } })
+  })
+
+  test('test_circuitDirections_one_end_monitored_uses_its_rx_for_the_far_site', () => {
+    const dirs = circuitDirections({ devices: { 'r-ams': port(2e9, 1e9) } }, ends)
+    expect(dirs.get('C1')).toEqual({ ams1: { bps: 2e9, pct: 2 }, par1: { bps: 1e9, pct: 1 } })
+  })
+
+  test('test_circuitDirections_pair_names_the_far_site_when_only_one_end_is_located', () => {
+    const one = [ends[0]!]
+    const pairOf = new Map([['C1', ['ams1', 'par1'] as const]])
+    expect(circuitDirections({ devices: { 'r-ams': port(2e9, 1e9) } }, one, pairOf).get('C1')).toEqual({
+      ams1: { bps: 2e9, pct: 2 },
+      par1: { bps: 1e9, pct: 1 },
+    })
+    // without the pair, only the located site's outbound direction is known
+    expect(circuitDirections({ devices: { 'r-ams': port(2e9, 1e9) } }, one).get('C1')).toEqual({ ams1: { bps: 2e9, pct: 2 } })
+  })
+
+  test('test_circuitDirections_unmonitored_circuit_is_absent', () => {
+    expect(circuitDirections({ devices: {} }, ends).has('C1')).toBe(false)
+  })
+
+  test('test_circuitDirections_unknown_capacity_gives_null_pct', () => {
+    const noCap = { 'et-0/0/5': { txBps: 2e9, rxBps: 1e9, capacityBps: null, stale: false } }
+    expect(circuitDirections({ devices: { 'r-ams': noCap } }, ends).get('C1')).toEqual({
+      ams1: { bps: 2e9, pct: null },
+      par1: { bps: 1e9, pct: null },
     })
   })
 })

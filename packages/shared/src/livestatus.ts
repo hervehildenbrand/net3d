@@ -35,6 +35,25 @@ export interface CableLive {
   stale: boolean
 }
 
+/** Live traffic in one direction of a circuit or link: what leaves one site toward the other. */
+export interface DirLive {
+  bps: number | null
+  pct: number | null
+}
+
+/** A circuit's live state plus its per-direction rates, keyed by the site the traffic leaves. */
+export interface CircuitLive extends CableLive {
+  dirs?: Record<string, DirLive>
+}
+
+/** One circuit end at a known site: the device port that site's own cable connects to circuit `cid`. */
+export interface CircuitEnd {
+  cid: string
+  site: string
+  deviceName: string
+  name: string
+}
+
 /**
  * Map live gNMI interface rates onto documented cables. Each direction prefers that side's
  * own tx rate, falling back to the peer's rx when that side isn't itself monitored or its
@@ -101,9 +120,18 @@ interface CircuitCableEnd {
   deviceName: string | null
 }
 
-interface CircuitCableLike {
+export interface CircuitCableLike {
   a: CircuitCableEnd | null
   b: CircuitCableEnd | null
+}
+
+/** The circuit id and device port a cable joins, or null when it is not a device↔circuit cable. */
+function circuitEndOf(c: CircuitCableLike): { cid: string; deviceName: string; name: string } | null {
+  const sides = [c.a, c.b].filter((s): s is CircuitCableEnd => !!s)
+  const circuitEnd = sides.find((s) => s.kind === 'circuit' && s.name)
+  const deviceEnd = sides.find((s) => s.kind === 'device' && s.deviceName)
+  if (!circuitEnd || !deviceEnd?.deviceName) return null
+  return { cid: circuitEnd.name, deviceName: deviceEnd.deviceName, name: deviceEnd.name }
 }
 
 /** Collect device endpoints per circuit cid from cables that connect a device to a circuit. */
@@ -111,17 +139,63 @@ export function circuitLinks(cables: CircuitCableLike[]): CableLike[] {
   const byCid = new Map<string, CableSide[]>()
 
   for (const c of cables) {
-    const sides = [c.a, c.b].filter((s): s is CircuitCableEnd => !!s)
-    const circuitEnd = sides.find((s) => s.kind === 'circuit' && s.name)
-    const deviceEnd = sides.find((s) => s.kind === 'device' && s.deviceName)
-    if (!circuitEnd || !deviceEnd) continue
-
-    const cid = circuitEnd.name
-    const ends = byCid.get(cid) ?? []
-    if (ends.some((e) => e.deviceName === deviceEnd.deviceName && e.name === deviceEnd.name)) continue
-    ends.push({ deviceName: deviceEnd.deviceName, name: deviceEnd.name })
-    byCid.set(cid, ends)
+    const end = circuitEndOf(c)
+    if (!end) continue
+    const ends = byCid.get(end.cid) ?? []
+    if (ends.some((e) => e.deviceName === end.deviceName && e.name === end.name)) continue
+    ends.push({ deviceName: end.deviceName, name: end.name })
+    byCid.set(end.cid, ends)
   }
 
   return [...byCid].map(([id, [a, b]]) => ({ id, a: a ?? null, b: b ?? null }))
+}
+
+/** Circuit ends located by the site whose own cables reach them (first port per circuit and site). */
+export function circuitEnds(sites: { site: string; cables: CircuitCableLike[] }[]): CircuitEnd[] {
+  const seen = new Set<string>()
+  const result: CircuitEnd[] = []
+  for (const { site, cables } of sites) {
+    for (const c of cables) {
+      const end = circuitEndOf(c)
+      if (!end || seen.has(`${end.cid}\n${site}`)) continue
+      seen.add(`${end.cid}\n${site}`)
+      result.push({ ...end, site })
+    }
+  }
+  return result
+}
+
+/**
+ * Per-direction live rates for each circuit, keyed by the site the traffic leaves. The rate out of
+ * site S is S's own port tx, else the far port's rx (the mapTelemetryToCables rule). `pairOf` names
+ * both sites of a circuit, so one monitored end still yields both directions; without it the sites
+ * come from the located ends. Circuits with no monitored end are absent.
+ */
+export function circuitDirections(
+  telemetry: SiteTelemetry,
+  ends: CircuitEnd[],
+  pairOf: ReadonlyMap<string, readonly [string, string]> = new Map(),
+): Map<string, Record<string, DirLive>> {
+  const at = (e: CircuitEnd | undefined): LiveIface | undefined =>
+    e ? telemetry.devices[e.deviceName]?.[e.name] : undefined
+  const byCid = new Map<string, CircuitEnd[]>()
+  for (const e of ends) byCid.set(e.cid, [...(byCid.get(e.cid) ?? []), e])
+
+  const result = new Map<string, Record<string, DirLive>>()
+  for (const [cid, cidEnds] of byCid) {
+    const [s1, s2] = pairOf.get(cid) ?? [...new Set(cidEnds.map((e) => e.site))]
+    if (!s1) continue
+    const i1 = at(cidEnds.find((e) => e.site === s1))
+    const i2 = s2 ? at(cidEnds.find((e) => e.site === s2)) : undefined
+    const known = [i1, i2].filter((x): x is LiveIface => !!x)
+    if (known.length === 0) continue
+
+    const caps = known.map((x) => x.capacityBps).filter((c): c is number => !!c)
+    const cap = caps.length ? Math.min(...caps) : null
+    const dir = (bps: number | null): DirLive => ({ bps, pct: cap && bps !== null ? (bps * 100) / cap : null })
+    const dirs: Record<string, DirLive> = { [s1]: dir(i1?.txBps ?? i2?.rxBps ?? null) }
+    if (s2) dirs[s2] = dir(i2?.txBps ?? i1?.rxBps ?? null)
+    result.set(cid, dirs)
+  }
+  return result
 }
