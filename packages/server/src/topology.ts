@@ -2,7 +2,7 @@
  * Server-side topology join: resolves system-ids and router-ids to device names
  * and emits flat TopologyFact[]. No id, chassis or IP ever leaves this module.
  */
-import { baseInterface, safeName, type TopologyFact, type CollectorTopology } from '@net3d/shared'
+import { baseInterface, safeName, type TopologyFact, type TopologyCable, type CollectorTopology } from '@net3d/shared'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Collector DTO types (private to this module)
@@ -427,4 +427,78 @@ export function resolveTopology(raw: RawTopologyData): Pick<CollectorTopology, '
   })
 
   return { facts, nodeSids }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scoping: filter topology to site or backbone
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Scope topology facts and circuits for a site or backbone view.
+ * - site (non-null): keep facts where device OR remote is in the site, plus
+ *   circuits with an end in the site.
+ * - backbone (site === null): keep facts where both ends are known devices in
+ *   DIFFERENT sites, plus all circuits.
+ */
+export function scopeTopology(
+  topology: Pick<CollectorTopology, 'facts' | 'nodeSids'>,
+  circuits: TopologyCable[],
+  deviceSite: Record<string, string>,
+  site: string | null,
+): CollectorTopology {
+  const { facts, nodeSids } = topology
+
+  let scopedFacts: TopologyFact[]
+  let scopedCircuits: TopologyCable[]
+  const scopedSids: Record<string, number> = {}
+
+  if (site !== null) {
+    // Site scope: keep facts touching the site
+    scopedFacts = facts.filter(f => {
+      const deviceInSite = deviceSite[f.device] === site
+      const remoteInSite = f.remote !== null && deviceSite[f.remote] === site
+      return deviceInSite || remoteInSite
+    })
+
+    // Circuits with an end in the site
+    scopedCircuits = circuits.filter(c => {
+      const aInSite = c.a?.deviceName && deviceSite[c.a.deviceName] === site
+      const bInSite = c.b?.deviceName && deviceSite[c.b.deviceName] === site
+      return aInSite || bInSite
+    })
+
+    // nodeSids for devices in facts
+    for (const f of scopedFacts) {
+      if (nodeSids[f.device] !== undefined) {
+        scopedSids[f.device] = nodeSids[f.device]!
+      }
+      if (f.remote && nodeSids[f.remote] !== undefined) {
+        scopedSids[f.remote] = nodeSids[f.remote]!
+      }
+    }
+  } else {
+    // Backbone scope: keep facts where both ends are known and in different sites
+    scopedFacts = facts.filter(f => {
+      if (f.remote === null) return false
+      const deviceSiteName = deviceSite[f.device]
+      const remoteSiteName = deviceSite[f.remote]
+      // Both must be known and in different sites
+      return deviceSiteName !== undefined && remoteSiteName !== undefined && deviceSiteName !== remoteSiteName
+    })
+
+    // All circuits for backbone
+    scopedCircuits = circuits
+
+    // nodeSids for inter-site devices
+    for (const f of scopedFacts) {
+      if (nodeSids[f.device] !== undefined) {
+        scopedSids[f.device] = nodeSids[f.device]!
+      }
+      if (f.remote && nodeSids[f.remote] !== undefined) {
+        scopedSids[f.remote] = nodeSids[f.remote]!
+      }
+    }
+  }
+
+  return { facts: scopedFacts, nodeSids: scopedSids, circuits: scopedCircuits }
 }

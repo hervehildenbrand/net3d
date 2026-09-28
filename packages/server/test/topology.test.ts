@@ -1234,3 +1234,114 @@ describe('createNetstatexClient topology', () => {
     expect(topologyCalls.length).toBeGreaterThan(0)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// scopeTopology tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { scopeTopology } from '../src/topology'
+import type { CollectorTopology, TopologyFact, TopologyCable } from '@net3d/shared'
+
+describe('scopeTopology', () => {
+  const FACT_SITE_A: TopologyFact = {
+    layer: 'isis',
+    device: 'edge-router-1',
+    iface: 'et-0/0/0.0',
+    remote: 'spine-01',
+    remoteIface: null,
+    up: true,
+    label: 'L2 UP',
+  }
+
+  const FACT_SITE_B: TopologyFact = {
+    layer: 'isis',
+    device: 'r-site-b',
+    iface: 'et-0/0/0.0',
+    remote: 's-site-b',
+    remoteIface: null,
+    up: true,
+    label: 'L2 UP',
+  }
+
+  const FACT_INTER_SITE: TopologyFact = {
+    layer: 'physical',
+    device: 'edge-router-1',
+    iface: 'et-0/0/1.0',
+    remote: 'r-site-b',
+    remoteIface: 'et-0/0/1.0',
+    up: true,
+    label: '',
+  }
+
+  // OSPF fact with null remote (router id not resolved - typical in practice)
+  const FACT_OSPF_NULL_REMOTE: TopologyFact = {
+    layer: 'ospf',
+    device: 'edge-router-1',
+    iface: 'et-0/0/2.0',
+    remote: null,
+    remoteIface: null,
+    up: true,
+    label: 'area 0 FULL',
+  }
+
+  const CIRCUIT_SITE_A: TopologyCable = {
+    id: 'ACME-001',
+    a: { deviceName: 'edge-router-1', name: 'et-0/0/5' },
+    b: null,
+  }
+
+  const CIRCUIT_SITE_B: TopologyCable = {
+    id: 'ACME-002',
+    a: { deviceName: 'r-site-b', name: 'et-0/0/5' },
+    b: null,
+  }
+
+  const deviceSite: Record<string, string> = {
+    'edge-router-1': 'site-a',
+    'spine-01': 'site-a',
+    'r-site-b': 'site-b',
+    's-site-b': 'site-b',
+  }
+
+  const topology: Pick<CollectorTopology, 'facts' | 'nodeSids'> = {
+    facts: [FACT_SITE_A, FACT_SITE_B, FACT_INTER_SITE, FACT_OSPF_NULL_REMOTE],
+    nodeSids: { 'edge-router-1': 900001, 'spine-01': 900002, 'r-site-b': 900003 },
+  }
+
+  const circuits: TopologyCable[] = [CIRCUIT_SITE_A, CIRCUIT_SITE_B]
+
+  test('test_scopeTopology_site_keepsFactsTouchingSite', () => {
+    const result = scopeTopology(topology, circuits, deviceSite, 'site-a')
+
+    // Should include facts where device OR remote is in site-a
+    expect(result.facts).toContainEqual(FACT_SITE_A)
+    expect(result.facts).toContainEqual(FACT_INTER_SITE)
+    // OSPF fact with null remote on device in site-a should be kept
+    expect(result.facts).toContainEqual(FACT_OSPF_NULL_REMOTE)
+    // Should NOT include facts where neither device nor remote is in site-a
+    expect(result.facts).not.toContainEqual(FACT_SITE_B)
+    // Should include circuits with an end in site-a
+    expect(result.circuits).toContainEqual(CIRCUIT_SITE_A)
+    expect(result.circuits).not.toContainEqual(CIRCUIT_SITE_B)
+    // nodeSids for devices in scope
+    expect(result.nodeSids['edge-router-1']).toBe(900001)
+    expect(result.nodeSids['spine-01']).toBe(900002)
+  })
+
+  test('test_scopeTopology_backbone_keepsInterSiteOnly', () => {
+    const result = scopeTopology(topology, circuits, deviceSite, null)
+
+    // Backbone: only keep facts where both ends are known and in DIFFERENT sites
+    expect(result.facts).toContainEqual(FACT_INTER_SITE)
+    // Intra-site facts should be excluded
+    expect(result.facts).not.toContainEqual(FACT_SITE_A)
+    expect(result.facts).not.toContainEqual(FACT_SITE_B)
+    // OSPF fact with null remote excluded (remote not a known device in different site)
+    expect(result.facts).not.toContainEqual(FACT_OSPF_NULL_REMOTE)
+    // All circuits included in backbone
+    expect(result.circuits).toEqual(circuits)
+    // nodeSids for inter-site devices
+    expect(result.nodeSids['edge-router-1']).toBe(900001)
+    expect(result.nodeSids['r-site-b']).toBe(900003)
+  })
+})

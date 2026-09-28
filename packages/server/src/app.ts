@@ -12,9 +12,12 @@ import {
   SITE_LAYOUT_VERSION,
   validateLayoutInput,
   type CircuitGroup,
+  type CollectorTopology,
   type SiteLayout,
   type SiteTelemetry,
+  type TopologyCable,
 } from '@net3d/shared'
+import { scopeTopology } from './topology'
 import { TtlCache } from './cache'
 import { NapalmUnreachableError } from './netbox'
 import type { SoTClient } from './sot/client'
@@ -381,6 +384,13 @@ export function buildApp({
         },
       )
 
+      // Shared helper: circuit links and site cables from cached site details (never loads SoT on demand)
+      const cachedCircuitLinks = () => {
+        const sites = cache.peek<Site[]>('sites') ?? []
+        const siteCables = sites.map((s) => ({ site: s.name, cables: cache.peek<SiteDetail>(`site:${s.name}`)?.cables ?? [] }))
+        return { links: circuitLinks(siteCables.flatMap((s) => s.cables)), siteCables }
+      }
+
       app.get(
         '/api/telemetry/circuits',
         { config: { rateLimit: false } },
@@ -389,9 +399,7 @@ export function buildApp({
             return await cache.getOrSet('telemetry:circuits', 1_000, async () => {
               // Collect circuit cables from all cached site details — never loads NetBox on demand.
               // Cold cache → empty result; warm cache populates as prewarm runs.
-              const sites = cache.peek<Site[]>('sites') ?? []
-              const siteCables = sites.map((s) => ({ site: s.name, cables: cache.peek<SiteDetail>(`site:${s.name}`)?.cables ?? [] }))
-              const links = circuitLinks(siteCables.flatMap((s) => s.cables))
+              const { links, siteCables } = cachedCircuitLinks()
               if (!links.length) return { circuits: {} }
 
               // Only fetch devices that appear in circuit links AND are monitored
@@ -423,6 +431,73 @@ export function buildApp({
             app.log.warn(`netstatex unavailable: ${(err as Error).message}`)
             return reply.code(503).send({ error: 'telemetry_unavailable' })
           }
+        },
+      )
+
+      // Shared device -> site map from cached site details (never loads SoT on demand)
+      const buildDeviceSite = (): Record<string, string> => {
+        const sites = cache.peek<Site[]>('sites') ?? []
+        const result: Record<string, string> = {}
+        for (const site of sites) {
+          const detail = cache.peek<SiteDetail>(`site:${site.name}`)
+          if (detail) {
+            for (const rack of detail.racks) {
+              for (const device of rack.devices) {
+                result[device.name] = site.name
+              }
+            }
+          }
+        }
+        return result
+      }
+
+      // Shared circuit -> topology cable conversion: reuse cachedCircuitLinks() which already
+      // joins both device ends by cid via circuitLinks() (livestatus.ts)
+      const buildCircuitCables = (): TopologyCable[] => cachedCircuitLinks().links
+
+      app.get<{ Params: { site: string } }>(
+        '/api/telemetry/topology/sites/:site',
+        { config: { rateLimit: false } },
+        async (req, reply) => {
+          // read-only view of what GET /api/sites/:name cached (like /api/devices) — never loads on demand
+          const detail = cache.peek<SiteDetail>(`site:${req.params.site}`)
+          if (!detail) return reply.code(404).send({ error: 'unknown_site' })
+
+          let topology: Pick<CollectorTopology, 'facts' | 'nodeSids'>
+          try {
+            topology = await cache.getOrSet('telemetry:topology', 30_000, () => netstatex.topology())
+          } catch (err) {
+            app.log.warn(`netstatex topology unavailable: ${(err as Error).message}`)
+            return reply.code(503).send({ error: 'telemetry_unavailable' })
+          }
+
+          const deviceSite = buildDeviceSite()
+          const circuits = buildCircuitCables()
+          return scopeTopology(topology, circuits, deviceSite, req.params.site)
+        },
+      )
+
+      app.get(
+        '/api/telemetry/topology/backbone',
+        { config: { rateLimit: false } },
+        async (_req, reply) => {
+          const sites = cache.peek<Site[]>('sites')
+          if (!sites || sites.length === 0) {
+            // Cold cache: return empty arrays without loading SoT
+            return { facts: [], nodeSids: {}, circuits: [] } satisfies CollectorTopology
+          }
+
+          let topology: Pick<CollectorTopology, 'facts' | 'nodeSids'>
+          try {
+            topology = await cache.getOrSet('telemetry:topology', 30_000, () => netstatex.topology())
+          } catch (err) {
+            app.log.warn(`netstatex topology unavailable: ${(err as Error).message}`)
+            return reply.code(503).send({ error: 'telemetry_unavailable' })
+          }
+
+          const deviceSite = buildDeviceSite()
+          const circuits = buildCircuitCables()
+          return scopeTopology(topology, circuits, deviceSite, null)
         },
       )
     }

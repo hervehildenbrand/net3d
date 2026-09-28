@@ -573,3 +573,375 @@ describe('GET /api/telemetry/circuits', () => {
     expect(res.json().circuits['ACME-AMS1-PAR1-001'].dirs).toEqual({ ams1: { bps: 2e9, pct: 2 }, par1: { bps: 1e9, pct: 1 } })
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/telemetry/topology/sites/:site — site-scoped collector topology
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Fixtures with every addressed upstream field to prove the join strips them:
+// neighbor_ipv4, neighbor_ipv6, router_id, addresses, neighbor_addresses, prefix,
+// neighbor_router_id, neighbor_address, designated_router, management_addresses,
+// chassis_id, a MAC port_id, a dotted area.
+const TOPOLOGY_LINK = {
+  a: {
+    device: 'edge-router-1',
+    interface: 'et-0/0/0.0',
+    chassis_id: '00:11:22:33:44:55',
+    port_id: 'et-0/0/0',
+    system_name: 'edge-router-1.example.net',
+    management_addresses: ['192.0.2.1'],
+  },
+  b: {
+    device: 'spine-01',
+    interface: 'et-0/0/1.0',
+    chassis_id: '00:11:22:33:44:66',
+    port_id: 'et-0/0/1',
+    system_name: 'spine-01.example.net',
+    management_addresses: ['192.0.2.2'],
+  },
+  state: 'PRESENT',
+  confirmed: true,
+}
+
+const TOPOLOGY_ISIS_ADJ = {
+  device: 'edge-router-1',
+  interface: 'et-0/0/0.0',
+  level: 2,
+  system_id: '0000.0000.0001',
+  state: 'UP',
+  type: 'LEVEL_2',
+  neighbor_ipv4: '198.51.100.1',
+  neighbor_ipv6: '2001:db8::1',
+  neighbor_hostname: 'spine-01',
+  area_addresses: ['49.0001'],
+  up_since: '2026-09-02T00:00:04Z',
+  telemetry_state: 'LIVE',
+}
+
+const TOPOLOGY_ISIS_TOPO = {
+  sources: [{ device: 'edge-router-1', telemetry_state: 'LIVE' }],
+  nodes: [{
+    level: 2,
+    system_id: '0000.0000.0001',
+    hostname: 'spine-01',
+    router_id: '192.0.2.10',
+    srgb: [{ base: 900000, range: 65536 }],
+    prefix_sids: [{ prefix: '198.51.100.128/32', index: 128, label: 900128, flags: ['NODE'], algorithm: 0 }],
+  }],
+  links: [{
+    level: 2,
+    two_way: true,
+    a: {
+      system_id: '0000.0000.0001',
+      hostname: 'spine-01',
+      metric: 10,
+      addresses: ['198.51.100.0'],
+      neighbor_addresses: ['198.51.100.1'],
+      adj_sids: [{ value: 34, label: 34, flags: ['VALUE'], weight: 0 }],
+    },
+    b: {
+      system_id: '0000.0000.0002',
+      hostname: 'edge-router-1',
+      metric: 10,
+      addresses: ['198.51.100.1'],
+      neighbor_addresses: ['198.51.100.0'],
+      adj_sids: [{ value: 23, label: 23, flags: ['VALUE'], weight: 0 }],
+    },
+  }],
+}
+
+const TOPOLOGY_OSPF_ADJ = {
+  device: 'edge-router-1',
+  interface: 'TenGigE0/0/0/3',
+  area: '0.0.0.33',
+  neighbor_router_id: '198.51.100.106',
+  state: 'FULL',
+  neighbor_address: '198.51.100.107',
+  priority: 1,
+  designated_router: '0.0.0.0',
+  backup_designated_router: '0.0.0.1',
+  telemetry_state: 'LIVE',
+}
+
+function fakeTopologyNetstatex(overrides: Partial<NetstatexClient> = {}): NetstatexClient {
+  return {
+    deviceNames: vi.fn(async () => ['edge-router-1', 'spine-01']),
+    interfaces: vi.fn(async () => ({})),
+    topology: vi.fn(async () => ({ facts: [], nodeSids: {} })),
+    ...overrides,
+  }
+}
+
+describe('GET /api/telemetry/topology/sites/:site', () => {
+  test('test_site_topology_route_feature_off_returns_404', async () => {
+    const app = buildApp({ netbox: fakeNetbox() })
+    await warm(app)
+    const res = await app.inject({ method: 'GET', url: '/api/telemetry/topology/sites/site-a' })
+    expect(res.statusCode).toBe(404)
+  })
+
+  test('test_site_topology_route_uncached_site_returns_404_without_loading_netbox', async () => {
+    const getSiteRacks = vi.fn(async () => RACKS_3)
+    const app = buildApp({ netbox: fakeNetbox({ getSiteRacks }), netstatex: fakeTopologyNetstatex() })
+    // no warm-up
+    const res = await app.inject({ method: 'GET', url: '/api/telemetry/topology/sites/site-a' })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ error: 'unknown_site' })
+    expect(getSiteRacks).not.toHaveBeenCalled()
+  })
+
+  test('test_site_topology_route_collector_down_returns_503', async () => {
+    const netstatex = fakeTopologyNetstatex({
+      topology: vi.fn(async () => { throw new Error('netstatex: no endpoint answered') }),
+    })
+    const app = buildApp({ netbox: fakeNetbox(), netstatex })
+    await warm(app)
+    const res = await app.inject({ method: 'GET', url: '/api/telemetry/topology/sites/site-a' })
+    expect(res.statusCode).toBe(503)
+    expect(res.json()).toEqual({ error: 'telemetry_unavailable' })
+  })
+
+  test('test_site_topology_route_one_endpoint_fails_reuses_last_body', async () => {
+    let callCount = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const u = String(url)
+      if (u.includes('/links')) {
+        callCount++
+        if (callCount === 1) return Response.json([TOPOLOGY_LINK])
+        throw new Error('timeout')
+      }
+      if (u.includes('/isis/adjacencies')) return Response.json([])
+      if (u.includes('/isis/topology')) return Response.json({ sources: [], nodes: [], links: [] })
+      if (u.includes('/ospf/adjacencies')) return new Response('{}', { status: 404 })
+      return Response.json({})
+    })
+    const netstatex = createNetstatexClient('http://nsx')
+    const app = buildApp({ netbox: fakeNetbox(), netstatex })
+    await warm(app)
+
+    // First call populates cache and last-good
+    const res1 = await app.inject({ method: 'GET', url: '/api/telemetry/topology/sites/site-a' })
+    expect(res1.statusCode).toBe(200)
+
+    // Second call: /links fails but should reuse last good
+    const res2 = await app.inject({ method: 'GET', url: '/api/telemetry/topology/sites/site-a' })
+    expect(res2.statusCode).toBe(200)
+  })
+
+  test('test_site_topology_route_coalesces_for_30_seconds', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const netstatex = fakeTopologyNetstatex()
+    const app = buildApp({ netbox: fakeNetbox(), netstatex })
+    await warm(app)
+
+    await app.inject({ method: 'GET', url: '/api/telemetry/topology/sites/site-a' })
+    await app.inject({ method: 'GET', url: '/api/telemetry/topology/sites/site-a' })
+    expect(netstatex.topology).toHaveBeenCalledTimes(1)
+
+    vi.setSystemTime(Date.now() + 30_001)
+    await app.inject({ method: 'GET', url: '/api/telemetry/topology/sites/site-a' })
+    expect(netstatex.topology).toHaveBeenCalledTimes(2)
+  })
+
+  test('test_site_topology_route_is_exempt_from_rate_limit', async () => {
+    const app = buildApp({ netbox: fakeNetbox(), netstatex: fakeTopologyNetstatex() })
+    await warm(app)
+    const res = await app.inject({ method: 'GET', url: '/api/telemetry/topology/sites/site-a' })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['x-ratelimit-limit']).toBeUndefined()
+
+    const other = await app.inject({ method: 'GET', url: '/api/sites' })
+    expect(other.headers['x-ratelimit-limit']).toBeDefined()
+  })
+
+  test('test_site_topology_route_never_leaks_device_address', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const u = String(url)
+      if (u.includes('/links')) return Response.json([TOPOLOGY_LINK])
+      if (u.includes('/isis/adjacencies')) return Response.json([TOPOLOGY_ISIS_ADJ])
+      if (u.includes('/isis/topology')) return Response.json(TOPOLOGY_ISIS_TOPO)
+      if (u.includes('/ospf/adjacencies')) return Response.json([TOPOLOGY_OSPF_ADJ])
+      return Response.json({})
+    })
+    const netstatex = createNetstatexClient('http://nsx')
+    const app = buildApp({ netbox: fakeNetbox(), netstatex })
+    await warm(app)
+    const res = await app.inject({ method: 'GET', url: '/api/telemetry/topology/sites/site-a' })
+    expect(res.statusCode).toBe(200)
+    const raw = res.body
+    // No IPv4
+    expect(raw).not.toMatch(/\b\d{1,3}(\.\d{1,3}){3}\b/)
+    // No IPv6 (2001:db8::)
+    expect(raw).not.toMatch(/2001:[\da-f:]+/i)
+    // No MAC (00:11:22:33:44:55)
+    expect(raw).not.toMatch(/[\da-f]{2}(:[\da-f]{2}){5}/i)
+    // No "address" substring
+    expect(raw).not.toContain('address')
+  })
+
+  test('test_site_topology_route_circuits_join_both_ends', async () => {
+    // Two sites with cables reaching the same circuit CID from different devices
+    const SITE_A: NetBoxSite = { ...SITE, name: 'site-a' }
+    const SITE_B: NetBoxSite = { ...SITE, id: '5', name: 'site-b' }
+    const RACKS_A: SiteRack[] = [{
+      id: '1', name: 'rack-a', uHeight: 47, location: null,
+      devices: [{ id: '1', name: 'core-a', ...DEVICE_META }],
+    }]
+    const RACKS_B: SiteRack[] = [{
+      id: '2', name: 'rack-b', uHeight: 47, location: null,
+      devices: [{ id: '2', name: 'core-b', ...DEVICE_META }],
+    }]
+    // Cable at site-a: device core-a et-0/0/0 <-> circuit CID-001
+    const CABLES_A: SiteCable[] = [{
+      id: 'c1', type: null, status: 'connected', color: '',
+      a: { kind: 'device', name: 'et-0/0/0', deviceName: 'core-a', rackName: 'rack-a', ifaceType: null, termType: 'interface', pairedPort: null },
+      b: { kind: 'circuit', name: 'CID-001', deviceName: null, rackName: null, ifaceType: null, termType: 'other', pairedPort: null },
+    }]
+    // Cable at site-b: device core-b et-0/0/1 <-> circuit CID-001
+    const CABLES_B: SiteCable[] = [{
+      id: 'c2', type: null, status: 'connected', color: '',
+      a: { kind: 'device', name: 'et-0/0/1', deviceName: 'core-b', rackName: 'rack-b', ifaceType: null, termType: 'interface', pairedPort: null },
+      b: { kind: 'circuit', name: 'CID-001', deviceName: null, rackName: null, ifaceType: null, termType: 'other', pairedPort: null },
+    }]
+
+    const netbox = fakeNetbox({
+      getSites: async () => [SITE_A, SITE_B],
+      getSiteRacks: async (site) => site === 'site-a' ? RACKS_A : RACKS_B,
+      getSiteCables: async (site) => site === 'site-a' ? CABLES_A : CABLES_B,
+    })
+    const app = buildApp({ netbox, netstatex: fakeTopologyNetstatex() })
+
+    // Warm both sites to cache their cables
+    await app.inject({ method: 'GET', url: '/api/sites' })
+    await app.inject({ method: 'GET', url: '/api/sites/site-a' })
+    await app.inject({ method: 'GET', url: '/api/sites/site-b' })
+
+    const res = await app.inject({ method: 'GET', url: '/api/telemetry/topology/sites/site-a' })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    // The circuit CID-001 must have BOTH ends (a from site-a, b from site-b)
+    const circuit = body.circuits.find((c: { id: string }) => c.id === 'CID-001')
+    expect(circuit).toBeDefined()
+    expect(circuit.a).not.toBeNull()
+    expect(circuit.a.deviceName).toBe('core-a')
+    expect(circuit.b).not.toBeNull()
+    expect(circuit.b.deviceName).toBe('core-b')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/telemetry/topology/backbone — backbone collector topology
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/telemetry/topology/backbone', () => {
+  test('test_backbone_topology_route_feature_off_returns_404', async () => {
+    const app = buildApp({ netbox: fakeNetbox() })
+    const res = await app.inject({ method: 'GET', url: '/api/telemetry/topology/backbone' })
+    expect(res.statusCode).toBe(404)
+  })
+
+  test('test_backbone_topology_route_cold_cache_returns_empty_without_loading_netbox', async () => {
+    const getSites = vi.fn(async () => [SITE])
+    const getSiteRacks = vi.fn(async () => RACKS_3)
+    const app = buildApp({ netbox: fakeNetbox({ getSites, getSiteRacks }), netstatex: fakeTopologyNetstatex() })
+    // no warm-up: cache is cold
+    const res = await app.inject({ method: 'GET', url: '/api/telemetry/topology/backbone' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ facts: [], nodeSids: {}, circuits: [] })
+    expect(getSiteRacks).not.toHaveBeenCalled()
+  })
+
+  test('test_backbone_topology_route_collector_down_returns_503', async () => {
+    const netstatex = fakeTopologyNetstatex({
+      topology: vi.fn(async () => { throw new Error('netstatex: no endpoint answered') }),
+    })
+    const app = buildApp({ netbox: fakeNetbox(), netstatex })
+    // Warm both sites list and site detail (backbone needs sites list)
+    await app.inject({ method: 'GET', url: '/api/sites' })
+    await warm(app)
+    const res = await app.inject({ method: 'GET', url: '/api/telemetry/topology/backbone' })
+    expect(res.statusCode).toBe(503)
+    expect(res.json()).toEqual({ error: 'telemetry_unavailable' })
+  })
+
+  test('test_backbone_topology_route_one_endpoint_fails_reuses_last_body', async () => {
+    let callCount = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const u = String(url)
+      if (u.includes('/links')) {
+        callCount++
+        if (callCount === 1) return Response.json([TOPOLOGY_LINK])
+        throw new Error('timeout')
+      }
+      if (u.includes('/isis/adjacencies')) return Response.json([])
+      if (u.includes('/isis/topology')) return Response.json({ sources: [], nodes: [], links: [] })
+      if (u.includes('/ospf/adjacencies')) return new Response('{}', { status: 404 })
+      return Response.json({})
+    })
+    const netstatex = createNetstatexClient('http://nsx')
+    const app = buildApp({ netbox: fakeNetbox(), netstatex })
+    await app.inject({ method: 'GET', url: '/api/sites' })
+    await warm(app)
+
+    // First call
+    const res1 = await app.inject({ method: 'GET', url: '/api/telemetry/topology/backbone' })
+    expect(res1.statusCode).toBe(200)
+
+    // Second call: /links fails but should reuse last good
+    const res2 = await app.inject({ method: 'GET', url: '/api/telemetry/topology/backbone' })
+    expect(res2.statusCode).toBe(200)
+  })
+
+  test('test_backbone_topology_route_coalesces_for_30_seconds', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const netstatex = fakeTopologyNetstatex()
+    const app = buildApp({ netbox: fakeNetbox(), netstatex })
+    // Warm both sites list and site detail (backbone needs sites list)
+    await app.inject({ method: 'GET', url: '/api/sites' })
+    await warm(app)
+
+    await app.inject({ method: 'GET', url: '/api/telemetry/topology/backbone' })
+    await app.inject({ method: 'GET', url: '/api/telemetry/topology/backbone' })
+    expect(netstatex.topology).toHaveBeenCalledTimes(1)
+
+    vi.setSystemTime(Date.now() + 30_001)
+    await app.inject({ method: 'GET', url: '/api/telemetry/topology/backbone' })
+    expect(netstatex.topology).toHaveBeenCalledTimes(2)
+  })
+
+  test('test_backbone_topology_route_is_exempt_from_rate_limit', async () => {
+    const app = buildApp({ netbox: fakeNetbox(), netstatex: fakeTopologyNetstatex() })
+    const res = await app.inject({ method: 'GET', url: '/api/telemetry/topology/backbone' })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['x-ratelimit-limit']).toBeUndefined()
+
+    const other = await app.inject({ method: 'GET', url: '/api/sites' })
+    expect(other.headers['x-ratelimit-limit']).toBeDefined()
+  })
+
+  test('test_backbone_topology_route_never_leaks_device_address', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const u = String(url)
+      if (u.includes('/links')) return Response.json([TOPOLOGY_LINK])
+      if (u.includes('/isis/adjacencies')) return Response.json([TOPOLOGY_ISIS_ADJ])
+      if (u.includes('/isis/topology')) return Response.json(TOPOLOGY_ISIS_TOPO)
+      if (u.includes('/ospf/adjacencies')) return Response.json([TOPOLOGY_OSPF_ADJ])
+      return Response.json({})
+    })
+    const netstatex = createNetstatexClient('http://nsx')
+    const app = buildApp({ netbox: fakeNetbox(), netstatex })
+    await app.inject({ method: 'GET', url: '/api/sites' })
+    await warm(app)
+    const res = await app.inject({ method: 'GET', url: '/api/telemetry/topology/backbone' })
+    expect(res.statusCode).toBe(200)
+    const raw = res.body
+    // No IPv4
+    expect(raw).not.toMatch(/\b\d{1,3}(\.\d{1,3}){3}\b/)
+    // No IPv6
+    expect(raw).not.toMatch(/2001:[\da-f:]+/i)
+    // No MAC
+    expect(raw).not.toMatch(/[\da-f]{2}(:[\da-f]{2}){5}/i)
+    // No "address" substring
+    expect(raw).not.toContain('address')
+  })
+})
