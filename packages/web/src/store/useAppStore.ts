@@ -5,13 +5,14 @@ import {
   stepNavigation,
   thresholdsForSpan,
 } from '@net3d/shared'
-import type { TracePath } from '@net3d/shared'
+import type { LogicalLayer, TracePath } from '@net3d/shared'
 import type { SpecMetric } from '../lib/specsHeatmap'
 import type { PowerSource } from '../lib/powerChain'
 import type { Backend } from '../lib/api'
 import { loadSitesMenuOpen, saveSitesMenuOpen } from '../lib/sitesMenuStorage'
 
 export type ViewLevel = 'map' | 'site' | 'rack'
+export type ViewMode = 'physical' | 'logical'
 
 /**
  * The single active "color by" dimension for device/rack boxes. Only one is live
@@ -46,6 +47,12 @@ interface AppState {
   /** Active source of truth; switching it flips the API prefix and resets the view. */
   backend: Backend
   setBackend: (backend: Backend) => void
+  /** Scene mode: 'physical' (3D rooms/racks) or 'logical' (topology graph). */
+  viewMode: ViewMode
+  setViewMode: (mode: ViewMode) => void
+  /** Logical view: layers to hide in the topology graph. 'end' hides end devices. */
+  hiddenLogical: Set<LogicalLayer | 'end'>
+  toggleHiddenLogical: (layer: LogicalLayer | 'end') => void
   level: ViewLevel
   selectedSiteName: string | null
   selectedRackId: string | null
@@ -142,8 +149,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     // A site/rack selected against one backend need not exist in the other, so
     // return to the map. zoomToMap also clears overlays/selection cleanly.
     get().zoomToMap()
-    set({ backend })
+    set({ backend, viewMode: 'physical' })
   },
+  viewMode: 'physical',
+  setViewMode: (mode) => {
+    if (mode === get().viewMode) return
+    const { level } = get()
+    // Reset the nav machine so zoom gestures don't cause spurious transitions.
+    // If already at site level, arm the exit so zoom-out-to-map still works.
+    navMachine = { ...initialNavMachine(), exitSiteArmed: level === 'site' }
+    set({ viewMode: mode, selectedDeviceId: null, activeTrace: null, navSuppressed: true })
+  },
+  hiddenLogical: new Set<LogicalLayer | 'end'>(),
+  toggleHiddenLogical: (layer) =>
+    set((s) => {
+      const next = new Set(s.hiddenLogical)
+      if (next.has(layer)) next.delete(layer)
+      else next.add(layer)
+      return { hiddenLogical: next }
+    }),
   level: 'map',
   selectedSiteName: null,
   selectedRackId: null,
@@ -256,8 +280,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   handleMapSignals: (zoom, site) => {
-    const { level, zoomToSite, setMapView } = get()
+    const { level, viewMode, zoomToSite, setMapView } = get()
     if (level !== 'map') return
+    // Logical mode at map level: pan/zoom the backbone graph, never zoom-enter a site.
+    if (viewMode === 'logical') return
     const r = stepNavigation(
       navMachine,
       { level: 'map', mapZoom: zoom, siteUnderCenter: site?.name ?? null },
@@ -271,8 +297,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   handleCameraSignals: (distToSite, distToRack, nearestRackId, siteSpan = null) => {
-    const { level, selectedSiteName, zoomToSite, zoomToRack, zoomToMap, navSuppressed } = get()
+    const { level, selectedSiteName, zoomToSite, zoomToRack, zoomToMap, navSuppressed, viewMode } = get()
     if (level === 'map') return
+    // Logical mode at site level: orbit the topology graph, never zoom-enter a rack.
+    // Rack level (reached via device search) still allows exitToSite.
+    if (viewMode === 'logical' && level === 'site') return
     // record camera distance only at site level — drives rack-label LOD; a passive
     // reading, so it records even while the nav machine is suppressed below
     if (level === 'site') set({ siteViewDistance: distToSite })

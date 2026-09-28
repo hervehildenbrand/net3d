@@ -473,3 +473,77 @@ describe('specsHeatmapMetric', () => {
     expect(useAppStore.getState().specsHeatmapMetric).toBe(null)
   })
 })
+
+describe('viewMode', () => {
+  beforeEach(() => {
+    useAppStore.getState().zoomToMap()
+    useAppStore.getState().setViewMode('physical')
+    useAppStore.getState().setBackend('netbox')
+  })
+
+  test('test_setViewMode_logical_survivesZoomToSiteAndMap', () => {
+    useAppStore.getState().setViewMode('logical')
+    useAppStore.getState().zoomToSite('site-a')
+    expect(useAppStore.getState().viewMode).toBe('logical')
+    useAppStore.getState().zoomToMap()
+    expect(useAppStore.getState().viewMode).toBe('logical')
+  })
+
+  test('test_setViewMode_change_clearsSelectionAndSuppressesNav', () => {
+    useAppStore.getState().zoomToSite('site-a')
+    useAppStore.getState().selectDevice('device-1')
+    useAppStore.getState().setTrace({ hops: [], cableIds: ['c1'], complete: true, panelCount: 0 })
+    useAppStore.getState().setNavSuppressed(false)
+    useAppStore.getState().setViewMode('logical')
+    const s = useAppStore.getState()
+    expect(s.selectedDeviceId).toBe(null)
+    expect(s.activeTrace).toBe(null)
+    expect(s.navSuppressed).toBe(true)
+  })
+
+  test('test_setBackend_logical_resetsToPhysical', () => {
+    useAppStore.getState().setViewMode('logical')
+    useAppStore.getState().setBackend('infrahub')
+    expect(useAppStore.getState().viewMode).toBe('physical')
+  })
+
+  test('test_handleCameraSignals_logicalAtSite_levelUnchanged', () => {
+    useAppStore.getState().zoomToSite('site-a')
+    useAppStore.getState().setViewMode('logical')
+    useAppStore.getState().setNavSuppressed(false)
+    // A close rack distance would normally fire enterRack; in logical mode it must not.
+    useAppStore.getState().handleCameraSignals(5, 1, 'rack-1', 20)
+    expect(useAppStore.getState().level).toBe('site')
+  })
+
+  test('test_handleCameraSignals_logicalAtRack_exitsToSite', () => {
+    // Device search lands in physical rack; exitToSite returns to logical site.
+    useAppStore.getState().zoomToSite('site-a')
+    useAppStore.getState().setViewMode('logical')
+    useAppStore.getState().zoomToRack('rack-1')
+    useAppStore.getState().setNavSuppressed(false)
+    // Far rack distance triggers exitToSite
+    useAppStore.getState().handleCameraSignals(30, 30, 'rack-1', 20)
+    expect(useAppStore.getState().level).toBe('site')
+  })
+
+  test('test_handleMapSignals_logical_neverEntersSite', () => {
+    useAppStore.getState().setViewMode('logical')
+    // High zoom + site under center would normally fire enterSite; in logical mode it must not.
+    useAppStore.getState().handleMapSignals(15, { name: 'site-a', lat: 52, lng: 4 })
+    expect(useAppStore.getState().level).toBe('map')
+  })
+})
+
+describe('hiddenLogical', () => {
+  beforeEach(() => {
+    useAppStore.getState().zoomToMap()
+  })
+
+  test('test_toggleHiddenLogical_addsThenRemoves', () => {
+    useAppStore.getState().toggleHiddenLogical('isis')
+    expect([...useAppStore.getState().hiddenLogical]).toEqual(['isis'])
+    useAppStore.getState().toggleHiddenLogical('isis')
+    expect(useAppStore.getState().hiddenLogical.size).toBe(0)
+  })
+})
