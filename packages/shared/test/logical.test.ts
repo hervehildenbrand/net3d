@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { baseInterface, safeName, classifyTier } from '../src/logical'
+import { baseInterface, safeName, classifyTier, sotLinks, factCable } from '../src/logical'
+import type { TraceCable } from '../src/cabletrace'
 
 describe('baseInterface', () => {
   test('test_baseInterface_junosUnit_stripsSuffix', () => {
@@ -91,5 +92,114 @@ describe('classifyTier', () => {
     // Named roles still win over hasIgp
     expect(classifyTier('leaf', true)).toBe('leaf')
     expect(classifyTier('spine', true)).toBe('spine')
+  })
+})
+
+// Test fixture helpers for cables
+const iface = (dev: string, name: string, rack = 'R1'): NonNullable<TraceCable['a']> => ({
+  kind: 'device', name, deviceName: dev, rackName: rack, termType: 'interface',
+})
+const front = (dev: string, name: string, rear: string, rack = 'R1'): NonNullable<TraceCable['a']> => ({
+  kind: 'device', name, deviceName: dev, rackName: rack, termType: 'front-port', pairedPort: rear,
+})
+const rear = (dev: string, name: string, front_: string, rack = 'R1'): NonNullable<TraceCable['a']> => ({
+  kind: 'device', name, deviceName: dev, rackName: rack, termType: 'rear-port', pairedPort: front_,
+})
+const power = (name: string, rack = 'R1'): NonNullable<TraceCable['a']> => ({
+  kind: 'powerfeed', name, deviceName: null, rackName: rack,
+})
+const circuit = (name: string): NonNullable<TraceCable['a']> => ({
+  kind: 'circuit', name, deviceName: null, rackName: null,
+})
+
+describe('sotLinks', () => {
+  test('test_sotLinks_panelRouted_stableIdAcrossInputOrder', () => {
+    // Panel-routed link id must not change based on input array order
+    // (Task 3 relies on stable member ids)
+    const cables_order1: TraceCable[] = [
+      { id: 'c1', a: iface('edge-router-1', 'et-0/0/0'), b: front('panel-01', 'P1', 'R1') },
+      { id: 'c2', a: rear('panel-01', 'R1', 'P1'), b: iface('spine-01', 'Ethernet1/1') },
+    ]
+    const cables_order2: TraceCable[] = [
+      { id: 'c2', a: rear('panel-01', 'R1', 'P1'), b: iface('spine-01', 'Ethernet1/1') },
+      { id: 'c1', a: iface('edge-router-1', 'et-0/0/0'), b: front('panel-01', 'P1', 'R1') },
+    ]
+    const links1 = sotLinks(cables_order1)
+    const links2 = sotLinks(cables_order2)
+    expect(links1).toHaveLength(1)
+    expect(links2).toHaveLength(1)
+    // Both orderings must yield identical id
+    expect(links1[0]!.id).toBe(links2[0]!.id)
+    // And identical endpoints (a/b)
+    expect(links1[0]!.a).toEqual(links2[0]!.a)
+    expect(links1[0]!.b).toEqual(links2[0]!.b)
+  })
+
+  test('test_sotLinks_directCable_oneLink', () => {
+    // Direct interface<->interface cable yields one link
+    const cables: TraceCable[] = [
+      { id: 'c1', a: iface('edge-router-1', 'et-0/0/0'), b: iface('spine-01', 'Ethernet1/1') },
+    ]
+    const links = sotLinks(cables)
+    expect(links).toHaveLength(1)
+    expect(links[0]).toEqual({
+      id: 'c1',
+      a: { deviceName: 'edge-router-1', name: 'et-0/0/0' },
+      b: { deviceName: 'spine-01', name: 'Ethernet1/1' },
+    })
+  })
+
+  test('test_sotLinks_panelRouted_joinsInterfaces', () => {
+    // Cable through patch panel: interface -> front -> rear -> interface
+    // Should collapse to one link between the two interfaces
+    const cables: TraceCable[] = [
+      { id: 'c1', a: iface('edge-router-1', 'et-0/0/0'), b: front('panel-01', 'P1', 'R1') },
+      { id: 'c2', a: rear('panel-01', 'R1', 'P1'), b: iface('spine-01', 'Ethernet1/1') },
+    ]
+    const links = sotLinks(cables)
+    expect(links).toHaveLength(1)
+    // id must be deterministic - use first cable's id for consistency
+    expect(links[0]!.a).toEqual({ deviceName: 'edge-router-1', name: 'et-0/0/0' })
+    expect(links[0]!.b).toEqual({ deviceName: 'spine-01', name: 'Ethernet1/1' })
+  })
+
+  test('test_sotLinks_incompleteTrace_omitted', () => {
+    // Incomplete trace (dangling cable, no far interface) should be omitted
+    const cables: TraceCable[] = [
+      { id: 'c1', a: iface('edge-router-1', 'et-0/0/0'), b: front('panel-01', 'P1', 'R1') },
+      // No cable from rear port - incomplete trace
+    ]
+    const links = sotLinks(cables)
+    expect(links).toHaveLength(0)
+  })
+
+  test('test_sotLinks_powerAndCircuitEnds_omitted', () => {
+    // Power and circuit terminations should not yield links
+    const cables: TraceCable[] = [
+      { id: 'c1', a: iface('edge-router-1', 'et-0/0/0'), b: power('PDU-A-1') },
+      { id: 'c2', a: iface('edge-router-1', 'et-0/0/1'), b: circuit('CID-001') },
+      // Direct cable for comparison - this one should still work
+      { id: 'c3', a: iface('edge-router-1', 'et-0/0/2'), b: iface('spine-01', 'Ethernet1/1') },
+    ]
+    const links = sotLinks(cables)
+    expect(links).toHaveLength(1)
+    expect(links[0]!.id).toBe('c3')
+  })
+})
+
+describe('factCable', () => {
+  test('test_factCable_resolvedObservation_bothEnds', () => {
+    // factCable builds a TopologyCable from a resolved observation
+    const cable = factCable({
+      device: 'edge-router-1',
+      iface: 'et-0/0/0',
+      remote: 'spine-01',
+      remoteIface: 'Ethernet1/1',
+    })
+    expect(cable).toEqual({
+      id: 'lldp:edge-router-1:et-0/0/0',
+      a: { deviceName: 'edge-router-1', name: 'et-0/0/0' },
+      b: { deviceName: 'spine-01', name: 'Ethernet1/1' },
+    })
   })
 })
