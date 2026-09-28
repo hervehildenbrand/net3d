@@ -14,7 +14,7 @@ import {
 import type { Site } from '../hooks/useSites'
 import { theme } from '../theme'
 import { dirLive, formatPct, type DirGroup } from '../lib/liveTelemetry'
-import { labelBox, placeSlidingLabels, contrastText, type LabelBox, type MarkerCircle, type SlidingLabel } from './arcLabels'
+import { labelBox, placeSlidingLabels, contrastText, circlesClearOfBoxes, type LabelBox, type MarkerCircle, type SlidingLabel } from './arcLabels'
 import { halfCandidates, screenAngleDeg, showArrows, splitArc, spreadPoints } from './arcHalves'
 
 type LatLng = [number, number]
@@ -39,8 +39,8 @@ function lineDirs(l: LineData, live: Map<string, CircuitLive>): { a: DirGroup; z
   return a && z ? { a, z } : null
 }
 
-/** Screen radius kept clear around each site marker (dot is 7 px + 2 px stroke; extra for sub-pixel rendering). */
-const MARKER_RADIUS = 18
+/** Screen radius kept clear around each site marker (visible dot 7 px + 2 px stroke + 1 px margin). */
+const MARKER_RADIUS = 10
 /** Screen radius kept clear around the arrowheads at an arc's midpoint. */
 const ARROW_RADIUS = 9
 /** Minimum distance between kept arrow pairs; two arrowheads are ~20 px tip to tail. */
@@ -138,22 +138,28 @@ function ArcLabels({ lines, live, sites }: { lines: LineData[]; live: Map<string
       }
     }
 
-    // Pass 2: thin out crowded arrow pairs, keeping busier links
-    const keptArrows = spreadPoints(arrowCandidates, ARROW_SPACING)
-    for (const c of arrowCandidates) {
-      if (!keptArrows.has(c.key)) continue
-      arrows.push(c.arrowA, c.arrowZ)
-      markers.push({ x: c.x, y: c.y, r: ARROW_RADIUS })
-    }
-
-    // Place sliding labels: each bead slides to its first free candidate
-    const placed = placeSlidingLabels(slidingLabels, markers)
+    // Pass 2: place beads FIRST using only site circles (beads have priority)
+    const placed = placeSlidingLabels(slidingLabels, siteCircles)
     const beads: Bead[] = []
+    const placedBoxes: LabelBox[] = []
     for (const sl of slidingLabels) {
       const idx = placed.get(sl.key)
       if (idx === undefined) continue
       beads.push({ key: sl.key, bps: sl.bps, color: sl.color, at: sl.positions[idx]! })
+      placedBoxes.push(sl.candidates[idx]!)
     }
+
+    // Pass 3: thin arrow pairs, then drop any that overlap a placed bead
+    const keptArrows = spreadPoints(arrowCandidates, ARROW_SPACING)
+    const arrowCircles = arrowCandidates
+      .filter((c) => keptArrows.has(c.key))
+      .map((c) => ({ key: c.key, x: c.x, y: c.y, r: ARROW_RADIUS }))
+    const clearArrowKeys = circlesClearOfBoxes(arrowCircles, placedBoxes)
+    for (const c of arrowCandidates) {
+      if (!clearArrowKeys.has(c.key)) continue
+      arrows.push(c.arrowA, c.arrowZ)
+    }
+
     return { arrows, beads }
   }, [tick, lines, live, map, sites])
 

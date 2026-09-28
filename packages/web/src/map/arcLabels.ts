@@ -10,7 +10,7 @@
 const CHAR_WIDTH = 5.8
 const PADDING_X = 6
 const BORDER = 2
-const MARGIN = 4 // breathing room for sub-pixel rendering
+const MARGIN = 2 // minimal breathing room
 const LABEL_HEIGHT = 18 + BORDER * 2 + MARGIN * 2 // pill + border + margin
 
 export interface LabelBox {
@@ -118,4 +118,25 @@ export function placeSlidingLabels(labels: SlidingLabel[], markers: MarkerCircle
   }
 
   return result
+}
+
+/** Circle definition for arrow clearance checks. */
+export interface KeyedCircle {
+  key: string
+  x: number
+  y: number
+  r: number
+}
+
+/**
+ * Return keys of circles that overlap no box.
+ * Reuses the box-vs-circle collision test from hitsMarker.
+ */
+export function circlesClearOfBoxes(circles: KeyedCircle[], boxes: LabelBox[]): Set<string> {
+  const clear = new Set<string>()
+  for (const c of circles) {
+    const overlaps = boxes.some((b) => hitsMarker(b, c))
+    if (!overlaps) clear.add(c.key)
+  }
+  return clear
 }

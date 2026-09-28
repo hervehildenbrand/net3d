@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { labelBox, placeSlidingLabels, contrastText, wcagContrast, type SlidingLabel } from './arcLabels'
+import { labelBox, placeSlidingLabels, contrastText, wcagContrast, circlesClearOfBoxes, type SlidingLabel, type LabelBox } from './arcLabels'
 import { specsColor } from '../lib/specsHeatmap'
 import { theme } from '../theme'
 
@@ -117,5 +117,36 @@ describe('placeSlidingLabels', () => {
     const result = placeSlidingLabels(labels)
     expect(result.get('first')).toBe(0)
     expect(result.has('second')).toBe(false) // all candidates blocked by 'first'
+  })
+})
+
+describe('circlesClearOfBoxes', () => {
+  const mkBox = (x: number, y: number, w = 40, h = 20): LabelBox => ({ key: 'b', x, y, w, h, priority: 0 })
+  const mkCircle = (key: string, x: number, y: number, r = 10) => ({ key, x, y, r })
+
+  it('test_circlesClearOfBoxes_inside_box_dropped', () => {
+    // Circle center inside the box => dropped
+    const boxes = [mkBox(0, 0, 40, 20)]
+    const circles = [mkCircle('c1', 20, 10, 5)]
+    expect(circlesClearOfBoxes(circles, boxes).has('c1')).toBe(false)
+  })
+
+  it('test_circlesClearOfBoxes_touching_edge_within_r_dropped', () => {
+    // Box [0,0 -> 40,20]; circle at (45, 10) with r=10 touches right edge within r
+    const boxes = [mkBox(0, 0, 40, 20)]
+    const circles = [mkCircle('c1', 45, 10, 10)] // dist to box edge = 5, r=10
+    expect(circlesClearOfBoxes(circles, boxes).has('c1')).toBe(false)
+  })
+
+  it('test_circlesClearOfBoxes_clear_of_all_kept', () => {
+    // Box [0,0 -> 40,20]; circle far away at (100, 100) r=5
+    const boxes = [mkBox(0, 0, 40, 20)]
+    const circles = [mkCircle('c1', 100, 100, 5)]
+    expect(circlesClearOfBoxes(circles, boxes).has('c1')).toBe(true)
+  })
+
+  it('test_circlesClearOfBoxes_no_boxes_all_kept', () => {
+    const circles = [mkCircle('c1', 0, 0, 10), mkCircle('c2', 50, 50, 10)]
+    expect(circlesClearOfBoxes(circles, []).size).toBe(2)
   })
 })
