@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Marker, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet'
+import { Marker, Pane, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import { divIcon } from 'leaflet'
 import {
   commitRateToSpeedBucket,
@@ -14,7 +14,7 @@ import {
 import type { Site } from '../hooks/useSites'
 import { theme } from '../theme'
 import { formatPct, groupLive } from '../lib/liveTelemetry'
-import { labelBox, placeLabels, type LabelBox } from './arcLabels'
+import { labelBox, placeLabels, contrastText, type LabelBox, type MarkerCircle } from './arcLabels'
 
 interface LineData {
   key: string
@@ -27,13 +27,18 @@ interface LineData {
   mid: [number, number]
 }
 
+/** Site marker radius in screen pixels (matches SiteMarkers icon size). */
+const MARKER_RADIUS = 14
+
 /** Arc labels showing Gbps on live links; de-overlapped on zoom/move. */
 function ArcLabels({
   lines,
   live,
+  sites,
 }: {
   lines: LineData[]
   live: Map<string, CableLive> | undefined
+  sites: Site[]
 }) {
   const map = useMap()
   const [tick, setTick] = useState(0)
@@ -46,8 +51,16 @@ function ArcLabels({
     // Reference tick to trigger recompute
     void tick
 
+    // Build marker circles to avoid
+    const markers: MarkerCircle[] = sites
+      .filter((s) => s.latitude !== null)
+      .map((s) => {
+        const pt = map.latLngToContainerPoint([s.latitude!, s.longitude!])
+        return { x: pt.x, y: pt.y, r: MARKER_RADIUS }
+      })
+
     // Build boxes for all live arcs
-    const boxes: (LabelBox & { bps: number; mid: [number, number] })[] = []
+    const boxes: (LabelBox & { bps: number; color: string; mid: [number, number] })[] = []
     for (const l of lines) {
       const gl = live && groupLive(l.cids, live)
       if (!gl || gl.bps === null) continue
@@ -55,29 +68,37 @@ function ArcLabels({
       const pt = map.latLngToContainerPoint(l.mid)
       const text = formatBps(gl.bps)
       const box = labelBox(l.key, text, pt.x, pt.y, gl.bps)
-      boxes.push({ ...box, bps: gl.bps, mid: l.mid })
+      boxes.push({ ...box, bps: gl.bps, color: gl.color, mid: l.mid })
     }
 
-    // De-overlap: keep busiest first
-    const kept = placeLabels(boxes)
+    // De-overlap: keep busiest first, avoid markers
+    const kept = placeLabels(boxes, markers)
     return boxes.filter((b) => kept.has(b.key))
-  }, [tick, lines, live, map])
+  }, [tick, lines, live, map, sites])
+
+  const pillStyle = "display:inline-flex;width:max-content;transform:translate(-50%,-50%);font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:11px;font-variant-numeric:tabular-nums;padding:2px 6px;border-radius:9px;border:2px solid rgba(255,255,255,0.95);box-shadow:0 0 0 1px rgba(0,0,0,0.08);white-space:nowrap;line-height:1.2"
 
   return (
-    <>
-      {visible.map((v) => (
-        <Marker
-          key={v.key}
-          position={v.mid}
-          pane="circuits"
-          interactive={false}
-          icon={divIcon({
-            className: '',
-            html: `<div style="font-family:ui-monospace,monospace;font-size:11px;color:${theme.text.primary};background:rgba(255,255,255,0.85);padding:1px 4px;border-radius:2px;white-space:nowrap">${formatBps(v.bps)}</div>`,
-          })}
-        />
-      ))}
-    </>
+    <Pane name="arcLabels" style={{ zIndex: 400 }}>
+      {visible.map((v) => {
+        const text = formatBps(v.bps)
+        const [value, unit] = text.split(' ')
+        const textColor = contrastText(v.color)
+        return (
+          <Marker
+            key={v.key}
+            position={v.mid}
+            pane="arcLabels"
+            interactive={false}
+            icon={divIcon({
+              className: '',
+              iconSize: [0, 0],
+              html: `<div style="${pillStyle};color:${textColor};background:${v.color}"><span style="font-weight:600">${value}</span><span style="font-weight:400;margin-left:2px">${unit}</span></div>`,
+            })}
+          />
+        )
+      })}
+    </Pane>
   )
 }
 
@@ -152,7 +173,7 @@ export function CircuitPolylines({
           </Polyline>
         )
       })}
-      {!!live?.size && <ArcLabels lines={lines} live={live} />}
+      {!!live?.size && <ArcLabels lines={lines} live={live} sites={sites} />}
     </>
   )
 }

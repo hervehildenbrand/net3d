@@ -9,6 +9,7 @@ const { useMapEvents } = vi.hoisted(() => ({ useMapEvents: vi.fn() }))
 vi.mock('leaflet', () => ({ divIcon: vi.fn() }))
 vi.mock('react-leaflet', () => ({
   Marker: () => null,
+  Pane: ({ children }: { children: React.ReactNode }) => children,
   Polyline: () => null,
   Tooltip: () => null,
   useMap: () => ({}),
