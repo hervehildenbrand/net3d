@@ -10,7 +10,7 @@ import { RoleLegend } from './RoleLegend'
 import { SpecsHeatmapLegend } from './SpecsHeatmapLegend'
 import { UtilLegend } from './UtilLegend'
 
-const panelStyle: React.CSSProperties = {
+export const panelStyle: React.CSSProperties = {
   position: 'absolute',
   top: 16,
   right: 16,
@@ -25,13 +25,13 @@ const panelStyle: React.CSSProperties = {
   fontSize: 13,
 }
 
-const sectionLabel: React.CSSProperties = {
+export const sectionLabel: React.CSSProperties = {
   fontWeight: 600,
   color: theme.text.primary,
   marginBottom: 6,
 }
 
-const optionRow: React.CSSProperties = {
+export const optionRow: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 8,
@@ -55,7 +55,7 @@ const dot = (on: boolean): React.CSSProperties => ({
   boxSizing: 'border-box',
 })
 
-const check = (on: boolean): React.CSSProperties => ({
+export const check = (on: boolean): React.CSSProperties => ({
   width: 12,
   height: 12,
   borderRadius: 3,
@@ -65,7 +65,7 @@ const check = (on: boolean): React.CSSProperties => ({
   boxSizing: 'border-box',
 })
 
-const divider: React.CSSProperties = {
+export const divider: React.CSSProperties = {
   borderTop: `1px solid ${theme.hud.border}`,
   margin: '8px 0',
 }
