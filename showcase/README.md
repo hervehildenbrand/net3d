@@ -66,6 +66,15 @@ python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 Idempotent and resumable — re-running skips sites whose racks already exist.
 Full seed of all 20 sites takes ~10–20 min (bulk REST creates).
 
+Each inter-DC circuit end is also cabled straight to its own WAN port on a core
+router (`{SITE}-core-01/02`, `et-0/0/N`, typed by the circuit rate), so live
+telemetry can colour the map arcs and DC links. To add those cables to an
+instance seeded before this existed (idempotent, a few seconds):
+
+```bash
+python3 circuit_cables.py
+```
+
 ### Tunables (env vars)
 
 | Var | Default | Meaning |

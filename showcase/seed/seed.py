@@ -34,6 +34,7 @@ import pynetbox
 import urllib3
 
 from add_power import apply_power
+from circuit_cables import apply_circuit_cables
 from server_roles import SERVER_ROLE_DEFS, server_role, server_device_type_slug
 
 urllib3.disable_warnings()
@@ -636,6 +637,9 @@ def main():
         print("(circuits skipped)", flush=True)
     else:
         seed_circuits(dcs, sites, providers, ctype)
+        # its own pass: seed_circuits skips circuits that already exist, and the
+        # parallel SKIP_CIRCUITS workers must not race on the shared WAN ports
+        apply_circuit_cables(URL, TOKEN)
     # A/B power chain (panels -> feeds -> PDUs -> device PSUs) over the seeded
     # fabric. Same idempotent applier the standalone migration uses.
     apply_power(URL, TOKEN, ONLY_SITES)
