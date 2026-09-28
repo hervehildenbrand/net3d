@@ -86,6 +86,16 @@ describe('bundleColor', () => {
     ])
     expect(bundleColor(['a', 'b'], live)).toBe(theme.cable.up)
   })
+
+  test('test_bundleColor_stale_member_pct_excluded_from_max', () => {
+    // a is stale but still carries a lingering pct (a third-party collector could send this);
+    // the busiest *live* member (b, 20%) must win, not the stale one (90%).
+    const live = new Map<string, CableLive>([
+      ['a', { pct: 90, bps: 9e9, stale: true }],
+      ['b', { pct: 20, bps: 2e9, stale: false }],
+    ])
+    expect(bundleColor(['a', 'b'], live)).toBe(utilColor(20))
+  })
 })
 
 describe('ifaceLive', () => {

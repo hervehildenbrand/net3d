@@ -41,7 +41,10 @@ export function bundleColor(ids: string[], live: Map<string, CableLive>): string
   const members = ids.map((id) => live.get(id)).filter((m): m is CableLive => !!m)
   if (members.length === 0) return null
 
-  const pcts = members.map((m) => m.pct).filter((p): p is number => p !== null)
+  const pcts = members
+    .filter((m) => !m.stale)
+    .map((m) => m.pct)
+    .filter((p): p is number => p !== null)
   if (pcts.length > 0) return utilColor(Math.max(...pcts))
   if (members.every((m) => m.stale)) return theme.heatmap.noData
   return theme.cable.up
