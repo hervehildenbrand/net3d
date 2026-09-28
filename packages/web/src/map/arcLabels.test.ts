@@ -10,6 +10,14 @@ describe('labelBox', () => {
     expect(long.w).toBeGreaterThan(short.w)
   })
 
+  it('test_labelBox_covers_the_painted_pill_plus_margin', () => {
+    // Painted in Chrome at 11 px (600-weight value, 400-weight unit): "13.6 Gbps" is 80 px wide, "2 Gbps" 60.3 px.
+    expect(labelBox('k', '13.6 Gbps', 0, 0).w).toBeGreaterThanOrEqual(80 + 4)
+    expect(labelBox('k', '2 Gbps', 0, 0).w).toBeGreaterThanOrEqual(60.3 + 4)
+    // …without wasting space: no more than 6 px slack beyond pill + margin
+    expect(labelBox('k', '13.6 Gbps', 0, 0).w).toBeLessThanOrEqual(80 + 4 + 6)
+  })
+
   it('test_labelBox_is_center_anchored', () => {
     // Box at (100, 50) should have x/y offset so the center is at 100,50
     const box = labelBox('k', '10G', 100, 50)

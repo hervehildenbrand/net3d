@@ -4,12 +4,13 @@
  */
 
 /**
- * Approximate width of system-ui 11px text: ~5.8px per char average.
- * Badge: 6px padding + 2px border + 2px margin each side.
+ * Width of the rate pill's text: measured ~6.9 px per char in Chrome (11 px system-ui, 600-weight value).
+ * Badge: 6px padding + 2px border + 2px margin each side, plus the value/unit gap and 1 px of sub-pixel slack.
  */
-const CHAR_WIDTH = 5.8
+const CHAR_WIDTH = 7
 const PADDING_X = 6
 const BORDER = 2
+const UNIT_GAP = 2 // margin-left on the unit span
 const MARGIN = 2 // minimal breathing room
 const LABEL_HEIGHT = 18 + BORDER * 2 + MARGIN * 2 // pill + border + margin
 
@@ -35,7 +36,7 @@ export interface SlidingLabel {
  * Includes border + margin so de-overlap keeps labels visually separated.
  */
 export function labelBox(key: string, text: string, cx: number, cy: number, priority = 0): LabelBox {
-  const w = text.length * CHAR_WIDTH + (PADDING_X + BORDER + MARGIN) * 2
+  const w = text.length * CHAR_WIDTH + (PADDING_X + BORDER + MARGIN) * 2 + UNIT_GAP + 1
   const h = LABEL_HEIGHT
   return { key, x: cx - w / 2, y: cy - h / 2, w, h, priority }
 }
