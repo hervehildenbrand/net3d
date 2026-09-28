@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { CircleMarker, MapContainer, Pane, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import { computeMapBounds, type CircuitGroup, type CableLive } from '@net3d/shared'
+import { computeMapBounds, type CircuitGroup, type CircuitLive } from '@net3d/shared'
 import type { Site } from '../hooks/useSites'
 import { useSitePrefetch } from '../hooks/useSitePrefetch'
 import { useAppStore } from '../store/useAppStore'
@@ -93,7 +93,7 @@ export function MapLayer({
 }: {
   sites: Site[]
   circuitGroups: CircuitGroup[]
-  circuitLive: Map<string, CableLive> | undefined
+  circuitLive: Map<string, CircuitLive> | undefined
   onSiteSelect: (name: string) => void
 }) {
   const setMapView = useAppStore((s) => s.setMapView)

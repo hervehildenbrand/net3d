@@ -64,6 +64,12 @@ export function MapLegend({ live }: { live: boolean }) {
         <span style={{ color: theme.text.secondary }}>DC link{live ? ' · no live data' : ''}</span>
       </div>
       {live && (
+        <div style={{ ...row, color: theme.text.secondary }}>
+          <span style={{ width: 14, flexShrink: 0, textAlign: 'center', fontSize: 10 }}>▸◂</span>
+          <span>each half: traffic leaving its site</span>
+        </div>
+      )}
+      {live && (
         <div style={{ marginTop: 8 }}>
           <UtilLegend />
         </div>
