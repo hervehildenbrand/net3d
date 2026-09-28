@@ -15,7 +15,7 @@ import type { Site } from '../hooks/useSites'
 import { theme } from '../theme'
 import { dirLive, formatPct, type DirGroup } from '../lib/liveTelemetry'
 import { labelBox, placeLabels, contrastText, type LabelBox, type MarkerCircle } from './arcLabels'
-import { screenAngleDeg, splitArc } from './arcHalves'
+import { screenAngleDeg, showArrows, splitArc, spreadPoints } from './arcHalves'
 
 type LatLng = [number, number]
 
@@ -43,6 +43,8 @@ function lineDirs(l: LineData, live: Map<string, CircuitLive>): { a: DirGroup; z
 const MARKER_RADIUS = 14
 /** Screen radius kept clear around the arrowheads at an arc's midpoint. */
 const ARROW_RADIUS = 9
+/** Minimum distance between kept arrow pairs; two arrowheads are ~20 px tip to tail. */
+const ARROW_SPACING = 22
 
 /** Rate pill; background and text colour are appended per label. */
 const PILL_STYLE =
@@ -82,15 +84,40 @@ function ArcLabels({ lines, live, sites }: { lines: LineData[]; live: Map<string
 
     const arrows: Arrow[] = []
     const boxes: Bead[] = []
+    // site circles for showArrows check (only MARKER_RADIUS site markers, not arrow avoid-circles)
+    const siteCircles = markers.slice()
+
+    // Pass 1: collect arrow candidates
+    type ArrowCandidate = {
+      key: string
+      x: number
+      y: number
+      priority: number
+      arrowA: Arrow
+      arrowZ: Arrow
+      mid: LatLng
+    }
+    const arrowCandidates: ArrowCandidate[] = []
+
     for (const l of lines) {
       const dirs = lineDirs(l, live)
       if (!dirs) continue
       const { a, z, mid, aLabel, zLabel } = l.halves
       const m = px(mid)
-      // each arrow points along its half toward the far site; the tips meet at the midpoint
-      arrows.push({ key: `${l.key}>${l.siteZ}`, at: mid, angle: screenAngleDeg(px(a[a.length - 2] ?? a[0]!), m), color: dirs.a.color })
-      arrows.push({ key: `${l.key}>${l.siteA}`, at: mid, angle: screenAngleDeg(px(z[1] ?? z[0]!), m), color: dirs.z.color })
-      markers.push({ x: m.x, y: m.y, r: ARROW_RADIUS })
+      const aPx = px(a[0]!)
+      const zPx = px(z.at(-1)!)
+      // only consider arrowheads when arc is long enough and midpoint is clear of site markers
+      if (showArrows(aPx, zPx, m, siteCircles)) {
+        arrowCandidates.push({
+          key: l.key,
+          x: m.x,
+          y: m.y,
+          priority: (dirs.a.bps ?? 0) + (dirs.z.bps ?? 0),
+          arrowA: { key: `${l.key}>${l.siteZ}`, at: mid, angle: screenAngleDeg(px(a[a.length - 2] ?? a[0]!), m), color: dirs.a.color },
+          arrowZ: { key: `${l.key}>${l.siteA}`, at: mid, angle: screenAngleDeg(px(z[1] ?? z[0]!), m), color: dirs.z.color },
+          mid,
+        })
+      }
 
       for (const [d, at, from] of [
         [dirs.a, aLabel, l.siteA],
@@ -100,6 +127,14 @@ function ArcLabels({ lines, live, sites }: { lines: LineData[]; live: Map<string
         const p = px(at)
         boxes.push({ ...labelBox(`${l.key}@${from}`, formatBps(d.bps), p.x, p.y, d.bps), bps: d.bps, color: d.color, at })
       }
+    }
+
+    // Pass 2: thin out crowded arrow pairs, keeping busier links
+    const keptArrows = spreadPoints(arrowCandidates, ARROW_SPACING)
+    for (const c of arrowCandidates) {
+      if (!keptArrows.has(c.key)) continue
+      arrows.push(c.arrowA, c.arrowZ)
+      markers.push({ x: c.x, y: c.y, r: ARROW_RADIUS })
     }
 
     const kept = placeLabels(boxes, markers) // busiest first, clear of sites and arrowheads
