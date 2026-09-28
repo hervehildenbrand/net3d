@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import type { CableLive, CircuitLive, LiveIface } from '@net3d/shared'
 import { theme } from '../theme'
-import { bundleColor, dcLinkLabel, dirLive, formatPct, groupLive, ifaceLive, liveColor, utilColor, utilT } from './liveTelemetry'
+import { bundleColor, dcLinkRates, dirLive, formatPct, ifaceLive, liveColor, utilColor, utilT, type DirGroup } from './liveTelemetry'
 
 describe('utilT', () => {
   test('test_utilColor_log_anchors_low_mid_high', () => {
@@ -139,32 +139,28 @@ describe('ifaceLive', () => {
   })
 })
 
-describe('groupLive', () => {
-  test('test_groupLive_busiest_colour_and_fresh_bps_sum', () => {
-    const live = new Map<string, CableLive>([
-      ['a', { pct: 30, bps: 3e9, stale: false }],
-      ['b', { pct: 70, bps: 7e9, stale: false }],
-      ['c', { pct: 10, bps: 1e9, stale: false }],
-    ])
-    const result = groupLive(['a', 'b', 'c'], live)!
-    expect(result.color).toBe(utilColor(70))
-    expect(result.bps).toBe(11e9) // 3 + 7 + 1
+describe('dcLinkRates', () => {
+  const dir = (bps: number): DirGroup => ({ color: '#fff', bps, pct: 50 })
+
+  test('test_dcLinkRates_no_live_returns_null', () => {
+    expect(dcLinkRates(undefined)).toBeNull()
+    expect(dcLinkRates(null)).toBeNull()
   })
 
-  test('test_groupLive_no_member_returns_null', () => {
-    const live = new Map<string, CableLive>()
-    expect(groupLive(['a', 'b'], live)).toBeNull()
+  test('test_dcLinkRates_both_directions_returns_combined_string', () => {
+    expect(dcLinkRates({ out: dir(7.3e9), in: dir(2.1e9) })).toBe('out 7.3 Gbps · in 2.1 Gbps')
   })
 
-  test('test_groupLive_all_stale_has_null_bps', () => {
-    // All stale with null pct → noData color; bps null since stale members don't contribute
-    const live = new Map<string, CableLive>([
-      ['a', { pct: null, bps: null, stale: true }],
-      ['b', { pct: null, bps: null, stale: true }],
-    ])
-    const result = groupLive(['a', 'b'], live)!
-    expect(result.color).toBe(theme.heatmap.noData)
-    expect(result.bps).toBeNull()
+  test('test_dcLinkRates_out_null_returns_in_only', () => {
+    expect(dcLinkRates({ out: null, in: dir(915.6e6) })).toBe('in 915.6 Mbps')
+  })
+
+  test('test_dcLinkRates_in_null_returns_out_only', () => {
+    expect(dcLinkRates({ out: dir(1.5e9), in: null })).toBe('out 1.5 Gbps')
+  })
+
+  test('test_dcLinkRates_both_null_returns_null', () => {
+    expect(dcLinkRates({ out: null, in: null })).toBeNull()
   })
 })
 
@@ -200,23 +196,5 @@ describe('dirLive', () => {
   test('test_dirLive_direction_unknown_is_up_green_without_rate', () => {
     const live = new Map<string, CircuitLive>([['a', c(undefined)]])
     expect(dirLive(['a'], live, 'AMS1')).toEqual({ color: theme.cable.up, bps: null, pct: null })
-  })
-})
-
-describe('dcLinkLabel', () => {
-  const d = (bps: number | null) => ({ color: '#000000', bps, pct: null })
-
-  test('test_dcLinkLabel_without_live_data_is_peer_and_count', () => {
-    expect(dcLinkLabel('FRA1', 3)).toBe('→ FRA1 (3)')
-    expect(dcLinkLabel('FRA1', 3, null)).toBe('→ FRA1 (3)')
-  })
-
-  test('test_dcLinkLabel_shows_out_and_in_rates', () => {
-    expect(dcLinkLabel('FRA1', 3, { out: d(7.3e9), in: d(2.1e9) })).toBe('→ FRA1 (3) · ↑7.3 Gbps ↓2.1 Gbps')
-  })
-
-  test('test_dcLinkLabel_omits_a_direction_without_rate', () => {
-    expect(dcLinkLabel('FRA1', 1, { out: d(null), in: d(915.6e6) })).toBe('→ FRA1 (1) · ↓915.6 Mbps')
-    expect(dcLinkLabel('FRA1', 1, { out: null, in: null })).toBe('→ FRA1 (1)')
   })
 })

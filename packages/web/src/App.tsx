@@ -38,7 +38,7 @@ import { computeSpecsRange } from './lib/specsHeatmap'
 import { collectSubnets } from './lib/subnetColoring'
 import { tracePowerChain } from './lib/powerChain'
 import { computeActiveLldpIds } from './lib/lldpScope'
-import { groupLive } from './lib/liveTelemetry'
+import { dirLive } from './lib/liveTelemetry'
 
 const hudStyle: React.CSSProperties = {
   position: 'absolute',
@@ -259,13 +259,16 @@ export function App() {
     })
   }, [sites, selectedSiteName, circuitGroups])
 
-  // Decorate DC links with live utilisation when active; pass-through otherwise.
+  // Decorate DC links with live traffic each way when active; pass-through otherwise.
   const dcLinksShown = useMemo(
     () =>
-      cableColorMode === 'live' && circuitLive
-        ? dcLinks.map((l) => ({ ...l, live: groupLive(l.cids, circuitLive) }))
+      cableColorMode === 'live' && circuitLive && selectedSiteName
+        ? dcLinks.map((l) => ({
+            ...l,
+            live: { out: dirLive(l.cids, circuitLive, selectedSiteName), in: dirLive(l.cids, circuitLive, l.peerName) },
+          }))
         : dcLinks,
-    [dcLinks, circuitLive, cableColorMode],
+    [dcLinks, circuitLive, cableColorMode, selectedSiteName],
   )
 
   const inScene = level !== 'map'

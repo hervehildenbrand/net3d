@@ -65,24 +65,6 @@ export function ifaceLive(t: LiveIface | undefined): { text: string; color: stri
   return { text: `${text} ${formatPct(pct)}%`, color: utilColor(pct) }
 }
 
-/**
- * A group (LAG / bundle) of cables' live state: busiest color + sum of non-stale bps.
- * Returns null when no member is in the live map.
- */
-export function groupLive(ids: string[], live: Map<string, CableLive>): { color: string; bps: number | null } | null {
-  const color = bundleColor(ids, live)
-  if (color === null) return null
-
-  let bps: number | null = null
-  for (const id of ids) {
-    const m = live.get(id)
-    if (m && !m.stale && m.bps !== null) {
-      bps = (bps ?? 0) + m.bps
-    }
-  }
-  return { color, bps }
-}
-
 /** One direction of a link (traffic leaving one site): busiest fresh circuit's colour, summed rate. */
 export interface DirGroup {
   color: string
@@ -95,6 +77,18 @@ export interface DirGroup {
  * fresh circuit's heat colour and the fresh circuits' summed rate. null when no circuit of the link
  * has telemetry (render as today); all stale reads grey.
  */
+/**
+ * Room-view DC-link rate string: combines both directions in ASCII for font compatibility.
+ * "out 7.3 Gbps · in 2.1 Gbps" when both; one side if the other is null; null when both null or no live.
+ */
+export function dcLinkRates(live?: { out: DirGroup | null; in: DirGroup | null } | null): string | null {
+  if (!live) return null
+  const parts: string[] = []
+  if (live.out?.bps != null) parts.push(`out ${formatBps(live.out.bps)}`)
+  if (live.in?.bps != null) parts.push(`in ${formatBps(live.in.bps)}`)
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
 export function dirLive(ids: string[], live: Map<string, CircuitLive>, from: string): DirGroup | null {
   const members = ids.map((id) => live.get(id)).filter((m): m is CircuitLive => !!m)
   if (members.length === 0) return null
@@ -109,17 +103,4 @@ export function dirLive(ids: string[], live: Map<string, CircuitLive>, from: str
     if (d?.pct != null) pct = Math.max(pct ?? 0, d.pct)
   }
   return { color: pct === null ? theme.cable.up : utilColor(pct), bps, pct }
-}
-
-/** Room-view DC-link label: peer, circuit count and the live rate each way (↑ leaving this site, ↓ arriving). */
-export function dcLinkLabel(
-  peerName: string,
-  count: number,
-  live?: { out: DirGroup | null; in: DirGroup | null } | null,
-): string {
-  const rates = [
-    live?.out?.bps != null ? `↑${formatBps(live.out.bps)}` : null,
-    live?.in?.bps != null ? `↓${formatBps(live.in.bps)}` : null,
-  ].filter((r): r is string => r !== null)
-  return `→ ${peerName} (${count})${rates.length ? ` · ${rates.join(' ')}` : ''}`
 }

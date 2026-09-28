@@ -1,5 +1,6 @@
 import { Billboard, Line, Text } from '@react-three/drei'
-import { bearingToGroundOffset, formatBps, speedBucketToWidth, type SpeedBucket } from '@net3d/shared'
+import { bearingToGroundOffset, speedBucketToWidth, type SpeedBucket } from '@net3d/shared'
+import { dcLinkRates, type DirGroup } from '../lib/liveTelemetry'
 import { theme } from '../theme'
 
 export interface DcLink {
@@ -13,8 +14,8 @@ export interface DcLink {
   bearingDeg: number | null
   /** Circuit IDs that make up this link group. */
   cids: string[]
-  /** Live utilisation data when available. */
-  live?: { color: string; bps: number | null } | null
+  /** Live traffic each way when active: out = leaving the site in view, in = arriving from the peer. */
+  live?: { out: DirGroup | null; in: DirGroup | null } | null
 }
 
 /**
@@ -42,24 +43,37 @@ export function SiteDcLinks({
         const bearing = l.bearingDeg ?? (links.length ? (i / links.length) * 360 : 0)
         const off = bearingToGroundOffset(bearing, radius)
         const end: [number, number, number] = [center.x + off.x, topY, center.z + off.z]
+        const mid: [number, number, number] = [(start[0] + end[0]) / 2, topY, (start[2] + end[2]) / 2]
+        const width = Math.max(speedBucketToWidth(l.bucket), 2)
+        const outColor = l.live?.out?.color ?? theme.map.circuit
+        const inColor = l.live?.in?.color ?? theme.map.circuit
         return (
           <group key={l.peerName}>
-            <Line
-              points={[start, end]}
-              color={l.live?.color ?? theme.map.circuit}
-              lineWidth={Math.max(speedBucketToWidth(l.bucket), 2)}
-              transparent
-              opacity={0.85}
-              raycast={() => null}
-            />
+            {l.live ? (
+              <>
+                {/* near half: traffic leaving this site; far half: traffic arriving from the peer */}
+                <Line points={[start, mid]} color={outColor} lineWidth={width} transparent opacity={0.85} raycast={() => null} />
+                <Line points={[mid, end]} color={inColor} lineWidth={width} transparent opacity={0.85} raycast={() => null} />
+              </>
+            ) : (
+              <Line points={[start, end]} color={theme.map.circuit} lineWidth={width} transparent opacity={0.85} raycast={() => null} />
+            )}
             <mesh position={end} raycast={() => null}>
               <sphereGeometry args={[0.15, 12, 12]} />
-              <meshBasicMaterial color={l.live?.color ?? theme.map.circuit} toneMapped={false} />
+              <meshBasicMaterial color={l.live ? inColor : theme.map.circuit} toneMapped={false} />
             </mesh>
             <Billboard position={[end[0], end[1] + 0.35, end[2]]}>
               <Text fontSize={0.32} color={theme.text.secondary} anchorX="center" anchorY="bottom">
-                {`→ ${l.peerName} (${l.count})${l.live?.bps != null ? ` · ${formatBps(l.live.bps)}` : ''}`}
+                → {l.peerName} ({l.count})
               </Text>
+              {(() => {
+                const rateText = dcLinkRates(l.live)
+                return rateText ? (
+                  <Text fontSize={0.28} color={theme.text.secondary} anchorX="center" anchorY="bottom" position={[0, -0.36, 0]}>
+                    {rateText}
+                  </Text>
+                ) : null
+              })()}
             </Billboard>
           </group>
         )
