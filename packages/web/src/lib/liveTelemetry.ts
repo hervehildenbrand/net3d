@@ -1,4 +1,4 @@
-import { formatBps, type CableLive, type LiveIface } from '@net3d/shared'
+import { formatBps, type CableLive, type CircuitLive, type LiveIface } from '@net3d/shared'
 import { theme } from '../theme'
 import { specsColor } from './specsHeatmap'
 
@@ -81,4 +81,45 @@ export function groupLive(ids: string[], live: Map<string, CableLive>): { color:
     }
   }
   return { color, bps }
+}
+
+/** One direction of a link (traffic leaving one site): busiest fresh circuit's colour, summed rate. */
+export interface DirGroup {
+  color: string
+  bps: number | null
+  pct: number | null
+}
+
+/**
+ * A link's live state in one direction (traffic leaving `from`) across its circuits: the busiest
+ * fresh circuit's heat colour and the fresh circuits' summed rate. null when no circuit of the link
+ * has telemetry (render as today); all stale reads grey.
+ */
+export function dirLive(ids: string[], live: Map<string, CircuitLive>, from: string): DirGroup | null {
+  const members = ids.map((id) => live.get(id)).filter((m): m is CircuitLive => !!m)
+  if (members.length === 0) return null
+  const fresh = members.filter((m) => !m.stale)
+  if (fresh.length === 0) return { color: theme.heatmap.noData, bps: null, pct: null }
+
+  let bps: number | null = null
+  let pct: number | null = null
+  for (const m of fresh) {
+    const d = m.dirs?.[from]
+    if (d?.bps != null) bps = (bps ?? 0) + d.bps
+    if (d?.pct != null) pct = Math.max(pct ?? 0, d.pct)
+  }
+  return { color: pct === null ? theme.cable.up : utilColor(pct), bps, pct }
+}
+
+/** Room-view DC-link label: peer, circuit count and the live rate each way (↑ leaving this site, ↓ arriving). */
+export function dcLinkLabel(
+  peerName: string,
+  count: number,
+  live?: { out: DirGroup | null; in: DirGroup | null } | null,
+): string {
+  const rates = [
+    live?.out?.bps != null ? `↑${formatBps(live.out.bps)}` : null,
+    live?.in?.bps != null ? `↓${formatBps(live.in.bps)}` : null,
+  ].filter((r): r is string => r !== null)
+  return `→ ${peerName} (${count})${rates.length ? ` · ${rates.join(' ')}` : ''}`
 }

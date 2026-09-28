@@ -1,13 +1,13 @@
 import { useMemo } from 'react'
 import { queryOptions, useQuery } from '@tanstack/react-query'
-import type { CableLive } from '@net3d/shared'
+import type { CircuitLive } from '@net3d/shared'
 import { apiUrl, type Backend } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 
 const POLL_MS = 5_000
 
 interface CircuitTelemetryResponse {
-  circuits: Record<string, CableLive>
+  circuits: Record<string, CircuitLive>
 }
 
 export function circuitTelemetryQueryOptions(backend: Backend) {
@@ -25,7 +25,7 @@ export function circuitTelemetryQueryOptions(backend: Backend) {
 }
 
 /** Latest circuit telemetry as Map; undefined while loading or after error (render static). */
-export function useCircuitTelemetry(enabled: boolean): Map<string, CableLive> | undefined {
+export function useCircuitTelemetry(enabled: boolean): Map<string, CircuitLive> | undefined {
   const backend = useAppStore((s) => s.backend)
   const { data, isError } = useQuery({ ...circuitTelemetryQueryOptions(backend), enabled })
   return useMemo(
