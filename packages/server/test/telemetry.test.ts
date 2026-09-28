@@ -464,15 +464,19 @@ describe('GET /api/telemetry/circuits', () => {
     await warmCircuits(app)
 
     await app.inject({ method: 'GET', url: '/api/telemetry/circuits' })
-    await app.inject({ method: 'GET', url: '/api/telemetry/circuits' })
-    // first request populates cache; second is served from cache
+    // first request populates cache
     const callsBefore = (netstatex.interfaces as ReturnType<typeof vi.fn>).mock.calls.length
+
+    await app.inject({ method: 'GET', url: '/api/telemetry/circuits' })
+    // second request is still within the 1 s TTL -> served from cache, no new collector calls
+    const callsAfterCached = (netstatex.interfaces as ReturnType<typeof vi.fn>).mock.calls.length
+    expect(callsAfterCached).toBe(callsBefore)
 
     vi.setSystemTime(Date.now() + 1_001)
     await app.inject({ method: 'GET', url: '/api/telemetry/circuits' })
     // cache expired -> devices refetched
     const callsAfter = (netstatex.interfaces as ReturnType<typeof vi.fn>).mock.calls.length
-    expect(callsAfter).toBeGreaterThan(callsBefore)
+    expect(callsAfter).toBeGreaterThan(callsAfterCached)
   })
 
   test('test_circuit_telemetry_route_device_list_failure_returns_503', async () => {
