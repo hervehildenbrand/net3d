@@ -29,5 +29,8 @@ jobs:
       - name: Test
         run: pnpm test:coverage
 
+      - name: Showcase telemetry simulator tests
+        run: node --test showcase/telemetry-sim/model.test.mjs showcase/telemetry-sim/sim.test.mjs
+
       - name: Production build
         run: pnpm build
