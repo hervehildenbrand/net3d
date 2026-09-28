@@ -105,6 +105,21 @@ The callback defaults to `http://host.docker.internal:3001/api/webhooks/netbox` 
 NetBox container POSTing back to the dev server on the host. Broadcasts are debounced
 ~1 s, so bulk edits/reseeds coalesce instead of stampeding the browser with refetches.
 
+## 5. Live telemetry (optional)
+
+No real hardware needed: [`telemetry-sim/`](telemetry-sim/) fakes a telemetry collector
+for the switches and routers net3d serves. Rack and site cables and the device panel's
+per-port rates then show live utilisation. Where circuits are cabled to core-router
+ports, map arcs and room DC links do too.
+
+```bash
+pnpm dev:showcase-live   # pnpm dev:showcase with NETSTATEX_URL=http://127.0.0.1:8090, plus the simulator
+```
+
+In a site or rack, pick **Cables → live** in the Layers panel. See
+[`telemetry-sim/README.md`](telemetry-sim/README.md) for the rate model, the
+dual-backend setup and its limits.
+
 ## Teardown
 
 ```bash

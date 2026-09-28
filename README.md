@@ -133,6 +133,10 @@ cd seed && python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 cd ../.. && pnpm install && pnpm dev:showcase   # app on http://localhost:5173
 ```
 
+Run `pnpm dev:showcase-live` instead of `pnpm dev:showcase` to also see the optional live
+telemetry views, fed by a bundled traffic simulator instead of real routers (see
+[`showcase/README.md`](showcase/README.md#5-live-telemetry-optional)).
+
 ## Connecting your NetBox
 
 1. **Mint a token.** In NetBox, open your profile → **API Tokens** → **Add a token**.

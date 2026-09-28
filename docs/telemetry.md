@@ -152,3 +152,10 @@ colour scale from 0.01 % to 100 %.
 
 - **netstatex**, the author's gNMI collector, implements this contract (it serves more
   under `/api/v1`, which net3d ignores). A link will be added here once it is published.
+
+## Reference simulator
+
+[`showcase/telemetry-sim/`](../showcase/telemetry-sim/) is a dependency-free Node
+implementation of exactly these two endpoints. The showcase runs it
+(`pnpm dev:showcase-live`) to show live data without real routers, and it is the
+smallest example of a compatible collector.
