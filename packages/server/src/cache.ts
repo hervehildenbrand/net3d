@@ -20,6 +20,9 @@ export interface TtlCacheOptions {
   shouldPersist?: (key: string) => boolean
 }
 
+// ponytail: fixed cap, not a config knob — make it configurable only if a deployment needs more.
+const MAX_BACKGROUND_REFRESHES = 2
+
 /** In-memory TTL cache. Single-process; swap for redis if the app ever scales out. */
 export class TtlCache {
   private store = new Map<string, Entry>()
@@ -27,6 +30,7 @@ export class TtlCache {
   private generations = new Map<string, number>()
   private readonly persist?: DiskCacheStore
   private readonly shouldPersist: (key: string) => boolean
+  private backgroundRefreshes = 0
 
   constructor(opts?: TtlCacheOptions) {
     this.persist = opts?.persist
@@ -120,7 +124,17 @@ export class TtlCache {
     if (opts?.staleWhileRevalidate) {
       const entry = this.getStale<T>(key)
       if (entry) {
-        if (!entry.fresh) void this.refresh(key, ttlMs, fn).catch(() => {})
+        // A pending load (this SWR path or a prewarm refresh()) already dedupes
+        // in refresh() and will update the cache; don't start or count another.
+        if (!entry.fresh && !this.loading.has(key) && this.backgroundRefreshes < MAX_BACKGROUND_REFRESHES) {
+          // refresh() first: if fn() throws synchronously, refresh() throws before
+          // the increment below runs, so the budget is never claimed and never leaks.
+          const load = this.refresh(key, ttlMs, fn)
+          this.backgroundRefreshes++
+          void load.catch(() => {}).finally(() => {
+            this.backgroundRefreshes--
+          })
+        }
         return entry.value
       }
     } else {

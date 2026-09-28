@@ -214,6 +214,153 @@ describe('TtlCache stale-while-revalidate', () => {
     vi.useRealTimers()
   })
 
+  test('caps concurrent background refreshes so extra stale hits skip starting a new load', async () => {
+    vi.useFakeTimers()
+    const cache = new TtlCache()
+    const swr = { staleWhileRevalidate: true }
+    const keys = ['a', 'b', 'c', 'd', 'e']
+    for (const key of keys) cache.set(key, `${key}-stale`, 1000)
+    vi.advanceTimersByTime(1001)
+
+    let loaderCalls = 0
+    const releases: Array<(value: string) => void> = []
+    const fn = () => {
+      loaderCalls++
+      return new Promise<string>((resolve) => releases.push(resolve))
+    }
+
+    const results = await Promise.all(keys.map((key) => cache.getOrSet(key, 1000, fn, swr)))
+
+    expect(results).toEqual(keys.map((key) => `${key}-stale`))
+    expect(loaderCalls).toBe(2) // MAX_BACKGROUND_REFRESHES, not one per stale key
+
+    releases.forEach((release) => release('done'))
+    await vi.runAllTimersAsync()
+    vi.useRealTimers()
+  })
+
+  test('releases the background-refresh budget after each load settles, success or failure', async () => {
+    vi.useFakeTimers()
+    const cache = new TtlCache()
+    const swr = { staleWhileRevalidate: true }
+    cache.set('a', 'a-stale', 1000)
+    cache.set('b', 'b-stale', 1000)
+    cache.set('c', 'c-stale', 1000)
+    cache.set('d', 'd-stale', 1000)
+    vi.advanceTimersByTime(1001)
+
+    let releaseA!: (value: string) => void
+    let rejectB!: (err: Error) => void
+    let cCalls = 0
+    let dCalls = 0
+    const fnA = () => new Promise<string>((resolve) => (releaseA = resolve))
+    const fnB = () => new Promise<string>((_resolve, reject) => (rejectB = reject))
+    // c and d never resolve — only whether their loader was invoked matters here
+    const fnC = () => {
+      cCalls++
+      return new Promise<string>(() => {})
+    }
+    const fnD = () => {
+      dCalls++
+      return new Promise<string>(() => {})
+    }
+
+    expect(await cache.getOrSet('a', 1000, fnA, swr)).toBe('a-stale')
+    expect(await cache.getOrSet('b', 1000, fnB, swr)).toBe('b-stale')
+    // budget exhausted by a and b: neither c's nor d's background load starts yet
+    expect(await cache.getOrSet('c', 1000, fnC, swr)).toBe('c-stale')
+    expect(await cache.getOrSet('d', 1000, fnD, swr)).toBe('d-stale')
+    expect(cCalls).toBe(0)
+    expect(dCalls).toBe(0)
+
+    // settle one at a time, so each probe isolates a single path's decrement
+    releaseA('a-fresh')
+    await vi.runAllTimersAsync() // flush a's success settle + finally microtasks
+
+    expect(await cache.getOrSet('c', 1000, fnC, swr)).toBe('c-stale')
+    expect(cCalls).toBe(1) // the success path freed a's slot for c
+    expect(dCalls).toBe(0) // ...but only one slot freed — d still waits
+
+    rejectB(new Error('boom'))
+    await vi.runAllTimersAsync() // flush b's failure settle + finally microtasks
+
+    expect(await cache.getOrSet('d', 1000, fnD, swr)).toBe('d-stale')
+    expect(dCalls).toBe(1) // the failure path freed b's slot for d — proves both paths decrement
+
+    vi.useRealTimers()
+  })
+
+  test('a loader that throws synchronously does not leak the background-refresh budget', async () => {
+    vi.useFakeTimers()
+    const cache = new TtlCache()
+    const swr = { staleWhileRevalidate: true }
+    cache.set('x', 'x-stale', 1000)
+    cache.set('e', 'e-stale', 1000)
+    cache.set('f', 'f-stale', 1000)
+    vi.advanceTimersByTime(1001)
+
+    const throwingFn = () => {
+      throw new Error('sync boom')
+    }
+    // current contract: a synchronous throw on the SWR path propagates as a rejection
+    await expect(cache.getOrSet('x', 1000, throwingFn, swr)).rejects.toThrow('sync boom')
+
+    let calls = 0
+    const releases: Array<(value: string) => void> = []
+    const fn = () => {
+      calls++
+      return new Promise<string>((resolve) => releases.push(resolve))
+    }
+
+    expect(await cache.getOrSet('e', 1000, fn, swr)).toBe('e-stale')
+    expect(await cache.getOrSet('f', 1000, fn, swr)).toBe('f-stale')
+    expect(calls).toBe(2) // the earlier sync throw must not have claimed a budget slot forever
+
+    releases.forEach((release) => release('done'))
+    await vi.runAllTimersAsync()
+    vi.useRealTimers()
+  })
+
+  test('a key already loading via refresh() (e.g. the prewarm) does not consume the background-refresh budget', async () => {
+    vi.useFakeTimers()
+    const cache = new TtlCache()
+    const swr = { staleWhileRevalidate: true }
+    cache.set('pending1', 'pending1-stale', 1000)
+    cache.set('pending2', 'pending2-stale', 1000)
+    cache.set('c', 'c-stale', 1000)
+    cache.set('d', 'd-stale', 1000)
+    vi.advanceTimersByTime(1001)
+
+    let pendingCalls = 0
+    const releases: Array<(value: string) => void> = []
+    const pendingFn = () => {
+      pendingCalls++
+      return new Promise<string>((resolve) => releases.push(resolve))
+    }
+    // simulate the prewarm: pending loads started directly via refresh(), not getOrSet
+    void cache.refresh('pending1', 1000, pendingFn)
+    void cache.refresh('pending2', 1000, pendingFn)
+    expect(pendingCalls).toBe(2)
+
+    let cdCalls = 0
+    const cdFn = () => {
+      cdCalls++
+      return new Promise<string>((resolve) => releases.push(resolve))
+    }
+
+    expect(await cache.getOrSet('pending1', 1000, pendingFn, swr)).toBe('pending1-stale')
+    expect(await cache.getOrSet('pending2', 1000, pendingFn, swr)).toBe('pending2-stale')
+    expect(pendingCalls).toBe(2) // SWR did not call the loader again for the pending keys
+
+    expect(await cache.getOrSet('c', 1000, cdFn, swr)).toBe('c-stale')
+    expect(await cache.getOrSet('d', 1000, cdFn, swr)).toBe('d-stale')
+    expect(cdCalls).toBe(2) // budget wasn't consumed by the pending keys, so both start
+
+    releases.forEach((release) => release('done'))
+    await vi.runAllTimersAsync()
+    vi.useRealTimers()
+  })
+
   test('plain getOrSet keeps strict expiry semantics (no stale serves)', async () => {
     vi.useFakeTimers()
     const cache = new TtlCache()
