@@ -113,7 +113,12 @@ has loaded so far (for example, sites someone has opened).
 | Route | Response | Polled |
 |---|---|---|
 | `GET /api/telemetry/sites/:site` | `{ "devices": { "<device>": { "<interface>": { "rxBps", "txBps", "capacityBps", "stale" } } } }` | every 2 s, only while the **live** cable colouring is on or a device panel is open |
-| `GET /api/telemetry/circuits` | `{ "circuits": { "<cid>": { "pct", "bps", "stale" } } }` | every 5 s, only while the map is visible, or in a site with **live** colouring and **DC links** shown |
+| `GET /api/telemetry/circuits` | `{ "circuits": { "<cid>": { "pct", "bps", "stale", "dirs": { "<site>": { "bps", "pct" } } } } }` | every 5 s, only while the map is visible, or in a site with **live** colouring and **DC links** shown |
+
+`pct`/`bps` describe a circuit's busier direction. `dirs` gives each direction, keyed by the
+site the traffic leaves: the rate out of a site is that site's own router port tx, else the far
+port's rx. A circuit seen from only one site still reports both directions once the circuit list
+is loaded (`dirs` is `{}` until then).
 
 Polling pauses in background tabs. Both routes only read what net3d has already cached
 from the source of truth; they never query it. `{ "devices": {} }` means "no monitored

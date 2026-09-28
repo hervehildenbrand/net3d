@@ -4,11 +4,14 @@ import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import { timingSafeEqual } from 'node:crypto'
 import {
+  circuitDirections,
+  circuitEnds,
   circuitLinks,
   groupCircuitsBySitePair,
   mapTelemetryToCables,
   SITE_LAYOUT_VERSION,
   validateLayoutInput,
+  type CircuitGroup,
   type SiteLayout,
   type SiteTelemetry,
 } from '@net3d/shared'
@@ -387,8 +390,8 @@ export function buildApp({
               // Collect circuit cables from all cached site details — never loads NetBox on demand.
               // Cold cache → empty result; warm cache populates as prewarm runs.
               const sites = cache.peek<Site[]>('sites') ?? []
-              const allCables = sites.flatMap((s) => cache.peek<SiteDetail>(`site:${s.name}`)?.cables ?? [])
-              const links = circuitLinks(allCables)
+              const siteCables = sites.map((s) => ({ site: s.name, cables: cache.peek<SiteDetail>(`site:${s.name}`)?.cables ?? [] }))
+              const links = circuitLinks(siteCables.flatMap((s) => s.cables))
               if (!links.length) return { circuits: {} }
 
               // Only fetch devices that appear in circuit links AND are monitored
@@ -404,7 +407,17 @@ export function buildApp({
                 throw new Error('telemetry_unavailable')
               }
 
-              return { circuits: Object.fromEntries(mapTelemetryToCables({ devices }, links)) }
+              // The circuit list names both sites, so a circuit seen from one site still gets both directions.
+              const pairOf = new Map<string, readonly [string, string]>()
+              for (const g of cache.peek<CircuitGroup[]>('circuits') ?? []) {
+                for (const c of g.circuits ?? []) pairOf.set(c.cid, [c.siteA, c.siteZ])
+              }
+              const dirs = circuitDirections({ devices }, circuitEnds(siteCables), pairOf)
+              return {
+                circuits: Object.fromEntries(
+                  [...mapTelemetryToCables({ devices }, links)].map(([cid, l]) => [cid, { ...l, dirs: dirs.get(cid) ?? {} }]),
+                ),
+              }
             })
           } catch (err) {
             app.log.warn(`netstatex unavailable: ${(err as Error).message}`)

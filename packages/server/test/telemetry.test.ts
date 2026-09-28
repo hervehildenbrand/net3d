@@ -538,4 +538,37 @@ describe('GET /api/telemetry/circuits', () => {
     expect(raw).not.toContain('_octets')
     expect(raw).not.toContain('description')
   })
+
+  test('test_circuit_telemetry_route_reports_each_direction_by_leaving_site', async () => {
+    const netstatex = fakeNetstatex({
+      deviceNames: vi.fn(async () => ['r-ams', 'r-par']),
+      interfaces: vi.fn(async (device: string) => {
+        if (device === 'r-ams') return { 'et-0/0/5': { rxBps: 1e9, txBps: 2e9, capacityBps: 1e11, stale: false } }
+        return { 'et-0/0/5': { rxBps: 3e9, txBps: 4e9, capacityBps: 1e11, stale: false } }
+      }),
+    })
+    const app = buildApp({ netbox: fakeNetboxCircuits(), netstatex })
+    await warmCircuits(app)
+    const res = await app.inject({ method: 'GET', url: '/api/telemetry/circuits' })
+    const live = res.json().circuits['ACME-AMS1-PAR1-001']
+    expect(live.dirs).toEqual({ ams1: { bps: 2e9, pct: 2 }, par1: { bps: 4e9, pct: 4 } })
+    expect(live.bps).toBe(4e9) // unchanged: busier direction
+  })
+
+  test('test_circuit_telemetry_route_names_the_far_site_from_the_circuit_list', async () => {
+    const netstatex = fakeNetstatex({
+      deviceNames: vi.fn(async () => ['r-ams']),
+      interfaces: vi.fn(async () => ({ 'et-0/0/5': { rxBps: 1e9, txBps: 2e9, capacityBps: 1e11, stale: false } })),
+    })
+    const getCircuits = async () => [
+      { id: '1', cid: 'ACME-AMS1-PAR1-001', provider: 'ACME', siteA: 'ams1', siteZ: 'par1', commitRate: 100_000_000, status: 'active', description: null },
+    ]
+    const app = buildApp({ netbox: fakeNetboxCircuits({ getCircuits }), netstatex })
+    // only ams1's cables are cached: par1's end is not located, the circuit list names it
+    await app.inject({ method: 'GET', url: '/api/sites' })
+    await app.inject({ method: 'GET', url: '/api/sites/ams1' })
+    await app.inject({ method: 'GET', url: '/api/circuits' })
+    const res = await app.inject({ method: 'GET', url: '/api/telemetry/circuits' })
+    expect(res.json().circuits['ACME-AMS1-PAR1-001'].dirs).toEqual({ ams1: { bps: 2e9, pct: 2 }, par1: { bps: 1e9, pct: 1 } })
+  })
 })
