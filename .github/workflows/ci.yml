@@ -32,5 +32,8 @@ jobs:
       - name: Showcase telemetry simulator tests
         run: node --test showcase/telemetry-sim/model.test.mjs showcase/telemetry-sim/sim.test.mjs
 
+      - name: Showcase port-planner tests
+        run: python3 showcase/seed/test_circuit_ports.py
+
       - name: Production build
         run: pnpm build
