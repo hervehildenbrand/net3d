@@ -16,6 +16,11 @@ deploy/
 **/*.env
 **/.cache
 **/.data
+/CLAUDE.md
+.claude/
+.superpowers/
+coverage/
+tmp/
 # self-host telemetry files (README "Live telemetry"): runtime-only, never baked in
 collector.yaml
 docker-compose.override.yml
