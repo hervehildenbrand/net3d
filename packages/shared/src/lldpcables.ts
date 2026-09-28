@@ -38,7 +38,7 @@ const short = (h: string) => h.split('.')[0]!.toLowerCase()
  * an exact short-name match, fall back to a '-<name>' suffix match.
  */
 // ponytail: linear scan per neighbor; index the keys if sites grow past ~10k devices
-function resolveRemote(hostname: string, locations: Record<string, RackLocation>): string {
+export function resolveRemote(hostname: string, locations: Record<string, unknown>): string {
   const s = short(hostname)
   if (locations[s]) return s
   for (const key in locations) if (s.endsWith(`-${key}`)) return key
