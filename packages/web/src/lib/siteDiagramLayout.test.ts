@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { ams1Fixture, popFixture, type RackInput } from './siteDiagramFixture'
+import { ams1Fixture, popFixture } from './siteDiagramFixture'
+import type { RackInput } from './siteDiagramLayout'
 import {
   layoutSiteDiagram,
   edgePath,
@@ -142,12 +143,12 @@ describe('layoutSiteDiagram AMS1', () => {
     expect(hall1Row).toBeDefined()
     expect(hall2Row).toBeDefined()
 
-    // Count columns per location
+    // Count columns per location (by label since key is rack id)
     const hall1Cols = layout.columns.filter(c =>
-      c.key.startsWith('SRV-') && parseInt(c.key.split('-')[1]!, 10) <= 23
+      c.label.startsWith('SRV-') && parseInt(c.label.split('-')[1]!, 10) <= 23
     )
     const hall2Cols = layout.columns.filter(c =>
-      c.key.startsWith('SRV-') && parseInt(c.key.split('-')[1]!, 10) > 23
+      c.label.startsWith('SRV-') && parseInt(c.label.split('-')[1]!, 10) > 23
     )
 
     expect(hall1Cols.length).toBe(23)
@@ -157,7 +158,7 @@ describe('layoutSiteDiagram AMS1', () => {
   test('test_layoutSiteDiagram_ams1_rackColumnLeafTierInNameOrder', () => {
     // Each rack column should have leaf-tier glyphs in name order: leaf-1, leaf-2, oob
     // Labels are short (site+rack prefix stripped)
-    const col = layout.columns.find(c => c.key === 'SRV-01')
+    const col = layout.columns.find(c => c.label === 'SRV-01')
     expect(col).toBeDefined()
 
     const colGlyphs = col!.glyphIds.map(id => layout.glyphs.get(id)!)
@@ -168,7 +169,7 @@ describe('layoutSiteDiagram AMS1', () => {
 
   test('test_layoutSiteDiagram_ams1_chipsCount18PerRack', () => {
     // Each server rack should have a chip with 18 servers
-    for (const col of layout.columns.filter(c => c.key.startsWith('SRV-'))) {
+    for (const col of layout.columns.filter(c => c.label.startsWith('SRV-'))) {
       expect(col.endIds.length).toBe(18)
       expect(col.chip).not.toBeNull()
     }
@@ -224,7 +225,7 @@ describe('layoutSiteDiagram PoP', () => {
 
   test('test_layoutSiteDiagram_pop_sixRacksTwoRows', () => {
     // 6 server racks in 2 rows (3 + 3)
-    const srvColumns = layout.columns.filter(c => c.key.startsWith('SRV-'))
+    const srvColumns = layout.columns.filter(c => c.label.startsWith('SRV-'))
     expect(srvColumns.length).toBe(6)
 
     const rows = layout.rows.filter(r => r.label.includes('server-hall'))
@@ -296,8 +297,8 @@ describe('layoutSiteDiagram determinism', () => {
     }
 
     // SRV-03 chip count should increase by 1
-    const col3Before = layoutBefore.columns.find(c => c.key === 'SRV-03')!
-    const col3After = layoutAfter.columns.find(c => c.key === 'SRV-03')!
+    const col3Before = layoutBefore.columns.find(c => c.label === 'SRV-03')!
+    const col3After = layoutAfter.columns.find(c => c.label === 'SRV-03')!
     expect(col3After.endIds.length).toBe(col3Before.endIds.length + 1)
   })
 })
@@ -328,7 +329,7 @@ describe('layoutSiteDiagram irregular', () => {
     }
 
     const layout = layoutSiteDiagram(modifiedGraph, fixture.racks, 'AMS1')
-    const col = layout.columns.find(c => c.key === 'SRV-01')!
+    const col = layout.columns.find(c => c.label === 'SRV-01')!
     expect(col.endIds).toContain(extNodeId)
   })
 
@@ -402,7 +403,7 @@ describe('layoutSiteDiagram irregular', () => {
     }
     const modifiedRacks: RackInput[] = [
       ...fixture.racks,
-      { name: 'ORPHAN-01', location: null, devices: [{ id: 'dxb1-orphan-leaf-id', roleName: 'Leaf' }] },
+      { id: 'dxb1-orphan-01-rack', name: 'ORPHAN-01', location: null, devices: [{ id: 'dxb1-orphan-leaf-id', roleName: 'Leaf' }] },
     ]
 
     const layout = layoutSiteDiagram(modifiedGraph, modifiedRacks, 'DXB1')
@@ -425,6 +426,7 @@ describe('layoutSiteDiagram irregular', () => {
         roleColor: '#22c55e',
       })
       racks.push({
+        id: `test-${rackName.toLowerCase()}-rack`,
         name: rackName,
         location: 'server-hall',
         devices: [{ id: leafId, roleName: 'Leaf' }],
@@ -442,7 +444,7 @@ describe('layoutSiteDiagram irregular', () => {
     const layout = layoutSiteDiagram(graph, racks, 'TEST')
 
     // Should wrap after 24 columns
-    const cols = layout.columns.filter(c => c.key.startsWith('SRV-'))
+    const cols = layout.columns.filter(c => c.label.startsWith('SRV-'))
     const yValues = new Set(cols.map(c => c.y))
     expect(yValues.size).toBeGreaterThan(1) // Multiple rows
   })
@@ -455,6 +457,70 @@ describe('layoutSiteDiagram irregular', () => {
     const otherCol = layout.columns.find(c => c.key === OTHER)
     expect(otherCol).toBeDefined()
     expect(otherCol!.glyphIds.length).toBeGreaterThan(0)
+  })
+
+  test('test_layoutSiteDiagram_duplicateRackNamesInLocations_bothColumnsPresent', () => {
+    // Same rack name in two different locations should produce two distinct columns (keyed by id)
+    const input: GraphInput = {
+      devices: [
+        { id: 'loc1-leaf-id', name: 'TEST-SRV-01-leaf-1', siteName: 'TEST', roleName: 'Leaf', roleColor: '#22c55e' },
+        { id: 'loc2-leaf-id', name: 'TEST-SRV-01-leaf-2', siteName: 'TEST', roleName: 'Leaf', roleColor: '#22c55e' },
+      ],
+      links: [],
+      circuits: [],
+      circuitSites: {},
+      lldp: {},
+    }
+    const graph = buildLogicalGraph(input, 'TEST')
+    const racks: RackInput[] = [
+      { id: 'loc1-srv-01', name: 'SRV-01', location: 'hall-1', devices: [{ id: 'loc1-leaf-id', roleName: 'Leaf' }] },
+      { id: 'loc2-srv-01', name: 'SRV-01', location: 'hall-2', devices: [{ id: 'loc2-leaf-id', roleName: 'Leaf' }] },
+    ]
+
+    const layout = layoutSiteDiagram(graph, racks, 'TEST')
+    // Both racks should produce columns (unique keys are rack ids)
+    expect(layout.columns.filter(c => c.label === 'SRV-01')).toHaveLength(2)
+    // Keys should be distinct
+    const keys = layout.columns.filter(c => c.label === 'SRV-01').map(c => c.key)
+    expect(new Set(keys).size).toBe(2)
+    expect(keys).toContain('loc1-srv-01')
+    expect(keys).toContain('loc2-srv-01')
+  })
+
+  test('test_layoutSiteDiagram_serversOnlyRack_hasChip', () => {
+    // Rack with only servers (no leaf-tier devices) should still get a chip
+    const input: GraphInput = {
+      devices: [
+        {
+          id: 'srv-01-id',
+          name: 'TEST-SRV-01-srv-01',
+          siteName: 'TEST',
+          roleName: 'Bare-metal',
+          roleColor: '#64748b',
+        },
+      ],
+      links: [],
+      circuits: [],
+      circuitSites: {},
+      lldp: {},
+    }
+    const graph = buildLogicalGraph(input, 'TEST')
+    const racks: RackInput[] = [
+      {
+        id: 'test-srv-01-rack',
+        name: 'SRV-01',
+        location: 'server-hall',
+        devices: [{ id: 'srv-01-id', roleName: 'Bare-metal' }],
+      },
+    ]
+
+    const layout = layoutSiteDiagram(graph, racks, 'TEST')
+    const srvCol = layout.columns.find(c => c.label === 'SRV-01')
+    expect(srvCol).toBeDefined()
+    // Server rack has no leaf-tier glyphs
+    expect(srvCol!.glyphIds).toHaveLength(0)
+    // But still has a chip (for server overlay)
+    expect(srvCol!.chip).not.toBeNull()
   })
 
   test('test_layoutSiteDiagram_mlagPeerLink_localBracketPath', () => {

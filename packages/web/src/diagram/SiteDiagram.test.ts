@@ -2,8 +2,8 @@ import { createElement, type ComponentProps } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test, vi } from 'vitest'
 import type { LogicalEdge, LogicalLayer } from '@net3d/shared'
-import { ams1Fixture, type RackInput } from '../lib/siteDiagramFixture'
-import { layoutSiteDiagram } from '../lib/siteDiagramLayout'
+import { ams1Fixture } from '../lib/siteDiagramFixture'
+import { layoutSiteDiagram, type RackInput } from '../lib/siteDiagramLayout'
 import SiteDiagram, { RackOverlay, type SiteDiagramProps } from './SiteDiagram'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -196,7 +196,7 @@ describe('SiteDiagram accessibility', () => {
 describe('RackOverlay', () => {
   test('test_RackOverlay_ams1Rack_eighteenRowsWithThreeLinks', () => {
     const layout = layoutSiteDiagram(ams1Graph, ams1Racks, 'AMS1')
-    const column = layout.columns.find((c) => c.key === 'SRV-01')!
+    const column = layout.columns.find((c) => c.label === 'SRV-01')!
     const colors = new Map<string, { color: string; width: number; dashed: boolean }>()
 
     const html = renderToStaticMarkup(

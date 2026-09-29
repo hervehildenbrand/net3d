@@ -11,16 +11,11 @@ import {
   type TopologyFact,
   type CollectorTopology,
 } from '@net3d/shared'
+import type { RackInput } from './siteDiagramLayout'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
-
-export interface RackInput {
-  name: string
-  location: string | null
-  devices: { id: string; roleName: string }[]
-}
 
 export interface SiteFixture {
   graph: LogicalGraph
@@ -143,7 +138,7 @@ export function ams1Fixture(): SiteFixture {
       rackInputDevices.push({ id: d.id, roleName: rd.roleName })
     }
 
-    racks.push({ name: rackName, location: 'network-core', devices: rackInputDevices })
+    racks.push({ id: `${site.toLowerCase()}-${rackName.toLowerCase()}-rack`, name: rackName, location: 'network-core', devices: rackInputDevices })
   }
 
   // Core SIDs
@@ -302,7 +297,7 @@ export function ams1Fixture(): SiteFixture {
     links.push(link(oob.name, 'ge-0/2/0', leaf1.name, 'mgmt0'))
     facts.push(physicalFact(oob.name, 'ge-0/2/0', leaf1.name, 'mgmt0'))
 
-    racks.push({ name: rackName, location, devices: rackInputDevices })
+    racks.push({ id: `${site.toLowerCase()}-${rackName.toLowerCase()}-rack`, name: rackName, location, devices: rackInputDevices })
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -365,7 +360,7 @@ export function popFixture(): SiteFixture {
     devices.push(d)
     netRackInputDevices.push({ id: d.id, roleName: nd.roleName })
   }
-  racks.push({ name: 'NET-01', location: 'network-core', devices: netRackInputDevices })
+  racks.push({ id: `${site.toLowerCase()}-net-01-rack`, name: 'NET-01', location: 'network-core', devices: netRackInputDevices })
 
   nodeSids[`${site}-core-01`] = 16500
   nodeSids[`${site}-core-02`] = 16501
@@ -421,7 +416,7 @@ export function popFixture(): SiteFixture {
     links.push(link(leaf1.name, 'et-0/2/0', leaf2.name, 'et-0/2/0'))
     facts.push(physicalFact(leaf1.name, 'et-0/2/0', leaf2.name, 'et-0/2/0'))
 
-    racks.push({ name: rackName, location, devices: rackInputDevices })
+    racks.push({ id: `${site.toLowerCase()}-${rackName.toLowerCase()}-rack`, name: rackName, location, devices: rackInputDevices })
   }
 
   // Peers

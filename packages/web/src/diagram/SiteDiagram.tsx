@@ -4,7 +4,7 @@
  */
 import { useState, useRef, useMemo, useEffect, useCallback, memo, type CSSProperties } from 'react'
 import type { LogicalGraph, LogicalLayer, SiteTelemetry } from '@net3d/shared'
-import type { RackInput } from '../lib/siteDiagramFixture'
+import type { RackInput } from '../lib/siteDiagramLayout'
 import type { Box, Insets } from '../lib/viewBox'
 import {
   layoutSiteDiagram,
@@ -744,8 +744,8 @@ export const RackOverlay = memo(function RackOverlay({
 
         const rowY = box.y + 4 + idx * OVERLAY_ROW_H
         // Extract just the server part (e.g., "srv-01" from "AMS1-SRV-01-srv-01")
-        // Split by the rack name to get the suffix
-        const parts = node.name.split(`${column.key}-`)
+        // Split by the rack name (column.label) to get the suffix
+        const parts = node.name.split(`${column.label}-`)
         const shortName = parts.length > 1 ? parts[parts.length - 1]! : shortLabel(node.name, '')
 
         // Get links for this end node
@@ -754,8 +754,8 @@ export const RackOverlay = memo(function RackOverlay({
           const peerNode = graph.nodes.find((n) => n.id === link.peer)
           if (!peerNode) return { edgeId: link.edgeId, label: 'unknown' }
           // Extract just the role part (e.g., "leaf-1" from "AMS1-SRV-01-leaf-1")
-          // Split by the rack name to get the suffix
-          const peerParts = peerNode.name.split(`${column.key}-`)
+          // Split by the rack name (column.label) to get the suffix
+          const peerParts = peerNode.name.split(`${column.label}-`)
           const shortPeer = peerParts.length > 1 ? peerParts[peerParts.length - 1]! : peerNode.name.split('-').pop() ?? peerNode.name
           return { edgeId: link.edgeId, label: shortPeer }
         })

@@ -9,8 +9,19 @@ import {
   type LogicalEdge,
   type Tier,
 } from '@net3d/shared'
-import type { RackInput } from './siteDiagramFixture'
 import type { Box } from './viewBox'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RackInput — production code type (layout input)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Rack input for site diagram layout. id is required for unique keying. */
+export interface RackInput {
+  id: string
+  name: string
+  location: string | null
+  devices: { id: string; roleName: string }[]
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants (user units; ~1 px at AMS1 fit)
@@ -116,26 +127,26 @@ export function layoutSiteDiagram(
   const links = new Map<string, { edgeId: string; peer: string }[]>()
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Phase 1: Build device → rack map
+  // Phase 1: Build device → rack map (keyed by rack id for uniqueness)
   // ─────────────────────────────────────────────────────────────────────────
   const deviceToRack = new Map<string, RackInput>()
-  const rackByName = new Map<string, RackInput>()
+  const rackById = new Map<string, RackInput>()
   for (const rack of racks) {
-    rackByName.set(rack.name, rack)
+    rackById.set(rack.id, rack)
     for (const d of rack.devices) {
       deviceToRack.set(d.id, rack)
     }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Phase 2: Classify racks as network vs column
+  // Phase 2: Classify racks as network vs column (keyed by rack.id)
   // ─────────────────────────────────────────────────────────────────────────
   const networkRacks = new Set<string>()
   for (const rack of racks) {
     for (const d of rack.devices) {
       const tier = classifyTier(d.roleName, false)
       if (tier === 'core' || tier === 'spine') {
-        networkRacks.add(rack.name)
+        networkRacks.add(rack.id)
         break
       }
     }
@@ -143,7 +154,7 @@ export function layoutSiteDiagram(
 
   // Column racks: have >=1 device and are not network racks
   const columnRacks = racks
-    .filter(r => r.devices.length > 0 && !networkRacks.has(r.name))
+    .filter(r => r.devices.length > 0 && !networkRacks.has(r.id))
     .sort((a, b) => {
       // Sort by location (natural order, null last), then by name
       const locA = a.location ?? '￿'
@@ -177,7 +188,7 @@ export function layoutSiteDiagram(
     } else if (node.tier === 'leaf') {
       // Check if this leaf is in a network rack → agg
       const rack = node.device ? deviceToRack.get(node.device.id) : null
-      if (rack && networkRacks.has(rack.name)) {
+      if (rack && networkRacks.has(rack.id)) {
         aggs.push(node.id)
       } else if (rack) {
         columnGlyphs.push(node.id)
@@ -332,15 +343,15 @@ export function layoutSiteDiagram(
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Phase 7: Position rack columns in rows
+  // Phase 7: Position rack columns in rows (keyed by rack.id)
   // ─────────────────────────────────────────────────────────────────────────
   const columnGlyphsByRack = new Map<string, string[]>()
   for (const nodeId of columnGlyphs) {
     const node = graph.nodes.find(n => n.id === nodeId)!
     const rack = node.device ? deviceToRack.get(node.device.id) : null
     if (rack) {
-      if (!columnGlyphsByRack.has(rack.name)) columnGlyphsByRack.set(rack.name, [])
-      columnGlyphsByRack.get(rack.name)!.push(nodeId)
+      if (!columnGlyphsByRack.has(rack.id)) columnGlyphsByRack.set(rack.id, [])
+      columnGlyphsByRack.get(rack.id)!.push(nodeId)
     }
   }
 
@@ -385,7 +396,7 @@ export function layoutSiteDiagram(
       for (let i = 0; i < lineRacks.length; i++) {
         const rack = lineRacks[i]!
         const colX = i * COL_W + (COL_W - GLYPH_W) / 2
-        const colGlyphIds = columnGlyphsByRack.get(rack.name) ?? []
+        const colGlyphIds = columnGlyphsByRack.get(rack.id) ?? []
 
         // Place glyphs (strip site+rack prefix for glyph labels: "leaf-1", "oob")
         const glyphY = colY + RACK_LABEL_H
@@ -413,18 +424,20 @@ export function layoutSiteDiagram(
         const endIdsForRack: string[] = []
 
         // Rack label: strip site prefix ("AMS1-SRV-01" -> "SRV-01")
+        // Always provide a chip so servers can be placed even if no leaf-tier glyphs
+        // Key by rack.id for uniqueness across locations
         columns.push({
-          key: rack.name,
+          key: rack.id,
           label: shortLabel(rack.name, site),
           location: rack.location,
           x: colX,
           y: colY,
           glyphIds: [...colGlyphIds],
           endIds: endIdsForRack,
-          chip: colGlyphIds.length > 0 ? {
+          chip: {
             x: colX,
             y: glyphY + maxGlyphsPerRack * GLYPH_PITCH + 4,
-          } : null,
+          },
         })
       }
 
@@ -434,7 +447,7 @@ export function layoutSiteDiagram(
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Phase 8: Assign end devices to columns
+  // Phase 8: Assign end devices to columns (lookup by rack.id)
   // ─────────────────────────────────────────────────────────────────────────
   const columnByKey = new Map(columns.map(c => [c.key, c]))
   const otherEnds: string[] = []
@@ -446,8 +459,8 @@ export function layoutSiteDiagram(
     // Try own rack
     if (node.device) {
       const rack = deviceToRack.get(node.device.id)
-      if (rack && columnByKey.has(rack.name)) {
-        columnByKey.get(rack.name)!.endIds.push(endId)
+      if (rack && columnByKey.has(rack.id)) {
+        columnByKey.get(rack.id)!.endIds.push(endId)
         assigned = true
       }
     }
@@ -460,8 +473,8 @@ export function layoutSiteDiagram(
         const neighbourNode = graph.nodes.find(n => n.id === neighbourId)
         if (neighbourNode?.device) {
           const rack = deviceToRack.get(neighbourNode.device.id)
-          if (rack && columnByKey.has(rack.name)) {
-            columnByKey.get(rack.name)!.endIds.push(endId)
+          if (rack && columnByKey.has(rack.id)) {
+            columnByKey.get(rack.id)!.endIds.push(endId)
             assigned = true
             break
           }
