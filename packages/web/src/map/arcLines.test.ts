@@ -83,6 +83,20 @@ describe('circuitLines', () => {
     expect(lines[0]!.paths.a).toHaveLength(1)
     expect(lines[0]!.paths.z).toHaveLength(1)
   })
+
+  test('test_circuitLines_antimeridianCrossing_staysOnePieceUnwrapped', () => {
+    // MEL1 to MIA1 crosses the antimeridian but physical mode should NOT wrap
+    const groups = [circuitGroup('MEL1', 'MIA1', [{ id: '1', cid: 'C1', commitRate: 100_000_000 }])]
+    const lines = circuitLines(SITES, groups)
+    expect(lines).toHaveLength(1)
+    // Physical mode: one piece (NOT split at antimeridian)
+    expect(lines[0]!.paths.whole).toHaveLength(1)
+    // Positions should include longitudes > 180 or < -180 (unwrapped great circle)
+    const lngs = lines[0]!.positions.map(([, lng]) => lng)
+    // At least some positions should be outside [-180, 180] range (unwrapped)
+    const hasUnwrapped = lngs.some((lng) => lng > 180 || lng < -180)
+    expect(hasUnwrapped).toBe(true)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -212,7 +226,7 @@ describe('logicalLines', () => {
     expect(lines[0]!.dashed).toBe(false)
   })
 
-  test('test_logicalLines_staleAdjacencyLabel_dashedWithStaleRow', () => {
+  test('test_logicalLines_staleAdjacencyLabel_dashedWithStaleRowNotGrey', () => {
     const nodes = [mkNode('AMS1-core-01', 'AMS1'), mkNode('FRA1-core-01', 'FRA1')]
     const edge = mkEdge('AMS1-core-01', 'FRA1-core-01', {
       physical: { up: 1, total: 1, label: '' },
@@ -226,8 +240,10 @@ describe('logicalLines', () => {
     const lines = logicalLines(graph, anchors, SITES, [], new Set())
     // stale label means dashed (up < total)
     expect(lines[0]!.dashed).toBe(true)
-    // The row should include 'stale'
+    // The row should include 'stale' (tooltip shows it)
     expect(lines[0]!.rows.join(' ')).toContain('stale')
+    // But stale flag should NOT be set (no grey override) - plan default
+    expect(lines[0]!.stale).toBe(false)
   })
 
   test('test_logicalLines_allLayersHidden_edgeOmittedAndNoSiteArc', () => {

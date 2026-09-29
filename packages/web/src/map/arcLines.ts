@@ -108,7 +108,8 @@ export function circuitLines(sites: Site[], groups: CircuitGroup[]): ArcLine[] {
       rows: [],
     }
 
-    return [wrapLine(line)]
+    // Physical map: keep arcs unwrapped (as on main) so they draw as great circles
+    return [line]
   })
 }
 
@@ -223,10 +224,9 @@ export function logicalLines(
     if (ospfLayer && !hidden.has('ospf') && ospfLayer.up < ospfLayer.total) dashed = true
     if (srLayer && !hidden.has('sr') && srLayer.up < srLayer.total) dashed = true
 
-    // Stale: any visible isis/sr label matching /\bstale\b/
-    let stale = false
-    if (isisLayer && !hidden.has('isis') && /\bstale\b/i.test(isisLayer.label)) stale = true
-    if (srLayer && !hidden.has('sr') && /\bstale\b/i.test(srLayer.label)) stale = true
+    // Plan default: grey = circuit telemetry stale only (not adjacency-derived).
+    // Stale adjacency is indicated by dashed + 'stale' in the tooltip row only.
+    const stale = false
 
     // Build tooltip rows from visible layers
     const rows: string[] = []
