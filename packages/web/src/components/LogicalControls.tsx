@@ -116,7 +116,7 @@ interface LogicalLayersProps {
 
 /**
  * Logical-view layers panel (right side).
- * Site level: top 16, right 16. Map level: bottom 16, right 16.
+ * Site level: top 16, right 16. Map level: bottom 32, right 16, top auto (clears attribution).
  */
 export function LogicalLayers({
   level,
@@ -126,9 +126,12 @@ export function LogicalLayers({
   hasLive,
   isError,
 }: LogicalLayersProps) {
-  // Position: site = top-right, map = bottom-right
+  // Position: site = top-right, map = bottom-right with top:auto to clear attribution
   const positionStyle: React.CSSProperties =
-    level === 'map' ? { bottom: 16, right: 16, top: 'auto' } : { top: 16, right: 16 }
+    level === 'map' ? { bottom: 32, right: 16, top: 'auto' } : { top: 16, right: 16 }
+
+  // "no routing data yet" line when layers is empty and no error
+  const noTopology = layers.length === 0 && !isError
 
   return (
     <div style={{ ...panelStyle, ...positionStyle }}>
@@ -143,15 +146,26 @@ export function LogicalLayers({
         )
       })}
 
-      <div style={divider} />
-      <button onClick={() => onToggle('end')} style={optionRow}>
-        <span style={check(!hidden.has('end'))} />
-        <span style={{ flex: 1, color: theme.text.primary }}>End devices</span>
-      </button>
+      {/* End devices row: only at site level */}
+      {level !== 'map' && (
+        <>
+          <div style={divider} />
+          <button onClick={() => onToggle('end')} style={optionRow}>
+            <span style={check(!hidden.has('end'))} />
+            <span style={{ flex: 1, color: theme.text.primary }}>End devices</span>
+          </button>
+        </>
+      )}
 
-      {hasLive && (
+      {hasLive && level !== 'map' && (
         <div style={{ marginTop: 8 }}>
           <UtilLegend />
+        </div>
+      )}
+
+      {noTopology && (
+        <div style={{ marginTop: 8, color: theme.text.muted, fontSize: 11 }}>
+          no routing data yet
         </div>
       )}
 

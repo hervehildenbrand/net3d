@@ -22,15 +22,6 @@ const PERMANENT_LABEL_TIERS = new Set(['remote', 'core', 'spine'])
 /** Node sphere radius. */
 const NODE_RADIUS = 0.15
 
-/** Tier colors. */
-const TIER_COLORS: Record<string, string> = {
-  core: '#dc2626',    // red
-  spine: '#f97316',   // orange
-  leaf: '#22c55e',    // green
-  end: '#64748b',     // slate
-  remote: '#8b5cf6',  // purple
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
@@ -249,7 +240,7 @@ export function LogicalLevel({
 
       {/* Nodes by tier - using Instances for performance */}
       {[...nodesByTier.entries()].map(([tier, nodes]) => {
-        const color = TIER_COLORS[tier] ?? '#64748b'
+        const color = (theme.tier as Record<string, string>)[tier] ?? '#64748b'
         return (
           <Instances key={tier} limit={nodes.length + 1}>
             <sphereGeometry args={[NODE_RADIUS, 16, 16]} />

@@ -45,6 +45,10 @@ export interface ViewFlags {
   logical: boolean
   /** Whether the 3D scene should be mounted (site/rack level). */
   inScene: boolean
+  /** Logical mode at map level: draw backbone on Leaflet. */
+  logicalMap: boolean
+  /** Logical mode at site level: mount the SVG diagram. */
+  siteDiagram: boolean
   /** Whether to show the view mode switch (physical/logical). */
   viewSwitch: boolean
   /** Whether to show the logical layers panel. */
@@ -135,6 +139,10 @@ export function viewFlags(state: ViewFlagsState, caps: Capabilities): ViewFlags 
   const inScene = level !== 'map'
   const featureAvailable = level === 'map' ? caps.telemetryAvailable : caps.napalmAvailable || caps.telemetryAvailable
 
+  // Logical mode seams: map draws backbone on Leaflet, site mounts SVG diagram
+  const logicalMap = logical && level === 'map'
+  const siteDiagram = logical && level === 'site'
+
   // View switch: shown when feature is available, not at rack level, not in edit mode
   const viewSwitch = featureAvailable && level !== 'rack' && !editModeActive
 
@@ -148,11 +156,11 @@ export function viewFlags(state: ViewFlagsState, caps: Capabilities): ViewFlags 
   const layersPanel = inScene && !logical && !selectedDevice && !editModeActive && !!siteDetail?.racks?.length
 
   // Power legend: shown at site level, power visible (handled by caller), not in edit mode, with racks
-  // The power visibility itself is not part of this module, caller checks it
-  const powerLegend = level === 'site' && !editModeActive && !!siteDetail?.racks?.length
+  // Hidden in logical mode - fixes v1 defect
+  const powerLegend = level === 'site' && !logical && !editModeActive && !!siteDetail?.racks?.length
 
-  // Edit toolbar: shown at site level with loaded site detail
-  const editToolbar = level === 'site' && !!siteDetail
+  // Edit toolbar: shown at site level with loaded site detail, hidden in logical mode
+  const editToolbar = level === 'site' && !logical && !!siteDetail
 
   // ─────────────────────────────────────────────────────────────────────────
   // Polling gates
@@ -197,6 +205,8 @@ export function viewFlags(state: ViewFlagsState, caps: Capabilities): ViewFlags 
   return {
     logical,
     inScene,
+    logicalMap,
+    siteDiagram,
     viewSwitch,
     logicalLayers,
     siteSearch,
@@ -372,6 +382,56 @@ export function mapEdgeLive(edge: LogicalEdge, circuitLive: Map<string, CircuitL
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// visibleLayers / isEdgeHidden
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Canonical layer order for tooltip display. */
+const LAYER_ORDER: LogicalLayer[] = ['physical', 'isis', 'ospf', 'sr']
+
+/**
+ * Return the edge's layers that are not hidden, in the canonical order.
+ * Used for tooltip generation and dash logic.
+ */
+export function visibleLayers(
+  edge: LogicalEdge,
+  hidden: ReadonlySet<LogicalLayer | 'end'>,
+): LogicalLayer[] {
+  const edgeLayers = Object.keys(edge.layers) as LogicalLayer[]
+  return LAYER_ORDER.filter((l) => edgeLayers.includes(l) && !hidden.has(l))
+}
+
+/**
+ * Check if an edge should be hidden based on its layers and hidden set.
+ * An edge is hidden when:
+ * - ALL its layers are hidden, OR
+ * - 'end' is hidden and either endpoint is an end-tier node
+ */
+export function isEdgeHidden(
+  edge: LogicalEdge,
+  tierOf: ReadonlyMap<string, string>,
+  hidden: ReadonlySet<LogicalLayer | 'end'>,
+): boolean {
+  // Check if either endpoint is 'end' tier and 'end' is hidden
+  if (hidden.has('end')) {
+    const tierA = tierOf.get(edge.a)
+    const tierB = tierOf.get(edge.b)
+    if (tierA === 'end' || tierB === 'end') {
+      return true
+    }
+  }
+
+  // Check if all edge layers are hidden
+  const layers = Object.keys(edge.layers) as LogicalLayer[]
+  if (layers.length === 0) {
+    // Edge has no layers - physical-only implied
+    return hidden.has('physical')
+  }
+
+  // Edge is hidden if ALL its layers are hidden
+  return layers.every((layer) => hidden.has(layer))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // edgeGeometry
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -380,8 +440,8 @@ const LINE_CAP = 600
 
 type HiddenSet = Set<LogicalLayer | 'end'>
 
-/** Check if an edge should be hidden based on its layers and hidden set. */
-function isEdgeHidden(edge: LogicalEdge, graph: LogicalGraph, hidden: HiddenSet): boolean {
+/** Internal helper for edgeGeometry - uses graph.nodes for tier lookup. */
+function isEdgeHiddenInternal(edge: LogicalEdge, graph: LogicalGraph, hidden: HiddenSet): boolean {
   // Check if either endpoint is 'end' tier and 'end' is hidden
   if (hidden.has('end')) {
     const nodeA = graph.nodes.find((n) => n.id === edge.a)
@@ -394,8 +454,7 @@ function isEdgeHidden(edge: LogicalEdge, graph: LogicalGraph, hidden: HiddenSet)
   // Check if all edge layers are hidden
   const layers = Object.keys(edge.layers) as LogicalLayer[]
   if (layers.length === 0) {
-    // Edge has no layers - check if it has a physical layer implied
-    // Edges without explicit layers are physical-only
+    // Edge has no layers - physical-only implied
     return hidden.has('physical')
   }
 
@@ -437,7 +496,7 @@ export function edgeGeometry(
   })
 
   for (const edge of sortedEdges) {
-    if (isEdgeHidden(edge, graph, hidden)) continue
+    if (isEdgeHiddenInternal(edge, graph, hidden)) continue
 
     const posA = positions.get(edge.a)
     const posB = positions.get(edge.b)
@@ -471,9 +530,13 @@ export function edgeGeometry(
 
 /**
  * Compute edge style: color from utilisation, grey when stale,
- * width 2 with an IGP layer, dashed when an IGP layer has up < total.
+ * width 2 with an IGP layer, dashed when a VISIBLE IS-IS, OSPF or SR layer has up < total.
  */
-export function edgeStyle(edge: LogicalEdge, live: EdgeLive | null): EdgeStyle {
+export function edgeStyle(
+  edge: LogicalEdge,
+  live: EdgeLive | null,
+  hidden: ReadonlySet<LogicalLayer | 'end'> = new Set(),
+): EdgeStyle {
   // Color
   let color: string
   if (live?.stale) {
@@ -487,12 +550,14 @@ export function edgeStyle(edge: LogicalEdge, live: EdgeLive | null): EdgeStyle {
   // Width: 2 if has IGP layer, 1 otherwise
   const width = hasIgpLayer(edge) ? 2 : 1
 
-  // Dashed: if any IGP layer has up < total
+  // Dashed: if any VISIBLE IS-IS, OSPF or SR layer has up < total
   let dashed = false
   const isisLayer = edge.layers.isis
   const ospfLayer = edge.layers.ospf
-  if (isisLayer && isisLayer.up < isisLayer.total) dashed = true
-  if (ospfLayer && ospfLayer.up < ospfLayer.total) dashed = true
+  const srLayer = edge.layers.sr
+  if (isisLayer && !hidden.has('isis') && isisLayer.up < isisLayer.total) dashed = true
+  if (ospfLayer && !hidden.has('ospf') && ospfLayer.up < ospfLayer.total) dashed = true
+  if (srLayer && !hidden.has('sr') && srLayer.up < srLayer.total) dashed = true
 
   return { color, width, dashed }
 }
@@ -511,16 +576,23 @@ const LAYER_NAMES: Record<LogicalLayer, string> = {
 
 /**
  * Build tooltip content for an edge.
- * Lists layers with n/m up, and total bps.
+ * Lists layers with n/m up and label when non-empty, and total bps.
+ * Format: 'IS-IS: 2/2 · L2 UP | SR: 1/1 · adj-SID 24712/24572 | 3 Gbps'
  */
 export function edgeTooltip(edge: LogicalEdge, live: EdgeLive | null): string {
   const parts: string[] = []
 
-  // Layers
-  const layers = Object.entries(edge.layers) as [LogicalLayer, { up: number; total: number; label: string }][]
-  for (const [layer, state] of layers) {
+  // Layers in canonical order
+  for (const layer of LAYER_ORDER) {
+    const state = edge.layers[layer]
+    if (!state) continue
     const name = LAYER_NAMES[layer] ?? layer
-    parts.push(`${name}: ${state.up}/${state.total}`)
+    let segment = `${name}: ${state.up}/${state.total}`
+    // Append label when non-empty
+    if (state.label) {
+      segment += ` · ${state.label}`
+    }
+    parts.push(segment)
   }
 
   // Rate
@@ -537,17 +609,24 @@ export function edgeTooltip(edge: LogicalEdge, live: EdgeLive | null): string {
 
 /**
  * Determine what happens when a node is clicked.
- * - site: nodes at map level zoom to that site
- * - device nodes at site level select the device
  * - ext: nodes do nothing
+ * - site: nodes (at any level) enter that site
+ * - tier 'remote' nodes with a siteName enter that site (e.g. FRA1-core-01 at AMS1 -> FRA1)
+ * - device nodes at site level select the device
  */
 export function nodeClickAction(node: LogicalNode, level: ViewLevel): NodeClickAction {
   // ext: nodes do nothing
   if (node.id.startsWith('ext:')) return null
 
-  // site: nodes at map level zoom to that site
-  if (node.id.startsWith('site:') && level === 'map') {
+  // site: nodes enter that site at any level
+  if (node.id.startsWith('site:')) {
     return { kind: 'site', name: node.name }
+  }
+
+  // tier 'remote' nodes with a siteName enter that site
+  // (e.g. clicking FRA1-core-01 at AMS1 site view enters FRA1)
+  if (node.tier === 'remote' && node.siteName) {
+    return { kind: 'site', name: node.siteName }
   }
 
   // Device nodes at site level select the device

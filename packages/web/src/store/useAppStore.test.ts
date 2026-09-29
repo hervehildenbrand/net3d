@@ -547,3 +547,32 @@ describe('hiddenLogical', () => {
     expect(useAppStore.getState().hiddenLogical.size).toBe(0)
   })
 })
+
+describe('handleMapSignals logical guard', () => {
+  beforeEach(() => {
+    useAppStore.getState().zoomToMap()
+    useAppStore.getState().setViewMode('physical')
+  })
+
+  test('test_handleMapSignals_physicalAfterLogicalAtDeepZoom_waitsForRearm', () => {
+    // Start in logical mode at deep zoom (15) - this disarms enterSite
+    useAppStore.getState().setViewMode('logical')
+    useAppStore.getState().handleMapSignals(15, { name: 'AMS1', lat: 52, lng: 4 })
+    expect(useAppStore.getState().level).toBe('map') // logical guard blocks
+
+    // Switch to physical at that same deep zoom
+    useAppStore.getState().setViewMode('physical')
+    // Still at zoom 15 - the nav machine needs to rearm (drop to 13, then back to 14+)
+    useAppStore.getState().handleMapSignals(15, { name: 'AMS1', lat: 52, lng: 4 })
+    expect(useAppStore.getState().level).toBe('map') // not armed yet
+
+    // Drop to 13 (below enter threshold) to rearm
+    useAppStore.getState().handleMapSignals(13, { name: 'AMS1', lat: 52, lng: 4 })
+    expect(useAppStore.getState().level).toBe('map')
+
+    // Now zoom to 14 - enters site
+    useAppStore.getState().handleMapSignals(14, { name: 'AMS1', lat: 52, lng: 4 })
+    expect(useAppStore.getState().level).toBe('site')
+    expect(useAppStore.getState().selectedSiteName).toBe('AMS1')
+  })
+})

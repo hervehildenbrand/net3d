@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import type {
   LogicalEdge,
   LogicalGraph,
+  LogicalLayer,
   LogicalNode,
   CircuitGroup,
   SiteTelemetry,
@@ -25,6 +26,8 @@ import {
   edgeTooltip,
   nodeClickAction,
   cameraFrame,
+  visibleLayers,
+  isEdgeHidden,
 } from './logicalView'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -221,6 +224,57 @@ describe('viewFlags', () => {
     )
     expect(flags.viewSwitch).toBe(false)
   })
+
+  test('test_viewFlags_logicalMap_keepsLeafletVisible', () => {
+    // At map+logical, the Leaflet map stays up (inScene false), backbone drawn on it
+    const flags = viewFlags(state({ level: 'map', viewMode: 'logical' }), TELEMETRY_ONLY)
+    expect(flags.logical).toBe(true)
+    expect(flags.logicalMap).toBe(true)
+    expect(flags.siteDiagram).toBe(false)
+    expect(flags.inScene).toBe(false) // Leaflet visible
+  })
+
+  test('test_viewFlags_logicalSite_mountsDiagramHidesEditToolbarAndPowerLegend', () => {
+    // At site+logical: siteDiagram true, inScene true (scene mount), editToolbar/powerLegend false
+    const flags = viewFlags(
+      state({ level: 'site', viewMode: 'logical', siteDetail: { racks: [rack('r1')] } }),
+      BOTH_CAPS,
+    )
+    expect(flags.logical).toBe(true)
+    expect(flags.logicalMap).toBe(false)
+    expect(flags.siteDiagram).toBe(true)
+    expect(flags.inScene).toBe(true)
+    expect(flags.editToolbar).toBe(false) // hidden in logical
+    expect(flags.powerLegend).toBe(false) // hidden in logical
+    expect(flags.poll.siteTopology).toBe(true)
+  })
+
+  test('test_viewFlags_napalmOnlyMap_physicalMap', () => {
+    // NAPALM-only at map level: logical is unavailable (map requires telemetry)
+    const flags = viewFlags(state({ level: 'map', viewMode: 'logical' }), NAPALM_ONLY)
+    expect(flags.logical).toBe(false)
+    expect(flags.logicalMap).toBe(false)
+    expect(flags.siteDiagram).toBe(false)
+    // Physical behavior
+    expect(flags.poll.backboneTopology).toBe(false)
+  })
+
+  test('test_viewFlags_featureOff_noLogicalSurfaces', () => {
+    // With NO_CAPS and viewMode logical: logicalMap and siteDiagram stay false
+    const mapFlags = viewFlags(state({ level: 'map', viewMode: 'logical' }), NO_CAPS)
+    expect(mapFlags.logicalMap).toBe(false)
+    expect(mapFlags.siteDiagram).toBe(false)
+
+    // At site, editToolbar/powerLegend are true (legacy behavior)
+    const siteFlags = viewFlags(
+      state({ level: 'site', viewMode: 'logical', siteDetail: { racks: [rack('r1')] } }),
+      NO_CAPS,
+    )
+    expect(siteFlags.logicalMap).toBe(false)
+    expect(siteFlags.siteDiagram).toBe(false)
+    expect(siteFlags.editToolbar).toBe(true) // legacy behavior
+    expect(siteFlags.powerLegend).toBe(true) // legacy behavior
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -367,6 +421,92 @@ describe('mapEdgeLive', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// visibleLayers
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('visibleLayers', () => {
+  const edge = (layers: LogicalEdge['layers']): LogicalEdge => ({
+    id: 'a~b',
+    a: 'a',
+    b: 'b',
+    layers,
+    members: [],
+  })
+
+  test('test_visibleLayers_noHidden_returnsAll', () => {
+    const e = edge({ isis: { up: 1, total: 1, label: 'L2' }, sr: { up: 1, total: 1, label: '' } })
+    const visible = visibleLayers(e, new Set())
+    expect(visible).toEqual(['isis', 'sr'])
+  })
+
+  test('test_visibleLayers_isisHidden_omitsIsis', () => {
+    const e = edge({ isis: { up: 1, total: 1, label: '' }, sr: { up: 1, total: 1, label: '' }, physical: { up: 1, total: 1, label: '' } })
+    const visible = visibleLayers(e, new Set(['isis']))
+    expect(visible).toEqual(['physical', 'sr'])
+    expect(visible).not.toContain('isis')
+  })
+
+  test('test_visibleLayers_allHidden_returnsEmpty', () => {
+    const e = edge({ isis: { up: 1, total: 1, label: '' } })
+    const visible = visibleLayers(e, new Set(['isis']))
+    expect(visible).toEqual([])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// isEdgeHidden
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('isEdgeHidden', () => {
+  const node = (id: string, tier: 'core' | 'end' = 'core'): LogicalNode => ({
+    id,
+    name: id,
+    tier,
+    siteName: 'site-a',
+    device: null,
+    sid: null,
+  })
+
+  const edge = (a: string, b: string, layers: LogicalEdge['layers']): LogicalEdge => ({
+    id: `${a}~${b}`,
+    a,
+    b,
+    layers,
+    members: [],
+  })
+
+  const tierOf = (nodes: LogicalNode[]): ReadonlyMap<string, string> =>
+    new Map(nodes.map((n) => [n.id, n.tier]))
+
+  test('test_isEdgeHidden_allLayersHidden_true', () => {
+    const nodes = [node('a'), node('b')]
+    const e = edge('a', 'b', { isis: { up: 1, total: 1, label: '' } })
+    expect(isEdgeHidden(e, tierOf(nodes), new Set(['isis']))).toBe(true)
+  })
+
+  test('test_isEdgeHidden_oneLayerStillShown_false', () => {
+    const nodes = [node('a'), node('b')]
+    const e = edge('a', 'b', { isis: { up: 1, total: 1, label: '' }, physical: { up: 1, total: 1, label: '' } })
+    // isis hidden, physical visible -> edge shown
+    expect(isEdgeHidden(e, tierOf(nodes), new Set(['isis']))).toBe(false)
+  })
+
+  test('test_isEdgeHidden_endHidden_hidesEndEdges', () => {
+    const nodes = [node('core', 'core'), node('server', 'end')]
+    const e = edge('core', 'server', { physical: { up: 1, total: 1, label: '' } })
+    expect(isEdgeHidden(e, tierOf(nodes), new Set(['end']))).toBe(true)
+  })
+
+  test('test_isEdgeHidden_layerlessEdge_followsPhysical', () => {
+    const nodes = [node('a'), node('b')]
+    const e = edge('a', 'b', {}) // no layers
+    // No layers = physical-only implied; hidden when physical hidden
+    expect(isEdgeHidden(e, tierOf(nodes), new Set(['physical']))).toBe(true)
+    expect(isEdgeHidden(e, tierOf(nodes), new Set())).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // edgeGeometry
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -500,6 +640,21 @@ describe('edgeStyle', () => {
     expect(style.color).toBe(theme.heatmap.noData)
     expect(style.dashed).toBe(false) // physical fully up
   })
+
+  test('test_edgeStyle_srAdjacencyDown_dashed', () => {
+    // SR layer with up < total should dash (same as IGP)
+    const e = edge({ sr: { up: 0, total: 1, label: 'adj-SID 24712' } })
+    const style = edgeStyle(e, null)
+    expect(style.dashed).toBe(true)
+  })
+
+  test('test_edgeStyle_hiddenLayerNeverDashes', () => {
+    // ISIS is down but hidden - should NOT dash
+    const e = edge({ isis: { up: 0, total: 1, label: 'L2' }, physical: { up: 1, total: 1, label: '' } })
+    const hidden = new Set<LogicalLayer>(['isis'])
+    const style = edgeStyle(e, null, hidden)
+    expect(style.dashed).toBe(false)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -524,6 +679,26 @@ describe('edgeTooltip', () => {
     expect(tooltip).toContain('OSPF')
     expect(tooltip).toContain('1/1')
     expect(tooltip).toContain('3 Gbps')
+  })
+
+  test('test_edgeTooltip_includesLayerLabel_listed', () => {
+    // Each layer segment carries its label when non-empty
+    const edge: LogicalEdge = {
+      id: 'a~b',
+      a: 'a',
+      b: 'b',
+      layers: {
+        sr: { up: 1, total: 1, label: 'adj-SID 24712/24572' },
+        isis: { up: 2, total: 2, label: 'L2 UP' },
+      },
+      members: [],
+    }
+    const tooltip = edgeTooltip(edge, null)
+    // e.g. 'IS-IS: 2/2 · L2 UP'
+    expect(tooltip).toContain('IS-IS: 2/2')
+    expect(tooltip).toContain('L2 UP')
+    expect(tooltip).toContain('SR: 1/1')
+    expect(tooltip).toContain('adj-SID 24712/24572')
   })
 })
 
@@ -559,9 +734,28 @@ describe('nodeClickAction', () => {
     sid: null,
   }
 
-  test('test_nodeClickAction_clusterAtMap_zoomsToSite', () => {
-    const action = nodeClickAction(siteNode, 'map')
+  const remotePeerNode: LogicalNode = {
+    id: 'FRA1-core-01',
+    name: 'FRA1-core-01',
+    tier: 'remote',
+    siteName: 'FRA1',
+    device: null,
+    sid: null,
+  }
+
+  test('test_nodeClickAction_siteNode_entersSite', () => {
+    // site: nodes enter the site at any level, not just map
+    const action = nodeClickAction(siteNode, 'site')
     expect(action).toEqual({ kind: 'site', name: 'site-a' })
+    // Also works at map level
+    const mapAction = nodeClickAction(siteNode, 'map')
+    expect(mapAction).toEqual({ kind: 'site', name: 'site-a' })
+  })
+
+  test('test_nodeClickAction_remotePeerAtSite_entersPeerSite', () => {
+    // tier 'remote' with a siteName enters that site (e.g. FRA1-core-01 -> FRA1)
+    const action = nodeClickAction(remotePeerNode, 'site')
+    expect(action).toEqual({ kind: 'site', name: 'FRA1' })
   })
 
   test('test_nodeClickAction_deviceAtSite_selects', () => {

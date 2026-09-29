@@ -85,9 +85,33 @@ test('test_LogicalLayers_noLive_hidesLegend', () => {
   expect(html).not.toContain('stale')
 })
 
-test('test_LogicalLayers_mapLevel_anchoredBottomRight', () => {
+test('test_LogicalLayers_mapLevel_clearsAttribution', () => {
+  // At map level, position is { bottom: 32, right: 16, top: 'auto' }
+  // The top:auto clears any inherited positioning that might cover attribution
   const html = renderToStaticMarkup(createElement(LogicalLayers, layersProps({ level: 'map' })))
-  // At map level, the panel should be anchored bottom-right (bottom: 16)
-  expect(html).toContain('bottom:16')
+  expect(html).toContain('bottom:32')
   expect(html).toContain('right:16')
+  expect(html).toContain('top:auto')
+})
+
+test('test_LogicalLayers_mapLevel_omitsEndDevices', () => {
+  // At map level, the "End devices" row should not be rendered
+  const html = renderToStaticMarkup(createElement(LogicalLayers, layersProps({ level: 'map' })))
+  expect(html).not.toContain('End devices')
+})
+
+test('test_LogicalLayers_noTopology_showsNoRoutingDataYet', () => {
+  // When layers is empty and no error, show "no routing data yet"
+  const html = renderToStaticMarkup(createElement(LogicalLayers, layersProps({ layers: [], isError: false })))
+  expect(html).toContain('no routing data yet')
+})
+
+test('test_LogicalLayers_mapLevel_hidesUtilLegend', () => {
+  // Brief: 'no UtilLegend (MapLegend has one)' at map level
+  const html = renderToStaticMarkup(
+    createElement(LogicalLayers, layersProps({ level: 'map', hasLive: true })),
+  )
+  // UtilLegend shows '0.01' through '100 %' scale text; neither should appear at map
+  expect(html).not.toContain('0.01')
+  expect(html).not.toContain('100 %')
 })
