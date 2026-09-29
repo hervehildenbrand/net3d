@@ -1,12 +1,20 @@
 # telemetry-sim
 
 A dependency-free Node script that stands in for a live-telemetry collector, so the
-showcase's fictional routers and switches can show link utilisation. It serves the two
-read-only endpoints net3d reads (the contract is in [docs/telemetry.md](../../docs/telemetry.md)):
+showcase's fictional routers and switches can show link utilisation and topology. It
+serves six read-only endpoints net3d reads (the contract is in
+[docs/telemetry.md](../../docs/telemetry.md)):
 
+**Rate endpoints**:
 - `GET /api/v1/devices` → `[{ "name": "…" }]`
 - `GET /api/v1/devices/{device}/interfaces` → `[{ "interface", "telemetry_state",
   "capacity_bps", "rx_bps", "tx_bps" }]`
+
+**Topology endpoints** (for the logical view):
+- `GET /api/v1/links` → LLDP adjacencies for all monitored ports
+- `GET /api/v1/isis/adjacencies` → IS-IS adjacencies (Core-to-Core cables and circuits)
+- `GET /api/v1/isis/topology` → LSDB with nodes, SR info and link metrics (when `SIM_LSDB=1`)
+- `GET /api/v1/ospf/adjacencies` → OSPF adjacencies on Core-to-Spine cables (when `SIM_OSPF=1`)
 
 Anything else, including an unknown device, gets `404 {"error":{"code":"NOT_FOUND"}}`.
 
@@ -57,6 +65,21 @@ wait
 | `HOST` | `127.0.0.1` | listen address (`0.0.0.0` inside a container) |
 | `PORT` | `8090` | listen port |
 | `REFRESH_MS` | `600000` | full rediscovery interval; after a failed call it retries sooner |
+| `SIM_LSDB` | `1` | set to `0` to return empty `/isis/topology` (no SR, no metrics) |
+| `SIM_OSPF` | `1` | set to `0` to return 404 for `/ospf/adjacencies` |
+| `SIM_MONITORED` | `Core,Spine,Leaf,OOB` | comma list of role names to consider monitored |
+
+### Production-like combination
+
+To test the logical view with the same limitations as a production gNMI collector
+(netstatex v0.2.0: no LSDB, no OSPF, only core devices monitored):
+
+```bash
+SIM_LSDB=0 SIM_OSPF=0 SIM_MONITORED=Core pnpm sim:telemetry
+```
+
+This shows IS-IS adjacencies but no SR labels, no link metrics, and no OSPF layer.
+Leaf neighbours appear as unmonitored ends with their `system_name` as the node name.
 
 ## Test
 

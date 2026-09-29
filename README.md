@@ -81,6 +81,13 @@ at their true U-positions, connected by one continuous mouse-wheel journey.
   small [two-endpoint contract](docs/telemetry.md) to show real-time link rx/tx and
   utilisation on cables, map circuit arcs and room DC links, and per-port rates in the
   device panel — see "Live telemetry" below.
+- 🔀 **Logical topology view** (opt-in): with telemetry or NAPALM available, a
+  **Physical | Logical** switch replaces the 3D rack layout with a tiered graph of the
+  network's control plane. Nodes are devices grouped by role (core/spine/leaf/end);
+  edges carry IS-IS, OSPF and SR layers with up/down counts and live utilisation. The
+  map level shows inter-site links between site clusters. See
+  [docs/telemetry.md](docs/telemetry.md#logical-topology-endpoints-optional) for the
+  collector contract.
 
 ## Requirements
 
