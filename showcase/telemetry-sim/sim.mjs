@@ -50,6 +50,22 @@ async function discover(net3dUrls) {
 }
 
 /**
+ * Extract only the fields protocolsFor/buildInventory need from a site's detail.
+ * Drops the full SiteDetail after extraction to save memory.
+ */
+const extractMinimal = ({ name, lon, detail }) => ({
+  name,
+  lon,
+  detail: {
+    racks: detail.racks.map((r) => ({
+      name: r.name,
+      devices: r.devices.map((d) => ({ name: d.name, roleName: d.roleName })),
+    })),
+    cables: detail.cables,
+  },
+})
+
+/**
  * Discover until net3d yields a monitored device, then serve the collector contract. Rediscover every
  * refreshMs; after an incomplete round (any failed call) retry sooner, backing off from retryMs to 60 s,
  * so a site whose first load failed is not left without live data until the next full refresh.
@@ -59,7 +75,9 @@ async function discover(net3dUrls) {
  */
 export async function start({ net3dUrls, host = '127.0.0.1', port = 8090, refreshMs = 600_000, retryMs = 2_000, lsdbEnabled = true, ospfEnabled = true, monitoredRoles = null }) {
   let inv = new Map()
-  let protocols = { links: [], isisAdjacencies: [], isisTopology: { sources: [], nodes: [], links: [] }, ospfAdjacencies: [] }
+  // Pre-stringified protocol responses (avoid re-stringifying ~16 MB on every request)
+  let protocolsJson = { links: '[]', isisAdjacencies: '[]', isisTopology: '{"sources":[],"nodes":[],"links":[]}', ospfAdjacencies: '[]' }
+  // Minimal site data: only fields protocolsFor/buildInventory need (saves ~90% of memory)
   let lastGoodSites = []
   let backoff = retryMs
   /** One discovery round; resolves to the delay before the next one. */
@@ -70,11 +88,18 @@ export async function start({ net3dUrls, host = '127.0.0.1', port = 8090, refres
       // merge, never replace: a site that failed this round keeps serving its last good devices
       // ponytail: devices are never dropped; restart the sim after reseeding a smaller fabric
       inv = new Map([...inv, ...buildInventory(found.sites)])
-      // Merge site details for protocolsFor (keyed by site name)
+      // Merge site details for protocolsFor (keyed by site name), extracting only minimal fields
       const siteMap = new Map(lastGoodSites.map((s) => [s.name, s]))
-      for (const s of found.sites) siteMap.set(s.name, s)
+      for (const s of found.sites) siteMap.set(s.name, extractMinimal(s))
       lastGoodSites = [...siteMap.values()]
-      protocols = protocolsFor(lastGoodSites, { lsdb: lsdbEnabled, ospf: ospfEnabled }, monitoredRoles ?? MONITORED_ROLES)
+      const protocols = protocolsFor(lastGoodSites, { lsdb: lsdbEnabled, ospf: ospfEnabled }, monitoredRoles ?? MONITORED_ROLES)
+      // Pre-stringify once per refresh to avoid ~16 MB stringify per request
+      protocolsJson = {
+        links: JSON.stringify(protocols.links),
+        isisAdjacencies: JSON.stringify(protocols.isisAdjacencies),
+        isisTopology: JSON.stringify(protocols.isisTopology),
+        ospfAdjacencies: JSON.stringify(protocols.ospfAdjacencies),
+      }
       failed = found.failed
     } catch (err) {
       warn(err) // malformed payload: keep serving what we have
@@ -100,29 +125,44 @@ export async function start({ net3dUrls, host = '127.0.0.1', port = 8090, refres
     // ponytail: net3d only sends GET; any method gets the same answer
     const path = req.url.split('?')[0]
     const m = /^\/api\/v1\/devices\/([^/]+)\/interfaces$/.exec(path)
+    res.setHeader('Content-Type', 'application/json')
+    // Pre-stringified protocol responses (avoid re-stringifying ~16 MB on every request)
+    if (path === '/api/v1/links' || path === '/links') {
+      res.writeHead(200)
+      res.end(protocolsJson.links)
+      return
+    }
+    if (path === '/api/v1/isis/adjacencies' || path === '/isis/adjacencies') {
+      res.writeHead(200)
+      res.end(protocolsJson.isisAdjacencies)
+      return
+    }
+    if (path === '/api/v1/isis/topology' || path === '/isis/topology') {
+      res.writeHead(200)
+      res.end(protocolsJson.isisTopology)
+      return
+    }
+    if (path === '/api/v1/ospf/adjacencies' || path === '/ospf/adjacencies') {
+      if (!ospfEnabled) {
+        res.writeHead(404)
+        res.end('{"error":{"code":"NOT_FOUND"}}')
+      } else {
+        res.writeHead(200)
+        res.end(protocolsJson.ospfAdjacencies)
+      }
+      return
+    }
+    // Dynamic responses (small, ok to stringify per request)
     let body
     let status = 200
     if (path === '/api/v1/devices') {
       body = [...inv.keys()].map((name) => ({ name }))
     } else if (m) {
       body = interfacesAt(inv, decode(m[1]), Date.now())
-    } else if (path === '/api/v1/links' || path === '/links') {
-      body = protocols.links
-    } else if (path === '/api/v1/isis/adjacencies' || path === '/isis/adjacencies') {
-      body = protocols.isisAdjacencies
-    } else if (path === '/api/v1/isis/topology' || path === '/isis/topology') {
-      body = protocols.isisTopology
-    } else if (path === '/api/v1/ospf/adjacencies' || path === '/ospf/adjacencies') {
-      if (!ospfEnabled) {
-        status = 404
-        body = { error: { code: 'NOT_FOUND' } }
-      } else {
-        body = protocols.ospfAdjacencies
-      }
     } else {
       body = null
     }
-    res.writeHead(body !== null ? status : 404, { 'Content-Type': 'application/json' })
+    res.writeHead(body !== null ? status : 404)
     res.end(JSON.stringify(body ?? { error: { code: 'NOT_FOUND' } }))
   })
   await new Promise((resolve, reject) => server.once('error', reject).listen(port, host, resolve))
