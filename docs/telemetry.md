@@ -73,7 +73,7 @@ contributes its layer to the view.
 
 At map level, the logical layer draws directly on the Leaflet map: one vertical pill
 per site with one segment per core router, router-to-router arcs with two-way rate
-beads, physical/IS-IS/SR layer toggles, and permanent `AMS1-core-01 · 16001` labels
+beads, physical/IS-IS/SR layer toggles, and permanent `core-01 · 16001` labels
 from zoom 5. Click a pill to open the site. Dashed arcs mean an IS-IS or SR adjacency
 is down; grey arcs mean stale telemetry.
 

@@ -85,7 +85,7 @@ at their true U-positions, connected by one continuous mouse-wheel journey.
   **Physical | Logical** switch shows the network's control plane. At map level, the
   logical layer draws directly on the Leaflet map: one vertical pill per site with
   one segment per core router, router-to-router arcs with two-way rate beads,
-  `AMS1-core-01 · 16001` labels from zoom 5, and toggles for physical, IS-IS and SR
+  `core-01 · 16001` labels from zoom 5, and toggles for physical, IS-IS and SR
   layers. Dashed arcs mark adjacency down; grey arcs mark stale telemetry. At site
   level, a flat 2D diagram shows peers → core → spines/aggregation → rack columns,
   faint uplinks lit on hover, and per-rack server chips that unfold the rack's
