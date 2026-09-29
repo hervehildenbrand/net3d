@@ -24,6 +24,7 @@ import {
   nodeClickAction,
   visibleLayers,
   isEdgeHidden,
+  nodeTooltipRows,
 } from './logicalView'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -631,5 +632,80 @@ describe('nodeClickAction', () => {
   test('test_nodeClickAction_extNode_null', () => {
     const action = nodeClickAction(extNode, 'site')
     expect(action).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// nodeTooltipRows
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('nodeTooltipRows', () => {
+  test('test_nodeTooltipRows_device_nameAndRole', () => {
+    const node: LogicalNode = {
+      id: 'AMS1-core-01',
+      name: 'AMS1-core-01',
+      tier: 'core',
+      siteName: 'AMS1',
+      device: { id: 'd1', name: 'AMS1-core-01', siteName: 'AMS1', roleName: 'Core Router', roleColor: '#dc2626' },
+      sid: null,
+    }
+    const rows = nodeTooltipRows(node)
+    expect(rows[0]).toBe('AMS1-core-01')
+    expect(rows[1]).toBe('Core Router')
+  })
+
+  test('test_nodeTooltipRows_extNode_lldpNeighbourNote', () => {
+    const node: LogicalNode = {
+      id: 'ext:unknown-host',
+      name: 'unknown-host',
+      tier: 'end',
+      siteName: null,
+      device: null,
+      sid: null,
+    }
+    const rows = nodeTooltipRows(node)
+    expect(rows[0]).toBe('unknown-host')
+    expect(rows[1]).toBe('LLDP neighbour, not in source of truth')
+  })
+
+  test('test_nodeTooltipRows_siteNode_remoteSiteNote', () => {
+    const node: LogicalNode = {
+      id: 'site:FRA1',
+      name: 'FRA1',
+      tier: 'remote',
+      siteName: 'FRA1',
+      device: null,
+      sid: null,
+    }
+    const rows = nodeTooltipRows(node)
+    expect(rows[0]).toBe('FRA1')
+    expect(rows[1]).toBe('remote site')
+  })
+
+  test('test_nodeTooltipRows_remoteDevice_siteFRA1', () => {
+    const node: LogicalNode = {
+      id: 'FRA1-core-01',
+      name: 'FRA1-core-01',
+      tier: 'remote',
+      siteName: 'FRA1',
+      device: null,
+      sid: null,
+    }
+    const rows = nodeTooltipRows(node)
+    expect(rows[0]).toBe('FRA1-core-01')
+    expect(rows).toContain('site FRA1')
+  })
+
+  test('test_nodeTooltipRows_withSid_showsSID', () => {
+    const node: LogicalNode = {
+      id: 'AMS1-core-01',
+      name: 'AMS1-core-01',
+      tier: 'core',
+      siteName: 'AMS1',
+      device: { id: 'd1', name: 'AMS1-core-01', siteName: 'AMS1', roleName: 'Core Router', roleColor: '#dc2626' },
+      sid: 16001,
+    }
+    const rows = nodeTooltipRows(node)
+    expect(rows).toContain('SID 16001')
   })
 })

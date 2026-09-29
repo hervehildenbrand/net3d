@@ -495,3 +495,36 @@ export function nodeClickAction(node: LogicalNode, level: ViewLevel): NodeClickA
 
   return null
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// nodeTooltipRows
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build tooltip content for a node.
+ * Format:
+ * - name
+ * - role (device), 'LLDP neighbour, not in source of truth' (ext:), 'remote site' (site:)
+ * - 'site FRA1' for remote devices
+ * - 'SID 16001' when sid is set
+ */
+export function nodeTooltipRows(node: LogicalNode): string[] {
+  const rows: string[] = [node.name]
+
+  if (node.id.startsWith('ext:')) {
+    rows.push('LLDP neighbour, not in source of truth')
+  } else if (node.id.startsWith('site:')) {
+    rows.push('remote site')
+  } else if (node.device) {
+    rows.push(node.device.roleName)
+  } else if (node.tier === 'remote' && node.siteName) {
+    // Remote device without device record (e.g. peer router)
+    rows.push(`site ${node.siteName}`)
+  }
+
+  if (node.sid !== null) {
+    rows.push(`SID ${node.sid}`)
+  }
+
+  return rows
+}
