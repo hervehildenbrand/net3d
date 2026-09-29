@@ -13,7 +13,7 @@ import { useCapabilities } from './hooks/useCapabilities'
 import { useSiteTelemetry } from './hooks/useSiteTelemetry'
 import { useCircuitTelemetry } from './hooks/useCircuitTelemetry'
 import { useComputedSiteLayout } from './hooks/useComputedSiteLayout'
-import { LazySiteScene } from './scene/lazySiteScene'
+import { LazySiteScene, preloadSiteScene } from './scene/lazySiteScene'
 import { useSites } from './hooks/useSites'
 import { connectionErrorMessage } from './connectionError'
 import { useCircuits } from './hooks/useCircuits'
@@ -21,6 +21,7 @@ import { useSiteDetail } from './hooks/useSiteDetail'
 import { useSiteLayoutQuery, useLayoutCapability } from './hooks/useSiteLayout'
 import { useDeviceIndex } from './hooks/useDeviceIndex'
 import { useLiveUpdates } from './hooks/useLiveUpdates'
+import { useLogicalView } from './hooks/useLogicalTopology'
 import { useAppStore } from './store/useAppStore'
 import { DevicePanel } from './components/DevicePanel'
 import { SitesMenu, SITES_MENU_WIDTH, SITES_MENU_COLLAPSED_OFFSET } from './components/SitesMenu'
@@ -30,6 +31,7 @@ import { LayersPanel } from './components/LayersPanel'
 import { PowerLegend } from './components/PowerLegend'
 import { BackendSwitcher } from './components/BackendSwitcher'
 import { EditToolbar } from './components/EditToolbar'
+import { ViewModeSwitch, LogicalLayers } from './components/LogicalControls'
 import { useEditStore } from './store/useEditStore'
 import { SceneErrorBoundary } from './components/SceneErrorBoundary'
 import { SiteStatus } from './components/SiteStatus'
@@ -39,6 +41,7 @@ import { collectSubnets } from './lib/subnetColoring'
 import { tracePowerChain } from './lib/powerChain'
 import { computeActiveLldpIds } from './lib/lldpScope'
 import { dirLive } from './lib/liveTelemetry'
+import { viewFlags, findDevice } from './lib/logicalView'
 
 const hudStyle: React.CSSProperties = {
   position: 'absolute',
@@ -94,6 +97,11 @@ export function App() {
   const specsHeatmapMetric = useAppStore((s) => s.specsHeatmapMetric)
   const setSpecsMetric = useAppStore((s) => s.setSpecsMetric)
   const sitesMenuOpen = useAppStore((s) => s.sitesMenuOpen)
+  const viewMode = useAppStore((s) => s.viewMode)
+  const setViewMode = useAppStore((s) => s.setViewMode)
+  const hiddenLogical = useAppStore((s) => s.hiddenLogical)
+  const toggleHiddenLogical = useAppStore((s) => s.toggleHiddenLogical)
+  const backend = useAppStore((s) => s.backend)
   // Left-stacked HUD elements clear the sites menu (open) or its ☰ button (closed).
   const leftOffset = sitesMenuOpen ? SITES_MENU_WIDTH + 16 : SITES_MENU_COLLAPSED_OFFSET
   const { data: siteDetail, isLoading: siteLoading, isFetching: siteFetching, error: siteError, refetch: retrySite } = useSiteDetail(
@@ -108,7 +116,17 @@ export function App() {
   const { canSave: layoutCanSave } = useLayoutCapability()
   const selectedRack = siteDetail?.racks.find((r) => r.id === selectedRackId)
   const selectedPlacement = placements.find((p) => p.rackId === selectedRackId)
-  const selectedDevice = selectedRack?.devices.find((d) => d.id === selectedDeviceId)
+
+  // In logical mode, search all racks so DevicePanel keeps its power rows.
+  // In physical mode, only search the selected rack (original behavior).
+  const selectedDeviceResult = useMemo(() => {
+    if (!selectedDeviceId || !siteDetail) return undefined
+    const result = findDevice(siteDetail.racks, selectedRackId, selectedDeviceId, viewMode === 'logical')
+    return result
+  }, [selectedDeviceId, siteDetail, selectedRackId, viewMode])
+  const selectedDevice = selectedDeviceResult?.device
+  // Use the rack from findDevice in logical mode for DevicePanel's power rows.
+  const selectedDeviceRack = selectedDeviceResult?.rack ?? selectedRack
 
   // Global device search index (backend-agnostic; refetched per backend).
   const { data: deviceIndex, isLoading: deviceIndexLoading, isError: deviceIndexError } = useDeviceIndex()
@@ -192,18 +210,22 @@ export function App() {
     [siteDetail],
   )
   const capabilities = useCapabilities()
-  // Map-level circuit telemetry: polled while map is visible, or while at site
-  // level with DC links showing in live mode — so room DC links have rates.
-  const circuitLive = useCircuitTelemetry(
-    capabilities.telemetryAvailable &&
-      (level === 'map' || (level === 'site' && cableColorMode === 'live' && dcLinksVisible)),
+
+  // Compute all visibility and polling decisions via viewFlags.
+  // Physical mode and feature-off match today's behavior exactly.
+  const flags = useMemo(
+    () =>
+      viewFlags(
+        { viewMode, level, siteDetail: siteDetail ?? null, selectedDevice: selectedDevice ?? null, editModeActive, cableColorMode, dcLinksVisible, colorMode },
+        capabilities,
+      ),
+    [viewMode, level, siteDetail, selectedDevice, editModeActive, cableColorMode, dcLinksVisible, colorMode, capabilities],
   )
-  // Live gNMI utilisation, polled only while it can be shown: the 'live' cable
-  // mode is active, or a selected device's own panel wants per-interface rates.
-  const telemetry = useSiteTelemetry(
-    selectedSiteName,
-    capabilities.telemetryAvailable && !!siteDetail && (cableColorMode === 'live' || !!selectedDevice),
-  )
+
+  // Map-level circuit telemetry: polled via flags.poll.circuits.
+  const circuitLive = useCircuitTelemetry(flags.poll.circuits)
+  // Live gNMI utilisation, polled via flags.poll.siteTelemetry.
+  const telemetry = useSiteTelemetry(selectedSiteName, flags.poll.siteTelemetry)
   const cableLive = useMemo(
     () => (cableColorMode === 'live' && telemetry && siteDetail ? mapTelemetryToCables(telemetry, siteDetail.cables) : undefined),
     [cableColorMode, telemetry, siteDetail],
@@ -227,6 +249,22 @@ export function App() {
     }
     return segments
   }, [lldp.byDevice, siteDetail])
+
+  // Logical view data (graph, layout, geometry, helpers).
+  const logicalView = useLogicalView({
+    enabled: flags.logical,
+    level,
+    backend,
+    siteName: selectedSiteName,
+    siteDetail,
+    deviceIndex,
+    sites,
+    circuitGroups,
+    lldp,
+    telemetry,
+    circuitLive,
+    hiddenLogical,
+  })
 
   // Inter-DC links for the site in view: each circuit group touching this site,
   // placed by the geographic bearing from this site to its peer.
@@ -271,17 +309,21 @@ export function App() {
     [dcLinks, circuitLive, cableColorMode, selectedSiteName],
   )
 
-  const inScene = level !== 'map'
+  // In scene when at site/rack level, OR when at map level with logical view active.
+  const inScene = flags.inScene || flags.logical
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', background: '#fafbfc' }}>
-      {/* Leaflet world map — always mounted so its state survives scene visits */}
+      {/* Leaflet world map — always mounted so its state survives scene visits.
+          Hidden (visibility, not just pointer-events) when logical view is active
+          at map level because R3F sets pointer-events:auto on its own elements. */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
           zIndex: 1,
           opacity: inScene ? 0 : 1,
+          visibility: inScene ? 'hidden' : 'visible',
           transition: 'opacity 400ms ease',
           pointerEvents: inScene ? 'none' : 'auto',
         }}
@@ -333,6 +375,10 @@ export function App() {
                 selectedDeviceId={selectedDeviceId}
                 siteSubnets={siteSubnets}
                 cableLive={cableLive}
+                logical={flags.logical}
+                logicalData={logicalView.data ?? undefined}
+                onLogicalSelectDevice={selectDevice}
+                onLogicalSelectSite={zoomToSite}
               />
             </Suspense>
           </SceneErrorBoundary>
@@ -366,8 +412,9 @@ export function App() {
       </div>
 
       {/* Source-of-truth switch — shown on the map (switching resets to the map anyway).
-          Top-right is free here; the in-scene legends occupy it only at site/rack level. */}
-      {level === 'map' && <BackendSwitcher />}
+          Top-right is free here; the in-scene legends occupy it only at site/rack level.
+          Hidden when logical view is active at map level. */}
+      {level === 'map' && !flags.logical && <BackendSwitcher />}
 
       {/* Global device finder — persistent (top-center) so any device is reachable
           from any level. Selecting one stages a zoom to its rack. */}
@@ -385,22 +432,47 @@ export function App() {
         <DevicePanel
           device={selectedDevice}
           cables={siteDetail?.cables ?? []}
-          rack={selectedRack}
+          rack={selectedDeviceRack}
           napalmAvailable={capabilities.napalmAvailable}
           telemetry={telemetry?.devices[selectedDevice.name]}
           onClose={() => selectDevice(null)}
         />
       )}
 
-      {sites && level === 'map' && !selectedDevice && (
+      {/* View mode switch (Physical | Logical) — shown via flags.viewSwitch. */}
+      {flags.viewSwitch && (
+        <ViewModeSwitch
+          available={flags.viewSwitch}
+          viewMode={viewMode}
+          level={level}
+          leftOffset={leftOffset}
+          inEditMode={editModeActive}
+          onSwitch={setViewMode}
+          onMouseEnter={preloadSiteScene}
+        />
+      )}
+
+      {sites && flags.siteSearch && !selectedDevice && (
         <SiteSearch sites={sites} onSelect={zoomToSite} />
+      )}
+
+      {/* Logical layers panel — shown when logical view is active. */}
+      {flags.logicalLayers && logicalView.data && (
+        <LogicalLayers
+          level={level}
+          layers={logicalView.data.layers}
+          hidden={hiddenLogical}
+          onToggle={toggleHiddenLogical}
+          hasLive={logicalView.data.hasLive}
+          isError={logicalView.isError}
+        />
       )}
 
       {/* Unified Layers control (top-right): single-select "Color by" + overlay
           toggles. Role list is scoped to the rack(s) in view; the specs gradient
           stays site-wide. Hidden while a device is selected — the 380px DevicePanel
-          occupies the same corner. */}
-      {level !== 'map' && !selectedDevice && !editModeActive && !!siteDetail?.racks?.length && (
+          occupies the same corner. Hidden when logical view is active. */}
+      {flags.layersPanel && siteDetail && (
         <LayersPanel
           level={level}
           racks={level === 'rack' && selectedRack ? [selectedRack] : siteDetail.racks}
@@ -429,7 +501,7 @@ export function App() {
         />
       )}
 
-      {level === 'site' && powerVisible && !editModeActive && !!siteDetail?.racks?.length && (
+      {flags.powerLegend && powerVisible && siteDetail && (
         <PowerLegend
           racks={siteDetail.racks}
           power={siteDetail.power}
@@ -449,8 +521,9 @@ export function App() {
 
       {/* Floor-plan editor toolbar (site level only; self-hides unless the server
           allows edits). Gets the current placements so entering edit seeds the
-          working copy from whatever is on screen (auto-layout or saved layout). */}
-      {level === 'site' && selectedSiteName && siteDetail && (
+          working copy from whatever is on screen (auto-layout or saved layout).
+          Hidden when logical view is active. */}
+      {flags.editToolbar && selectedSiteName && siteDetail && (
         <EditToolbar
           siteName={selectedSiteName}
           placements={placements}
