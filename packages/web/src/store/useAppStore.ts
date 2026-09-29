@@ -280,10 +280,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   handleMapSignals: (zoom, site) => {
-    const { level, viewMode, zoomToSite, setMapView } = get()
+    const { level, zoomToSite, setMapView } = get()
     if (level !== 'map') return
-    // Logical mode at map level: pan/zoom the backbone graph, never zoom-enter a site.
-    if (viewMode === 'logical') return
+    // NOTE: The caller (MapNavWatcher) receives the effective `logical` flag from MapLayer
+    // and does NOT call this when logical mode is active. The raw viewMode check here is
+    // removed to avoid the NAPALM-only dead end where physical map is shown but the guard
+    // blocks zoom-to-site. The MapNavWatcher is the single gatekeeper now.
     const r = stepNavigation(
       navMachine,
       { level: 'map', mapZoom: zoom, siteUnderCenter: site?.name ?? null },
