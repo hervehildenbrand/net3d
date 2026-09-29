@@ -139,9 +139,9 @@ test('test_ArcLayer_dashedLine_passesDashArray', () => {
   expect(call.pathOptions.dashArray).toBe('6 5')
 })
 
-test('test_ArcLayer_staleLine_greysBothHalvesDespiteLive', () => {
+test('test_ArcLayer_staleAdjacency_dashedButNotGrey', () => {
   Polyline.mockClear()
-  // Build a stale line
+  // Build a line with stale adjacency label (isis up < total + 'stale' label)
   const nodes = [mkNode('AMS1-core-01', 'AMS1'), mkNode('FRA1-core-01', 'FRA1')]
   const edge = mkEdge('AMS1-core-01', 'FRA1-core-01', {
     physical: { up: 1, total: 1, label: '' },
@@ -153,15 +153,18 @@ test('test_ArcLayer_staleLine_greysBothHalvesDespiteLive', () => {
     ['FRA1-core-01', [50.11, 8.68]],
   ])
   const lines = logicalLines(graph, anchors, SITES, [], new Set())
-  expect(lines[0]!.stale).toBe(true)
+  // Plan default: grey = circuit telemetry stale only; stale adjacency = dashed + 'stale' row
+  expect(lines[0]!.stale).toBe(false)
+  expect(lines[0]!.dashed).toBe(true) // up < total
+  expect(lines[0]!.rows.join(' ')).toContain('stale') // row includes stale label
 
-  // Even with live data, stale should grey the line
-  const live = new Map<string, CircuitLive>([['C1', { pct: 70, bps: 7e9, stale: false, dirs: { AMS1: { bps: 7e9, pct: 70 }, FRA1: { bps: 2e8, pct: 0.2 } } }]])
-  renderToStaticMarkup(createElement(ArcLayer, { lines, live, circles: [], boxes: [] }))
-
-  // Should have grey color (theme.heatmap.noData)
-  const call = Polyline.mock.calls[0]![0] as { pathOptions: { color: string } }
-  expect(call.pathOptions.color).toBe(theme.heatmap.noData)
+  // No live data: default color (not grey)
+  renderToStaticMarkup(createElement(ArcLayer, { lines, live: undefined, circles: [], boxes: [] }))
+  const call = Polyline.mock.calls[0]![0] as { pathOptions: { color: string; dashArray?: string } }
+  // Should be the default circuit color, not grey
+  expect(call.pathOptions.color).toBe(theme.map.circuit)
+  // Should be dashed
+  expect(call.pathOptions.dashArray).toBeDefined()
 })
 
 test('test_ArcLayer_splitPaths_onePolylinePerPiece', () => {
