@@ -43,13 +43,15 @@ export function createNetstatexClient(baseUrl: string, token?: string) {
     } catch (err) {
       const status = (err as { status?: number }).status
       if (status === 404) {
-        // 404 -> layer dark, do NOT reuse last good
+        // 404 -> layer dark, do NOT reuse last good; clear stale cache
+        lastGood.delete(path)
         return { value: emptyValue, answered: true }
       }
-      // Other failure -> reuse last good if available
+      // Other failure -> reuse last good if available, but mark as not answered
+      // so the "no endpoint answered" check can fire when ALL endpoints fail
       const cached = lastGood.get(path) as T | undefined
       if (cached !== undefined) {
-        return { value: cached, answered: true }
+        return { value: cached, answered: false }
       }
       // No prior value -> mark as not answered
       return { value: emptyValue, answered: false }

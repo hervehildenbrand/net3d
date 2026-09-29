@@ -274,12 +274,11 @@ A production deployment with a gNMI collector typically shows:
 
 - **IS-IS**: adjacencies and LSDB are live.
 - **SR**: node SIDs and adj-SIDs appear when at least one LSDB source is `LIVE`.
-- **Metrics**: link metrics from the LSDB.
 - **OSPF**: dark unless the collector serves `/ospf/adjacencies` (netstatex v0.2.0 does
   not).
 
 Without an LSDB source (collector has `isis_lsdb: false` for all devices), SR labels
-and link metrics stay dark. A neighbour reached only over LLDP-less links stays
+stay dark. A neighbour reached only over LLDP-less links stays
 unresolved until the LSDB provides a hostname.
 
 `pct`/`bps` describe a circuit's busier direction. `dirs` gives each direction, keyed by the

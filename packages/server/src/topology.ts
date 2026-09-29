@@ -322,7 +322,7 @@ export function resolveTopology(raw: RawTopologyData): Pick<CollectorTopology, '
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Phase 3: LSDB (SR and metrics) - only when a source is LIVE
+  // Phase 3: LSDB (SR) - only when a source is LIVE
   // ─────────────────────────────────────────────────────────────────────────
   if (lsdbLive) {
     // Node SIDs: NODE prefix SID, algorithm 0, lowest prefix, non-null label

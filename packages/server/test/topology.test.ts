@@ -1233,6 +1233,86 @@ describe('createNetstatexClient topology', () => {
     const topologyCalls = timeoutSpy.mock.calls.filter(([ms]) => ms === 5_000)
     expect(topologyCalls.length).toBeGreaterThan(0)
   })
+
+  test('test_createNetstatexClient_topology_allFailAfterSuccess_rejects', async () => {
+    // First call succeeds, second call ALL endpoints fail -> should reject (503 path)
+    let callCount = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const u = String(url)
+      if (callCount === 0) {
+        // First round: all endpoints succeed
+        if (u.includes('/links')) {
+          return Response.json([LINK_PRESENT])
+        }
+        if (u.includes('/isis/adjacencies')) {
+          return Response.json([ISIS_ADJ_UP])
+        }
+        if (u.includes('/isis/topology')) {
+          callCount++ // increment on last endpoint of first round
+          return Response.json({ sources: [], nodes: [], links: [] })
+        }
+        if (u.includes('/ospf/adjacencies')) {
+          return new Response(JSON.stringify({ error: { code: 'NOT_FOUND' } }), { status: 404 })
+        }
+      }
+      // Second round: all endpoints fail
+      throw new Error('connect ECONNREFUSED')
+    })
+
+    const client = createNetstatexClient('http://nsx:8090')
+    // First call succeeds
+    const result1 = await client.topology!()
+    expect(result1.facts.some(f => f.layer === 'physical')).toBe(true)
+
+    // Second call: all endpoints fail. Even though we have cached data,
+    // if no endpoint answered, we should reject -> routes 503
+    await expect(client.topology!()).rejects.toThrow('no endpoint answered')
+  })
+
+  test('test_createNetstatexClient_topology_404DeletesLastGood', async () => {
+    // First call succeeds for OSPF, second call 404 clears cache,
+    // third call timeout should NOT reuse old cached data
+    let ospfCallCount = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const u = String(url)
+      if (u.includes('/ospf/adjacencies')) {
+        ospfCallCount++
+        if (ospfCallCount === 1) {
+          // First call succeeds
+          return Response.json([OSPF_ADJ_FULL])
+        }
+        if (ospfCallCount === 2) {
+          // Second call 404 - clears cache
+          return new Response(JSON.stringify({ error: { code: 'NOT_FOUND' } }), { status: 404 })
+        }
+        // Third call timeout - should NOT reuse old cached data
+        throw new Error('timeout')
+      }
+      if (u.includes('/links')) {
+        return Response.json([LINK_PRESENT])
+      }
+      if (u.includes('/isis/adjacencies')) {
+        return Response.json([])
+      }
+      if (u.includes('/isis/topology')) {
+        return Response.json({ sources: [], nodes: [], links: [] })
+      }
+      return Response.json({})
+    })
+
+    const client = createNetstatexClient('http://nsx:8090')
+    // First call: OSPF succeeds
+    const result1 = await client.topology!()
+    expect(result1.facts.some(f => f.layer === 'ospf')).toBe(true)
+
+    // Second call: OSPF 404 -> layer dark, clears cache
+    const result2 = await client.topology!()
+    expect(result2.facts.some(f => f.layer === 'ospf')).toBe(false)
+
+    // Third call: OSPF timeout - should NOT have any OSPF data (cache was cleared by 404)
+    const result3 = await client.topology!()
+    expect(result3.facts.some(f => f.layer === 'ospf')).toBe(false)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
