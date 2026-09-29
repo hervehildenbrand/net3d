@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { labelBox, placeSlidingLabels, contrastText, wcagContrast, circlesClearOfBoxes, type SlidingLabel, type LabelBox } from './arcLabels'
+import { labelBox, placeSlidingLabels, contrastText, wcagContrast, circlesClearOfBoxes, MARKER_RADIUS, type SlidingLabel, type LabelBox, type ObstacleBox } from './arcLabels'
 import { specsColor } from '../lib/specsHeatmap'
 import { theme } from '../theme'
 
@@ -125,6 +125,23 @@ describe('placeSlidingLabels', () => {
     const result = placeSlidingLabels(labels)
     expect(result.get('first')).toBe(0)
     expect(result.has('second')).toBe(false) // all candidates blocked by 'first'
+  })
+
+  it('test_placeSlidingLabels_blockedBox_skipsOverlappingCandidate', () => {
+    // A label with first candidate overlapping a blocked box takes its second candidate
+    const labels: SlidingLabel[] = [
+      { key: 'a', priority: 10, candidates: [box('a', 0, 0, 10), box('a', 100, 0, 10)] },
+    ]
+    // Blocked box at (0, 0) that overlaps the first candidate
+    const blocked: LabelBox[] = [{ key: 'pill', x: 0, y: 0, w: 30, h: 20, priority: 0 }]
+    const result = placeSlidingLabels(labels, [], blocked)
+    expect(result.get('a')).toBe(1) // Takes second candidate
+  })
+})
+
+describe('MARKER_RADIUS', () => {
+  it('test_MARKER_RADIUS_is10', () => {
+    expect(MARKER_RADIUS).toBe(10)
   })
 })
 

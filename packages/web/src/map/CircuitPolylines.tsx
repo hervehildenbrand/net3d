@@ -2,45 +2,25 @@ import { Fragment, useMemo, useState } from 'react'
 import { Marker, Pane, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import { divIcon } from 'leaflet'
 import {
-  commitRateToSpeedBucket,
   formatBps,
   formatCommitRate,
-  greatCircleLatLngs,
-  speedBucketToWidth,
   type CircuitGroup,
   type CircuitLive,
-  type SiteCircuit,
 } from '@net3d/shared'
 import type { Site } from '../hooks/useSites'
 import { theme } from '../theme'
 import { dirLive, formatPct, type DirGroup } from '../lib/liveTelemetry'
-import { labelBox, placeSlidingLabels, contrastText, circlesClearOfBoxes, type LabelBox, type MarkerCircle, type SlidingLabel } from './arcLabels'
+import { labelBox, placeSlidingLabels, contrastText, circlesClearOfBoxes, MARKER_RADIUS, type LabelBox, type MarkerCircle, type SlidingLabel } from './arcLabels'
 import { halfCandidates, screenAngleDeg, showArrows, splitArc, spreadPoints } from './arcHalves'
-
-type LatLng = [number, number]
-
-interface LineData {
-  key: string
-  siteA: string
-  siteZ: string
-  positions: LatLng[]
-  halves: ReturnType<typeof splitArc<LatLng>>
-  weight: number
-  opacity: number
-  title: string
-  circuits: SiteCircuit[]
-  cids: string[]
-}
+import { circuitLines, type ArcLine, type LatLng } from './arcLines'
 
 /** Both directions of a link, or null when none of its circuits has telemetry (draw it as today). */
-function lineDirs(l: LineData, live: Map<string, CircuitLive>): { a: DirGroup; z: DirGroup } | null {
+function lineDirs(l: ArcLine, live: Map<string, CircuitLive>): { a: DirGroup; z: DirGroup } | null {
   const a = dirLive(l.cids, live, l.siteA)
   const z = dirLive(l.cids, live, l.siteZ)
   return a && z ? { a, z } : null
 }
 
-/** Screen radius kept clear around each site marker (visible dot 7 px + 2 px stroke + 1 px margin). */
-const MARKER_RADIUS = 10
 /** Screen radius kept clear around the arrowheads at an arc's midpoint. */
 const ARROW_RADIUS = 9
 /** Minimum distance between kept arrow pairs; two arrowheads are ~20 px tip to tail. */
@@ -64,7 +44,7 @@ interface Arrow {
 type Bead = { key: string; bps: number; color: string; at: LatLng }
 
 /** Per-direction arrowheads and rate beads for live links; beads de-overlapped on zoom/move. */
-function ArcLabels({ lines, live, sites }: { lines: LineData[]; live: Map<string, CircuitLive>; sites: Site[] }) {
+function ArcLabels({ lines, live, sites }: { lines: ArcLine[]; live: Map<string, CircuitLive>; sites: Site[] }) {
   const map = useMap()
   const [tick, setTick] = useState(0)
   useMapEvents({
@@ -205,7 +185,7 @@ function DirLine({ from, to, d }: { from: string; to: string; d: DirGroup }) {
   )
 }
 
-function ArcTooltip({ line: l, live, dirs }: { line: LineData; live: Map<string, CircuitLive> | undefined; dirs: { a: DirGroup; z: DirGroup } | null }) {
+function ArcTooltip({ line: l, live, dirs }: { line: ArcLine; live: Map<string, CircuitLive> | undefined; dirs: { a: DirGroup; z: DirGroup } | null }) {
   return (
     <Tooltip sticky>
       <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, lineHeight: 1.5 }}>
@@ -245,32 +225,7 @@ export function CircuitPolylines({
   groups: CircuitGroup[]
   live: Map<string, CircuitLive> | undefined
 }) {
-  const lines = useMemo<LineData[]>(() => {
-    const byName = new Map(sites.map((s) => [s.name, s]))
-    return groups.flatMap((g) => {
-      const a = byName.get(g.siteA)
-      const z = byName.get(g.siteZ)
-      if (!a || !z || a.latitude === null || z.latitude === null) return []
-      const bucket = commitRateToSpeedBucket(g.maxCommitRate ?? null)
-      const positions = greatCircleLatLngs(a.latitude, a.longitude!, z.latitude, z.longitude!, 48) as LatLng[]
-      return [
-        {
-          key: `${g.siteA}|${g.siteZ}`,
-          siteA: g.siteA,
-          siteZ: g.siteZ,
-          positions,
-          halves: splitArc(positions),
-          // Raise the thinnest links off the floor: 10G circuits at weight 1.5
-          // were nearly invisible on the light basemap.
-          weight: Math.max(speedBucketToWidth(bucket), 2),
-          opacity: bucket === '400G' ? 0.9 : bucket === '100G' ? 0.75 : 0.6,
-          title: `${g.siteA} ↔ ${g.siteZ} — ${g.count} circuit${g.count > 1 ? 's' : ''}`,
-          circuits: g.circuits ?? [],
-          cids: (g.circuits ?? []).map((c) => c.cid),
-        },
-      ]
-    })
-  }, [sites, groups])
+  const lines = useMemo(() => circuitLines(sites, groups), [sites, groups])
 
   return (
     <>

@@ -426,7 +426,7 @@ export function edgeStyle(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Layer display names. */
-const LAYER_NAMES: Record<LogicalLayer, string> = {
+export const LAYER_NAMES: Record<LogicalLayer, string> = {
   physical: 'Physical',
   isis: 'IS-IS',
   ospf: 'OSPF',

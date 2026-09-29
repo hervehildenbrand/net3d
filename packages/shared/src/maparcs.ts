@@ -83,3 +83,65 @@ export function greatCircleLatLngs(
   }
   return points
 }
+
+/**
+ * Wrap a longitude into the range [-180, 180).
+ * ((lng+180) % 360 + 360) % 360 - 180
+ */
+export function wrapLng(lng: number): number {
+  return ((((lng + 180) % 360) + 360) % 360) - 180
+}
+
+/**
+ * Split an unwrapped great-circle path at the antimeridian (±180°).
+ * Returns an array of pieces, each with all longitudes in [-180, 180].
+ * Consecutive pieces share their latitude at the cut.
+ */
+export function splitAtAntimeridian(points: [number, number][]): [number, number][][] {
+  if (points.length === 0) return []
+
+  const pieces: [number, number][][] = []
+  let currentPiece: [number, number][] = []
+
+  // Compute the 360-offset k for each point: k = floor((lng + 180) / 360)
+  const offsetK = (lng: number) => Math.floor((lng + 180) / 360)
+
+  let prevK: number | null = null
+
+  for (let i = 0; i < points.length; i++) {
+    const [lat, lng] = points[i]!
+    const k = offsetK(lng)
+
+    if (prevK !== null && k !== prevK) {
+      // Antimeridian crossing between points[i-1] and points[i]
+      const [lat0, lng0] = points[i - 1]!
+      const k0 = prevK
+      const k1 = k
+
+      // Boundary longitude: 180 + 360 * min(k0, k1)
+      const boundary = 180 + 360 * Math.min(k0, k1)
+      // Interpolate: t = (boundary - lng0) / (lng - lng0)
+      const t = (boundary - lng0) / (lng - lng0)
+      const latAtCut = lat0 + t * (lat - lat0)
+
+      // Close current piece: +180 when going east (lng > lng0), -180 when going west
+      const closeLng = lng > lng0 ? 180 : -180
+      currentPiece.push([latAtCut, closeLng])
+      pieces.push(currentPiece)
+
+      // Start new piece at the opposite edge
+      const openLng = -closeLng
+      currentPiece = [[latAtCut, openLng]]
+    }
+
+    // Add point normalised by its k
+    currentPiece.push([lat, lng - 360 * k])
+    prevK = k
+  }
+
+  if (currentPiece.length > 0) {
+    pieces.push(currentPiece)
+  }
+
+  return pieces
+}

@@ -14,6 +14,18 @@ const UNIT_GAP = 2 // margin-left on the unit span
 const MARGIN = 2 // minimal breathing room
 const LABEL_HEIGHT = 18 + BORDER * 2 + MARGIN * 2 // pill + border + margin
 
+/** Screen radius kept clear around each site marker (visible dot 7 px + 2 px stroke + 1 px margin). */
+export const MARKER_RADIUS = 10
+
+/** Pre-placed obstacle box (e.g. pill bounding box) that labels must avoid. */
+export interface ObstacleBox {
+  at: [number, number]
+  dx: number
+  dy: number
+  w: number
+  h: number
+}
+
 export interface LabelBox {
   key: string
   x: number // top-left x (center-anchored: computed from input cx)
@@ -97,14 +109,18 @@ function hitsMarker(box: LabelBox, m: MarkerCircle): boolean {
 
 /**
  * Greedy placement, busiest first (stable for ties): each label takes its FIRST candidate that overlaps no site
- * marker and no already-placed label; labels with no free candidate are dropped.
+ * marker, no blocked box, and no already-placed label; labels with no free candidate are dropped.
  * Returns key -> index of the chosen candidate.
  */
-export function placeSlidingLabels(labels: SlidingLabel[], markers: MarkerCircle[] = []): Map<string, number> {
+export function placeSlidingLabels(
+  labels: SlidingLabel[],
+  markers: MarkerCircle[] = [],
+  blocked: LabelBox[] = [],
+): Map<string, number> {
   const sorted = labels
     .map((l, i) => ({ ...l, idx: i }))
     .sort((a, b) => b.priority - a.priority || a.idx - b.idx)
-  const kept: LabelBox[] = []
+  const kept: LabelBox[] = [...blocked]
   const result = new Map<string, number>()
 
   for (const label of sorted) {
