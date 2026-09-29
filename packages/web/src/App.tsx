@@ -328,7 +328,15 @@ export function App() {
         }}
       >
         {sites && (
-          <MapLayer sites={sites} circuitGroups={circuitGroups ?? []} circuitLive={circuitLive} onSiteSelect={zoomToSite} />
+          <MapLayer
+            sites={sites}
+            circuitGroups={circuitGroups ?? []}
+            circuitLive={circuitLive}
+            onSiteSelect={zoomToSite}
+            logical={flags.logicalMap}
+            graph={logicalView.data?.graph ?? null}
+            hidden={hiddenLogical}
+          />
         )}
       </div>
 
@@ -350,7 +358,7 @@ export function App() {
           pointerEvents: inScene ? 'auto' : 'none',
         }}
       >
-        {inScene && (
+        {inScene && !flags.siteDiagram && (
           <SceneErrorBoundary>
             <Suspense fallback={null}>
               <LazySiteScene
@@ -451,11 +459,13 @@ export function App() {
         <SiteSearch sites={sites} onSelect={zoomToSite} />
       )}
 
-      {/* Logical layers panel — shown when logical view is active. */}
-      {flags.logicalLayers && logicalView.data && (
+      {/* Logical layers panel — shown when logical view is active.
+          At map level: always shown (passes empty layers when backbone not loaded).
+          At site level: shown once logicalView.data is available. */}
+      {flags.logicalLayers && (level === 'map' || logicalView.data) && (
         <LogicalLayers
           level={level}
-          layers={logicalView.data.layers}
+          layers={logicalView.data?.layers ?? []}
           hidden={hiddenLogical}
           onToggle={toggleHiddenLogical}
           hasLive={flags.siteDiagram && logicalView.live.hasLive}

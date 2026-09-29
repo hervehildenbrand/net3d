@@ -10,9 +10,12 @@ import {
 import type { Site } from '../hooks/useSites'
 import { theme } from '../theme'
 import { dirLive, formatPct, type DirGroup } from '../lib/liveTelemetry'
-import { labelBox, placeSlidingLabels, contrastText, circlesClearOfBoxes, MARKER_RADIUS, type LabelBox, type MarkerCircle, type SlidingLabel } from './arcLabels'
+import { labelBox, placeSlidingLabels, contrastText, circlesClearOfBoxes, MARKER_RADIUS, type LabelBox, type MarkerCircle, type SlidingLabel, type ObstacleBox } from './arcLabels'
 import { halfCandidates, screenAngleDeg, showArrows, splitArc, spreadPoints } from './arcHalves'
 import { circuitLines, type ArcLine, type LatLng } from './arcLines'
+
+/** Empty obstacles array - shared constant for physical mode */
+const NO_BOXES: ObstacleBox[] = []
 
 /** Both directions of a link, or null when none of its circuits has telemetry (draw it as today). */
 function lineDirs(l: ArcLine, live: Map<string, CircuitLive>): { a: DirGroup; z: DirGroup } | null {
@@ -44,7 +47,19 @@ interface Arrow {
 type Bead = { key: string; bps: number; color: string; at: LatLng }
 
 /** Per-direction arrowheads and rate beads for live links; beads de-overlapped on zoom/move. */
-function ArcLabels({ lines, live, sites }: { lines: ArcLine[]; live: Map<string, CircuitLive>; sites: Site[] }) {
+function ArcLabels({
+  lines,
+  live,
+  sites,
+  circles: circlesProp,
+  boxes: boxesProp,
+}: {
+  lines: ArcLine[]
+  live: Map<string, CircuitLive>
+  sites: Site[]
+  circles?: { at: LatLng; r: number }[]
+  boxes?: ObstacleBox[]
+}) {
   const map = useMap()
   const [tick, setTick] = useState(0)
   useMapEvents({
@@ -55,12 +70,27 @@ function ArcLabels({ lines, live, sites }: { lines: ArcLine[]; live: Map<string,
   const { arrows, beads } = useMemo(() => {
     void tick // recompute screen positions after every zoom/move
     const px = (p: LatLng) => map.latLngToContainerPoint(p)
-    const markers: MarkerCircle[] = sites
-      .filter((s) => s.latitude !== null)
-      .map((s) => {
-        const pt = px([s.latitude!, s.longitude!])
-        return { x: pt.x, y: pt.y, r: MARKER_RADIUS }
-      })
+
+    // Use provided circles, or compute from sites
+    const markers: MarkerCircle[] = circlesProp
+      ? circlesProp.map((c) => {
+          const pt = px(c.at)
+          return { x: pt.x, y: pt.y, r: c.r }
+        })
+      : sites
+          .filter((s) => s.latitude !== null)
+          .map((s) => {
+            const pt = px([s.latitude!, s.longitude!])
+            return { x: pt.x, y: pt.y, r: MARKER_RADIUS }
+          })
+
+    // Convert boxes prop to LabelBox format for blocking
+    const blocked: LabelBox[] = boxesProp
+      ? boxesProp.map((b, i) => {
+          const pt = px(b.at)
+          return { key: `box-${i}`, x: pt.x + b.dx, y: pt.y + b.dy, w: b.w, h: b.h, priority: 0 }
+        })
+      : []
 
     const arrows: Arrow[] = []
     const slidingLabels: (SlidingLabel & { bps: number; color: string; positions: LatLng[] })[] = []
@@ -118,8 +148,8 @@ function ArcLabels({ lines, live, sites }: { lines: ArcLine[]; live: Map<string,
       }
     }
 
-    // Pass 2: place beads FIRST using only site circles (beads have priority)
-    const placed = placeSlidingLabels(slidingLabels, siteCircles)
+    // Pass 2: place beads FIRST using only site circles + blocked boxes (beads have priority)
+    const placed = placeSlidingLabels(slidingLabels, siteCircles, blocked)
     const beads: Bead[] = []
     const placedBoxes: LabelBox[] = []
     for (const sl of slidingLabels) {
@@ -134,14 +164,14 @@ function ArcLabels({ lines, live, sites }: { lines: ArcLine[]; live: Map<string,
     const arrowCircles = arrowCandidates
       .filter((c) => keptArrows.has(c.key))
       .map((c) => ({ key: c.key, x: c.x, y: c.y, r: ARROW_RADIUS }))
-    const clearArrowKeys = circlesClearOfBoxes(arrowCircles, placedBoxes)
+    const clearArrowKeys = circlesClearOfBoxes(arrowCircles, [...placedBoxes, ...blocked])
     for (const c of arrowCandidates) {
       if (!clearArrowKeys.has(c.key)) continue
       arrows.push(c.arrowA, c.arrowZ)
     }
 
     return { arrows, beads }
-  }, [tick, lines, live, map, sites])
+  }, [tick, lines, live, map, sites, circlesProp, boxesProp])
 
   return (
     <Pane name="arcLabels" style={{ zIndex: 400 }}>
@@ -186,10 +216,16 @@ function DirLine({ from, to, d }: { from: string; to: string; d: DirGroup }) {
 }
 
 function ArcTooltip({ line: l, live, dirs }: { line: ArcLine; live: Map<string, CircuitLive> | undefined; dirs: { a: DirGroup; z: DirGroup } | null }) {
+  // Logical lines (key contains ~) need tooltipPane to render above rate beads (arcLabels pane z400)
+  const isLogical = l.key.includes('~')
   return (
-    <Tooltip sticky>
+    <Tooltip sticky pane={isLogical ? 'tooltipPane' : undefined}>
       <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, lineHeight: 1.5 }}>
         <strong>{l.title}</strong>
+        {/* Per-layer rows (logical arcs only) */}
+        {l.rows.length > 0 && l.rows.map((row, i) => (
+          <div key={`row-${i}`} style={{ color: theme.text.muted }}>{row}</div>
+        ))}
         {dirs && <DirLine from={l.siteA} to={l.siteZ} d={dirs.a} />}
         {dirs && <DirLine from={l.siteZ} to={l.siteA} d={dirs.z} />}
         {l.circuits.map((c) => {
@@ -212,9 +248,120 @@ function ArcTooltip({ line: l, live, dirs }: { line: ArcLine; live: Map<string, 
   )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ArcLayer — generic arc renderer
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ArcLayerProps {
+  lines: ArcLine[]
+  live: Map<string, CircuitLive> | undefined
+  circles: { at: LatLng; r: number }[]
+  boxes: ObstacleBox[]
+}
+
+/**
+ * Generic arc layer that draws ArcLine[] with live colouring.
+ * Each line's paths.whole is drawn when no live data; paths.a/z with direction colours otherwise.
+ * Supports dashed (dashArray) and stale (grey) arcs.
+ */
+export function ArcLayer({ lines, live, circles, boxes }: ArcLayerProps) {
+  // Convert circles to MarkerCircle format for ArcLabels
+  const markers: MarkerCircle[] = useMemo(
+    () => circles.map((c) => ({ x: 0, y: 0, r: c.r })),
+    [circles],
+  )
+
+  // Convert boxes to LabelBox format for ArcLabels blocking
+  const blocked: LabelBox[] = useMemo(
+    () => boxes.map((b, i) => ({ key: `box-${i}`, x: b.dx, y: b.dy, w: b.w, h: b.h, priority: 0 })),
+    [boxes],
+  )
+
+  // Build circles from the circles prop for ArcLabels site circles
+  const sites: Site[] = useMemo(
+    () => circles.map((c, i) => ({ name: `site-${i}`, latitude: c.at[0], longitude: c.at[1] } as Site)),
+    [circles],
+  )
+
+  return (
+    <>
+      {lines.map((l) => {
+        const dirs = live?.size ? lineDirs(l, live) : null
+
+        // Base path options
+        const basePathOptions = {
+          weight: l.weight,
+          opacity: l.opacity,
+          ...(l.dashed && { dashArray: '6 5' }),
+        }
+
+        // Compute colours
+        const colorA = l.stale ? theme.heatmap.noData : (dirs ? dirs.a.color : theme.map.circuit)
+        const colorZ = l.stale ? theme.heatmap.noData : (dirs ? dirs.z.color : theme.map.circuit)
+        const colorWhole = l.stale ? theme.heatmap.noData : theme.map.circuit
+
+        const tooltip = <ArcTooltip line={l} live={live} dirs={dirs} />
+        // Logical lines (key contains ~) get lv-arc class for harness selectors
+        const isLogical = l.key.includes('~')
+        const className = isLogical ? 'lv-arc' : undefined
+
+        if (!dirs) {
+          // Draw paths.whole (may be multiple pieces due to antimeridian split)
+          return (
+            <Fragment key={l.key}>
+              {l.paths.whole.map((piece, i) => (
+                <Polyline
+                  key={`${l.key}:whole:${i}`}
+                  positions={piece}
+                  pathOptions={{ ...basePathOptions, color: colorWhole }}
+                  className={className}
+                >
+                  {i === 0 && tooltip}
+                </Polyline>
+              ))}
+            </Fragment>
+          )
+        }
+
+        // Draw paths.a and paths.z with direction colours
+        return (
+          <Fragment key={l.key}>
+            {l.paths.a.map((piece, i) => (
+              <Polyline
+                key={`${l.key}:a:${i}`}
+                positions={piece}
+                pathOptions={{ ...basePathOptions, color: colorA }}
+                className={className}
+              >
+                {i === 0 && tooltip}
+              </Polyline>
+            ))}
+            {l.paths.z.map((piece, i) => (
+              <Polyline
+                key={`${l.key}:z:${i}`}
+                positions={piece}
+                pathOptions={{ ...basePathOptions, color: colorZ }}
+                className={className}
+              >
+                {i === 0 && tooltip}
+              </Polyline>
+            ))}
+          </Fragment>
+        )
+      })}
+      {!!live?.size && <ArcLabels lines={lines} live={live} sites={sites} circles={circles} boxes={boxes} />}
+    </>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CircuitPolylines — physical map wrapper
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * One geodesic arc per connected site pair; width follows the pair's top capacity. With live
  * telemetry each arc splits at its midpoint: the half leaving a site shows the traffic leaving it.
+ * This thin wrapper uses ArcLayer for rendering.
  */
 export function CircuitPolylines({
   sites,
@@ -227,30 +374,13 @@ export function CircuitPolylines({
 }) {
   const lines = useMemo(() => circuitLines(sites, groups), [sites, groups])
 
-  return (
-    <>
-      {lines.map((l) => {
-        const dirs = live?.size ? lineDirs(l, live) : null
-        const tooltip = <ArcTooltip line={l} live={live} dirs={dirs} />
-        if (!dirs) {
-          return (
-            <Polyline key={l.key} positions={l.positions} pathOptions={{ color: theme.map.circuit, weight: l.weight, opacity: l.opacity }}>
-              {tooltip}
-            </Polyline>
-          )
-        }
-        return (
-          <Fragment key={l.key}>
-            <Polyline positions={l.halves.a} pathOptions={{ color: dirs.a.color, weight: l.weight, opacity: l.opacity }}>
-              {tooltip}
-            </Polyline>
-            <Polyline positions={l.halves.z} pathOptions={{ color: dirs.z.color, weight: l.weight, opacity: l.opacity }}>
-              {tooltip}
-            </Polyline>
-          </Fragment>
-        )
-      })}
-      {!!live?.size && <ArcLabels lines={lines} live={live} sites={sites} />}
-    </>
+  // Build circles from geocoded sites
+  const circles = useMemo(
+    () => sites
+      .filter((s) => s.latitude !== null)
+      .map((s) => ({ at: [s.latitude!, s.longitude!] as LatLng, r: MARKER_RADIUS })),
+    [sites],
   )
+
+  return <ArcLayer lines={lines} live={live} circles={circles} boxes={NO_BOXES} />
 }

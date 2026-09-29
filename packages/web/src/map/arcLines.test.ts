@@ -262,6 +262,25 @@ describe('logicalLines', () => {
     expect(lines[0]!.rows).toContain('SR 1/1 · adj-SID 24001/24002')
   })
 
+  test('test_logicalLines_rowsHiddenWhenLayerHidden', () => {
+    const nodes = [mkNode('AMS1-core-01', 'AMS1'), mkNode('FRA1-core-01', 'FRA1')]
+    const edge = mkEdge('AMS1-core-01', 'FRA1-core-01', {
+      physical: { up: 1, total: 1, label: '' },
+      isis: { up: 2, total: 2, label: 'L2 UP' },
+      sr: { up: 1, total: 1, label: 'adj-SID 24001/24002' },
+    })
+    const graph: LogicalGraph = { nodes, edges: [edge] }
+    const anchors = new Map<string, LatLng>([
+      ['AMS1-core-01', [52.37, 4.89]],
+      ['FRA1-core-01', [50.11, 8.68]],
+    ])
+    // Hide IS-IS
+    const lines = logicalLines(graph, anchors, SITES, [], new Set(['isis']))
+    expect(lines[0]!.rows).toContain('Physical 1/1')
+    expect(lines[0]!.rows.some(r => r.includes('IS-IS'))).toBe(false)
+    expect(lines[0]!.rows).toContain('SR 1/1 · adj-SID 24001/24002')
+  })
+
   test('test_logicalLines_emptyGraph_everyGroupAsSiteArcWithCids', () => {
     const graph: LogicalGraph = { nodes: [], edges: [] }
     const groups = [circuitGroup('AMS1', 'FRA1', [{ id: '1', cid: 'C1', commitRate: 100_000_000 }])]

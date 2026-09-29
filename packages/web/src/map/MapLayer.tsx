@@ -1,11 +1,12 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { CircleMarker, MapContainer, Pane, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import { computeMapBounds, type CircuitGroup, type CircuitLive } from '@net3d/shared'
+import { computeMapBounds, type CircuitGroup, type CircuitLive, type LogicalGraph, type LogicalLayer } from '@net3d/shared'
 import type { Site } from '../hooks/useSites'
 import { useSitePrefetch } from '../hooks/useSitePrefetch'
 import { useAppStore } from '../store/useAppStore'
 import { CircuitPolylines } from './CircuitPolylines'
+import { LogicalArcs, SitePills, sitePills } from './LogicalOverlay'
 import { SiteTooltip } from './SiteTooltip'
 import { MapLegend } from './MapLegend'
 import { markerColorsForRole } from './markerColors'
@@ -90,15 +91,35 @@ export function MapLayer({
   circuitGroups,
   circuitLive,
   onSiteSelect,
+  logical,
+  graph,
+  hidden,
 }: {
   sites: Site[]
   circuitGroups: CircuitGroup[]
   circuitLive: Map<string, CircuitLive> | undefined
   onSiteSelect: (name: string) => void
+  /** Whether logical mode is active at map level. */
+  logical: boolean
+  /** Backbone graph for logical mode. */
+  graph: LogicalGraph | null
+  /** Hidden logical layers. */
+  hidden: ReadonlySet<LogicalLayer | 'end'>
 }) {
   const setMapView = useAppStore((s) => s.setMapView)
   const prefetchSite = useSitePrefetch()
   const geocoded = sites.filter((s) => s.latitude !== null && s.longitude !== null)
+
+  // In logical mode, compute pills and filter out dotSites
+  const pills = useMemo(
+    () => (logical ? sitePills(graph, sites) : new Map()),
+    [logical, graph, sites],
+  )
+  const dotSites = useMemo(
+    () => geocoded.filter((s) => !pills.has(s.name)),
+    [geocoded, pills],
+  )
+  const showSid = !hidden.has('sr')
 
   return (
     <>
@@ -116,10 +137,24 @@ export function MapLayer({
       <MapViewRestorer />
       {/* Links sit in a lower pane so site markers (upper pane) win the click. */}
       <Pane name="circuits" style={{ zIndex: 399 }}>
-        <CircuitPolylines sites={sites} groups={circuitGroups} live={circuitLive} />
+        {logical ? (
+          <LogicalArcs
+            graph={graph}
+            sites={sites}
+            groups={circuitGroups}
+            circuitLive={circuitLive}
+            hidden={hidden}
+            pills={pills}
+            dotSites={dotSites}
+          />
+        ) : (
+          <CircuitPolylines sites={sites} groups={circuitGroups} live={circuitLive} />
+        )}
       </Pane>
       <Pane name="sites" style={{ zIndex: 401 }}>
-        {geocoded.map((s) => {
+        {/* In logical mode: render pills and fall back to dots for sites without pills */}
+        {/* In physical mode: render all geocoded sites as dots */}
+        {(logical ? dotSites : geocoded).map((s) => {
           const mc = markerColorsForRole(s.role)
           return (
           <CircleMarker
@@ -132,7 +167,7 @@ export function MapLayer({
           />
           )
         })}
-        {geocoded.map((s) => (
+        {(logical ? dotSites : geocoded).map((s) => (
           // Enlarged transparent click target: easy to hit, painted above the dot.
           <CircleMarker
             key={`hit-${s.id}`}
@@ -152,9 +187,10 @@ export function MapLayer({
             </Tooltip>
           </CircleMarker>
         ))}
+        {logical && <SitePills pills={pills} showSid={showSid} onSiteSelect={onSiteSelect} />}
       </Pane>
     </MapContainer>
-    <MapLegend live={!!circuitLive?.size} />
+    <MapLegend live={!!circuitLive?.size} logical={logical} />
     </>
   )
 }

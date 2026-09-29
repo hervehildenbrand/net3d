@@ -51,12 +51,16 @@ describe('sitePills', () => {
     ]
     const graph: LogicalGraph = { nodes, edges: [] }
     const pills = sitePills(graph, SITES)
-    expect(pills.size).toBe(1)
+    // 2 pills: AMS1 (with routers) + FRA1 (plain, no routers in graph)
+    expect(pills.size).toBe(2)
     const ams1Pill = pills.get('AMS1')!
     expect(ams1Pill.routers).toHaveLength(2)
     // Natural order: core-01 before core-02
     expect(ams1Pill.routers[0]!.name).toBe('AMS1-core-01')
     expect(ams1Pill.routers[1]!.name).toBe('AMS1-core-02')
+    // FRA1 has a plain pill (no routers)
+    const fra1Pill = pills.get('FRA1')!
+    expect(fra1Pill.routers).toHaveLength(0)
   })
 
   test('test_sitePills_siteNodesAndSitesWithoutCoordinates_excluded', () => {
@@ -78,9 +82,17 @@ describe('sitePills', () => {
     expect(pills.get('MIA1')!.routers.every((r) => !r.id.startsWith('site:'))).toBe(true)
   })
 
-  test('test_sitePills_nullGraph_empty', () => {
+  test('test_sitePills_nullGraph_plainPillsForAllGeocodedSites', () => {
+    // With null graph (backbone 503), we still get plain pills for all geocoded sites
     const pills = sitePills(null, SITES)
-    expect(pills.size).toBe(0)
+    // 2 geocoded sites: AMS1 and FRA1 (NULL_SITE excluded)
+    expect(pills.size).toBe(2)
+    expect(pills.has('AMS1')).toBe(true)
+    expect(pills.has('FRA1')).toBe(true)
+    expect(pills.has('NULL_SITE')).toBe(false)
+    // All pills are plain (no routers)
+    expect(pills.get('AMS1')!.routers).toHaveLength(0)
+    expect(pills.get('FRA1')!.routers).toHaveLength(0)
   })
 })
 
@@ -240,6 +252,65 @@ describe('pillHtml', () => {
     expect(segmentMatches).toHaveLength(2)
     // Should contain router role colours (from markerColorsForRole)
     expect(html).toContain('background')
+  })
+
+  test('test_pillHtml_segmentsHaveLvSegClassAndDataRouter', () => {
+    const pill: SitePill = {
+      site: SITES[0]!,
+      routers: [
+        mkNode('AMS1-core-01', 'AMS1', 16001),
+        mkNode('AMS1-core-02', 'AMS1', 16002),
+      ],
+    }
+    const html = pillHtml(pill)
+    // Each segment should have class="lv-seg" and data-router
+    expect(html).toContain('class="lv-seg"')
+    expect(html).toContain('data-router="AMS1-core-01"')
+    expect(html).toContain('data-router="AMS1-core-02"')
+  })
+
+  test('test_pillHtml_pillHasDataSite', () => {
+    const pill: SitePill = {
+      site: SITES[0]!,
+      routers: [mkNode('AMS1-core-01', 'AMS1', 16001)],
+    }
+    const html = pillHtml(pill)
+    // Pill container should have data-site attribute
+    expect(html).toContain('data-site="AMS1"')
+  })
+
+  test('test_pillHtml_accessibleNameWithAriaLabel', () => {
+    const pill: SitePill = {
+      site: SITES[0]!,
+      routers: [
+        mkNode('AMS1-core-01', 'AMS1', 16001),
+        mkNode('AMS1-core-02', 'AMS1', 16002),
+      ],
+    }
+    const html = pillHtml(pill)
+    // Pill should have aria-label, role="button", and tabindex="0"
+    expect(html).toContain('role="button"')
+    expect(html).toContain('tabindex="0"')
+    // aria-label should contain site name and router short names
+    expect(html).toMatch(/aria-label="AMS1\s*[—–-]\s*core-01,\s*core-02"/)
+  })
+
+  test('test_pillHtml_plainPill_roleColouredDot', () => {
+    // Plain pill (no routers) renders as a single role-coloured dot
+    const pill: SitePill = {
+      site: SITES[0]!, // 'compute' role
+      routers: [],
+    }
+    const html = pillHtml(pill)
+    // Should have data-site and aria-label (site name only)
+    expect(html).toContain('data-site="AMS1"')
+    expect(html).toContain('aria-label="AMS1"')
+    // Should have a single lv-seg (the dot)
+    expect(html).toContain('class="lv-seg"')
+    // Should be a circle (border-radius:50%)
+    expect(html).toContain('border-radius:50%')
+    // Should not have data-router (no routers)
+    expect(html).not.toContain('data-router')
   })
 })
 

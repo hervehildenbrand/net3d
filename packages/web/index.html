@@ -7,6 +7,17 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='7' fill='%230b1f33'/><circle cx='10' cy='6' r='2' fill='%2326d0ff'/></svg>" />
     <style>
       html, body, #root { margin: 0; height: 100%; background: #fafbfc; }
+      /* Logical view pill labels: translucent background + text halo */
+      .leaflet-tooltip.lv-label {
+        background: rgba(255,255,255,0.7);
+        border: none;
+        box-shadow: none;
+        padding: 4px 6px;
+        border-radius: 4px;
+        color: #1e293b;
+        text-shadow: 0 0 2px #fff, 0 0 4px #fff;
+      }
+      .leaflet-tooltip.lv-label::before { display: none; }
     </style>
   </head>
   <body>

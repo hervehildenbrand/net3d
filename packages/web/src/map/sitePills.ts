@@ -37,15 +37,23 @@ export interface SitePill {
  * Build site pills from the logical graph.
  * Geocoded sites only; routers = nodes with device && siteName === site.name, sorted by naturalCompare.
  * site: and ext: nodes are excluded.
+ * When graph is null or empty, creates plain pills (no router segments) for all geocoded sites.
  *
  * ponytail: every device with an inter-site edge becomes a segment; filter by role if non-router devices appear in production
  */
 export function sitePills(graph: LogicalGraph | null, sites: Site[]): Map<string, SitePill> {
   const result = new Map<string, SitePill>()
-  if (!graph) return result
 
-  // Index sites by name
+  // Index geocoded sites by name
   const siteByName = new Map(sites.filter((s) => s.latitude !== null).map((s) => [s.name, s]))
+
+  // No graph: create plain pills for all geocoded sites (logical mode with backbone error)
+  if (!graph || graph.nodes.length === 0) {
+    for (const site of siteByName.values()) {
+      result.set(site.name, { site, routers: [] })
+    }
+    return result
+  }
 
   // Group routers by site
   const routersBySite = new Map<string, LogicalNode[]>()
@@ -64,12 +72,19 @@ export function sitePills(graph: LogicalGraph | null, sites: Site[]): Map<string
     routersBySite.set(node.siteName, routers)
   }
 
-  // Build pills
+  // Build pills for sites with routers
   for (const [siteName, routers] of routersBySite) {
     const site = siteByName.get(siteName)!
     // Sort by name using naturalCompare
     routers.sort((a, b) => naturalCompare(a.name, b.name))
     result.set(siteName, { site, routers })
+  }
+
+  // Add plain pills for geocoded sites without routers in graph
+  for (const site of siteByName.values()) {
+    if (!result.has(site.name)) {
+      result.set(site.name, { site, routers: [] })
+    }
   }
 
   return result
@@ -182,18 +197,31 @@ export function pillLabelRows(pill: SitePill, showSid: boolean): string[] {
 
 /**
  * Build HTML for a site pill: HIT_PX-wide centring box around a flex column of n segments.
+ * Includes data-site on the pill and class="lv-seg" data-router on each segment for harness selectors.
+ * Includes role="button", tabindex="0", and aria-label for accessibility.
+ * Plain pills (no routers) render as a single role-coloured dot.
  */
 export function pillHtml(pill: SitePill): string {
   const n = pill.routers.length
+  const colors = markerColorsForRole(pill.site.role)
+
+  // Plain pill (no routers): render as a single dot
+  if (n === 0) {
+    return `<div role="button" tabindex="0" aria-label="${pill.site.name}" data-site="${pill.site.name}" style="width:${HIT_PX}px;height:${HIT_PX}px;display:flex;align-items:center;justify-content:center"><div class="lv-seg" style="width:14px;height:14px;background:${colors.fill};border:2px solid ${colors.color};border-radius:50%"></div></div>`
+  }
+
   const pillHeight = n * SEG_PX
   const containerHeight = Math.max(HIT_PX, pillHeight + 8)
 
+  // Build accessible name: "AMS1 — core-01, core-02"
+  const routerShortNames = pill.routers.map((r) => shortName(r.name, pill.site.name))
+  const ariaLabel = `${pill.site.name} — ${routerShortNames.join(', ')}`
+
   const segments = pill.routers.map((router) => {
-    const colors = markerColorsForRole(pill.site.role)
-    return `<div style="width:${PILL_W - 2}px;height:${SEG_PX - 1}px;background:${colors.fill};border:1px solid ${colors.color};border-radius:3px"></div>`
+    return `<div class="lv-seg" data-router="${router.name}" style="width:${PILL_W - 2}px;height:${SEG_PX - 1}px;background:${colors.fill};border:1px solid ${colors.color};border-radius:3px"></div>`
   }).join('')
 
-  return `<div style="width:${HIT_PX}px;height:${containerHeight}px;display:flex;align-items:center;justify-content:center"><div style="display:flex;flex-direction:column;gap:0;background:#fff;border-radius:5px;padding:1px;border:1.5px solid #fff">${segments}</div></div>`
+  return `<div role="button" tabindex="0" aria-label="${ariaLabel}" data-site="${pill.site.name}" style="width:${HIT_PX}px;height:${containerHeight}px;display:flex;align-items:center;justify-content:center"><div style="display:flex;flex-direction:column;gap:0;background:#fff;border-radius:5px;padding:1px;border:1.5px solid #fff">${segments}</div></div>`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

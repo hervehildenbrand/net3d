@@ -40,7 +40,7 @@ function Dot({ role }: { role: 'compute' | 'pop' | null }) {
 }
 
 /** Static key for the world-map markers and inter-DC links. */
-export function MapLegend({ live }: { live: boolean }) {
+export function MapLegend({ live, logical = false }: { live: boolean; logical?: boolean }) {
   // Clear the sites menu when it's open (the collapsed ☰ only occupies the top-left).
   const sitesMenuOpen = useAppStore((s) => s.sitesMenuOpen)
   return (
@@ -72,6 +72,22 @@ export function MapLegend({ live }: { live: boolean }) {
       {live && (
         <div style={{ marginTop: 8 }}>
           <UtilLegend />
+        </div>
+      )}
+      {logical && (
+        <div style={{ ...row, marginTop: 2 }}>
+          <span
+            style={{
+              width: 14,
+              height: 3,
+              background: theme.map.circuit,
+              display: 'inline-block',
+              flexShrink: 0,
+              borderTop: '1px dashed',
+              borderBottom: '1px dashed',
+            }}
+          />
+          <span style={{ color: theme.text.secondary }}>dashed = adjacency down</span>
         </div>
       )}
     </div>
