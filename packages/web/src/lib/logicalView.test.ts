@@ -58,7 +58,7 @@ function rack(id: string, ...devices: { id: string; name: string }[]): SiteRack 
       position: 1,
       face: 'FRONT',
       roleName: 'router',
-      roleColor: '#ccc',
+      roleColor: 'cccccc',
       uHeight: 1,
       model: 'test',
       manufacturer: 'test',
@@ -587,7 +587,7 @@ describe('nodeClickAction', () => {
     name: 'edge-router-1',
     tier: 'core',
     siteName: 'site-a',
-    device: { id: 'd1', name: 'edge-router-1', siteName: 'site-a', roleName: 'router', roleColor: '#ccc' },
+    device: { id: 'd1', name: 'edge-router-1', siteName: 'site-a', roleName: 'router', roleColor: 'cccccc' },
     sid: null,
   }
 
@@ -646,7 +646,7 @@ describe('nodeTooltipRows', () => {
       name: 'AMS1-core-01',
       tier: 'core',
       siteName: 'AMS1',
-      device: { id: 'd1', name: 'AMS1-core-01', siteName: 'AMS1', roleName: 'Core Router', roleColor: '#dc2626' },
+      device: { id: 'd1', name: 'AMS1-core-01', siteName: 'AMS1', roleName: 'Core Router', roleColor: 'dc2626' },
       sid: null,
     }
     const rows = nodeTooltipRows(node)
@@ -702,7 +702,7 @@ describe('nodeTooltipRows', () => {
       name: 'AMS1-core-01',
       tier: 'core',
       siteName: 'AMS1',
-      device: { id: 'd1', name: 'AMS1-core-01', siteName: 'AMS1', roleName: 'Core Router', roleColor: '#dc2626' },
+      device: { id: 'd1', name: 'AMS1-core-01', siteName: 'AMS1', roleName: 'Core Router', roleColor: 'dc2626' },
       sid: 16001,
     }
     const rows = nodeTooltipRows(node)

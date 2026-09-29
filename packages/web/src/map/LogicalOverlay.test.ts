@@ -83,7 +83,7 @@ const mkNode = (id: string, siteName: string, sid: number | null = null, tier: L
   name: id,
   tier,
   siteName,
-  device: tier === 'remote' ? { id: `dev-${id}`, name: id, siteName, roleName: 'router', roleColor: '#ccc' } : null,
+  device: tier === 'remote' ? { id: `dev-${id}`, name: id, siteName, roleName: 'router', roleColor: 'cccccc' } : null,
   sid,
 })
 

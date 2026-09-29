@@ -6,10 +6,10 @@
 import type { CollectorTopology, GraphDevice, CircuitGroup } from '@net3d/shared'
 
 export const FIXTURE_DEVICES: GraphDevice[] = [
-  { id: 'dev-ams1-core-01', name: 'AMS1-core-01', siteName: 'AMS1', roleName: 'router', roleColor: '#dc2626' },
-  { id: 'dev-ams1-core-02', name: 'AMS1-core-02', siteName: 'AMS1', roleName: 'router', roleColor: '#dc2626' },
-  { id: 'dev-fra1-core-01', name: 'FRA1-core-01', siteName: 'FRA1', roleName: 'router', roleColor: '#dc2626' },
-  { id: 'dev-fra1-core-02', name: 'FRA1-core-02', siteName: 'FRA1', roleName: 'router', roleColor: '#dc2626' },
+  { id: 'dev-ams1-core-01', name: 'AMS1-core-01', siteName: 'AMS1', roleName: 'router', roleColor: 'dc2626' },
+  { id: 'dev-ams1-core-02', name: 'AMS1-core-02', siteName: 'AMS1', roleName: 'router', roleColor: 'dc2626' },
+  { id: 'dev-fra1-core-01', name: 'FRA1-core-01', siteName: 'FRA1', roleName: 'router', roleColor: 'dc2626' },
+  { id: 'dev-fra1-core-02', name: 'FRA1-core-02', siteName: 'FRA1', roleName: 'router', roleColor: 'dc2626' },
 ]
 
 // Topology with facts and nodeSids - shape matches CollectorTopology

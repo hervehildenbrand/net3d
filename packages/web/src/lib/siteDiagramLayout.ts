@@ -10,6 +10,7 @@ import {
   type Tier,
 } from '@net3d/shared'
 import type { Box } from './viewBox'
+import { cssColor } from './cssColor'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RackInput — production code type (layout input)
@@ -286,7 +287,7 @@ export function layoutSiteDiagram(
       band: 'peer',
       tier: 'remote',
       label: node.name, // peers keep full name
-      roleColor: node.device?.roleColor ?? null,
+      roleColor: cssColor(node.device?.roleColor),
     })
     peerX += BAND_PITCH
   }
@@ -307,7 +308,7 @@ export function layoutSiteDiagram(
       band: 'core',
       tier: 'core',
       label: shortLabel(node.name, site),
-      roleColor: node.device?.roleColor ?? null,
+      roleColor: cssColor(node.device?.roleColor),
     })
     coreX += BAND_PITCH
   }
@@ -331,7 +332,7 @@ export function layoutSiteDiagram(
       band: 'spine',
       tier: 'spine',
       label: shortLabel(node.name, site),
-      roleColor: node.device?.roleColor ?? null,
+      roleColor: cssColor(node.device?.roleColor),
     })
     spineX += BAND_PITCH
   }
@@ -348,7 +349,7 @@ export function layoutSiteDiagram(
       band: 'agg',
       tier: 'leaf',
       label: shortLabel(node.name, site),
-      roleColor: node.device?.roleColor ?? null,
+      roleColor: cssColor(node.device?.roleColor),
     })
     aggX += BAND_PITCH
   }
@@ -428,7 +429,7 @@ export function layoutSiteDiagram(
             band: 'rack',
             tier: 'leaf',
             label: glyphLabel,
-            roleColor: node.device?.roleColor ?? null,
+            roleColor: cssColor(node.device?.roleColor),
           })
         }
 
@@ -523,7 +524,7 @@ export function layoutSiteDiagram(
         band: 'rack',
         tier: 'leaf',
         label: shortLabel(node.name, site),
-        roleColor: node.device?.roleColor ?? null,
+        roleColor: cssColor(node.device?.roleColor),
       })
     }
 

@@ -367,7 +367,7 @@ describe('layoutSiteDiagram irregular', () => {
       name: 'AMS1-leaf-x',
       siteName: 'AMS1',
       roleName: 'Leaf',
-      roleColor: '#22c55e',
+      roleColor: '22c55e',
     }
     const modifiedGraph: LogicalGraph = {
       nodes: [
@@ -392,7 +392,7 @@ describe('layoutSiteDiagram irregular', () => {
       name: 'DXB1-orphan-leaf-1',
       siteName: 'DXB1',
       roleName: 'Leaf',
-      roleColor: '#22c55e',
+      roleColor: '22c55e',
     }
     const modifiedGraph: LogicalGraph = {
       nodes: [
@@ -423,7 +423,7 @@ describe('layoutSiteDiagram irregular', () => {
         name: `TEST-${rackName}-leaf-1`,
         siteName: 'TEST',
         roleName: 'Leaf',
-        roleColor: '#22c55e',
+        roleColor: '22c55e',
       })
       racks.push({
         id: `test-${rackName.toLowerCase()}-rack`,
@@ -463,8 +463,8 @@ describe('layoutSiteDiagram irregular', () => {
     // Same rack name in two different locations should produce two distinct columns (keyed by id)
     const input: GraphInput = {
       devices: [
-        { id: 'loc1-leaf-id', name: 'TEST-SRV-01-leaf-1', siteName: 'TEST', roleName: 'Leaf', roleColor: '#22c55e' },
-        { id: 'loc2-leaf-id', name: 'TEST-SRV-01-leaf-2', siteName: 'TEST', roleName: 'Leaf', roleColor: '#22c55e' },
+        { id: 'loc1-leaf-id', name: 'TEST-SRV-01-leaf-1', siteName: 'TEST', roleName: 'Leaf', roleColor: '22c55e' },
+        { id: 'loc2-leaf-id', name: 'TEST-SRV-01-leaf-2', siteName: 'TEST', roleName: 'Leaf', roleColor: '22c55e' },
       ],
       links: [],
       circuits: [],
@@ -496,7 +496,7 @@ describe('layoutSiteDiagram irregular', () => {
           name: 'TEST-SRV-01-srv-01',
           siteName: 'TEST',
           roleName: 'Bare-metal',
-          roleColor: '#64748b',
+          roleColor: '64748b',
         },
       ],
       links: [],
@@ -568,6 +568,38 @@ describe('layoutSiteDiagram irregular', () => {
     const aggGlyphs = [...layout.glyphs.values()].filter(g => g.band === 'agg')
     expect(aggGlyphs.length).toBe(2)
     expect(aggGlyphs.map(g => g.label).sort()).toEqual(['oob-agg-1', 'oob-agg-2'])
+  })
+
+  test('test_layoutSiteDiagram_bareHexRoleColor_prefixedInGlyph', () => {
+    // Fixture uses bare hex (e.g. 'f97316') matching the API shape.
+    // Layout should convert to CSS format ('#f97316') in the glyph.
+    const fixture = ams1Fixture()
+    const layout = layoutSiteDiagram(fixture.graph, fixture.racks, 'AMS1')
+
+    // spine-01 has roleName 'Spine' -> roleColor 'f97316' in fixture
+    const spine = [...layout.glyphs.values()].find(g => g.label === 'spine-01')
+    expect(spine).toBeDefined()
+    expect(spine!.roleColor).toBe('#f97316')
+  })
+
+  test('test_layoutSiteDiagram_emptyRoleColor_fallsToNull', () => {
+    // Device with empty roleColor should produce null (triggers tier color fallback)
+    const input: GraphInput = {
+      devices: [
+        { id: 'dev-1', name: 'TEST-leaf-1', siteName: 'TEST', roleName: 'Leaf', roleColor: '' },
+      ],
+      links: [],
+      circuits: [],
+      circuitSites: {},
+      lldp: {},
+    }
+    const graph = buildLogicalGraph(input, 'TEST')
+    const racks: RackInput[] = [
+      { id: 'rack-1', name: 'RACK-01', location: 'hall', devices: [{ id: 'dev-1', roleName: 'Leaf' }] },
+    ]
+    const layout = layoutSiteDiagram(graph, racks, 'TEST')
+    const glyph = [...layout.glyphs.values()][0]
+    expect(glyph?.roleColor).toBe(null)
   })
 })
 

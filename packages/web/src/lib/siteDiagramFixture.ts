@@ -37,11 +37,12 @@ function device(name: string, roleName: string, site: string): GraphDevice {
 }
 
 function roleColorFor(roleName: string): string {
-  if (/core|router/i.test(roleName)) return '#dc2626'
-  if (/spine/i.test(roleName)) return '#f97316'
-  if (/leaf|access|tor/i.test(roleName)) return '#22c55e'
-  if (/oob/i.test(roleName)) return '#16a34a'
-  return '#64748b'
+  // Returns bare hex without '#' to match API shape
+  if (/core|router/i.test(roleName)) return 'dc2626'
+  if (/spine/i.test(roleName)) return 'f97316'
+  if (/leaf|access|tor/i.test(roleName)) return '22c55e'
+  if (/oob/i.test(roleName)) return '16a34a'
+  return '64748b'
 }
 
 function link(
