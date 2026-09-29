@@ -11,6 +11,7 @@ import {
   focusOf,
   shortLabel,
   overlayBox,
+  OTHER,
   type SiteDiagramLayout,
   type RackColumn,
   CHIP_H,
@@ -147,7 +148,7 @@ export default function SiteDiagram({
 
   // Focus: hovered or selected device
   const focusId = hoveredId ?? (selectedDeviceId ? safeGraph.nodes.find((n) => n.device?.id === selectedDeviceId)?.id ?? null : null)
-  const focus = focusOf(layout, focusId)
+  const focus = useMemo(() => focusOf(layout, focusId), [layout, focusId])
 
   // Handle resize
   useEffect(() => {
@@ -420,12 +421,21 @@ const Edges = memo(function Edges({
   onEdgeEnter,
   onEdgeLeave,
 }: EdgesProps) {
-  // Filter visible edges
-  const visibleEdges = layout.edges.filter((edge) => {
-    const graphEdge = graph.edges.find((e) => e.id === edge.id)
-    if (!graphEdge) return false
-    return !isEdgeHidden(graphEdge, tierOf, hidden)
-  })
+  // Build edge lookup map for O(1) access
+  const edgeById = useMemo(
+    () => new Map(graph.edges.map((e) => [e.id, e])),
+    [graph.edges],
+  )
+
+  // Filter visible edges using the lookup map
+  const visibleEdges = useMemo(
+    () => layout.edges.filter((edge) => {
+      const graphEdge = edgeById.get(edge.id)
+      if (!graphEdge) return false
+      return !isEdgeHidden(graphEdge, tierOf, hidden)
+    }),
+    [layout.edges, edgeById, tierOf, hidden],
+  )
 
   return (
     <g>
@@ -508,10 +518,12 @@ const Glyphs = memo(function Glyphs({
         const isFocus = !focus || focus.nodes.has(glyph.id)
         const opacity = isFocus ? 1 : 0.35
         const tierColor = TIER_COLOR[glyph.tier] ?? theme.tier.leaf
+        // Use device role colour when available, fall back to tier colour (W12)
+        const glyphColor = glyph.roleColor ?? tierColor
 
-        // Upper bands (peer, core): pill style (white fill + tier stroke)
-        // Lower bands: tier fill at 0.18 opacity + stroke
-        const fillColor = isUpper ? '#ffffff' : tierColor
+        // Upper bands (peer, core): pill style (white fill + role/tier stroke)
+        // Lower bands: role/tier fill at 0.18 opacity + stroke
+        const fillColor = isUpper ? '#ffffff' : glyphColor
         const fillOpacity = isUpper ? 1 : 0.18
 
         // Labels: always for upper bands and spine/agg; rack-column glyphs only when zoomed
@@ -547,7 +559,7 @@ const Glyphs = memo(function Glyphs({
               rx={3}
               fill={fillColor}
               fillOpacity={fillOpacity}
-              stroke={tierColor}
+              stroke={glyphColor}
               strokeWidth={1}
               vectorEffect="non-scaling-stroke"
             />
@@ -609,25 +621,29 @@ const RowLabels = memo(function RowLabels({ layout }: { layout: SiteDiagramLayou
 const RackLabels = memo(function RackLabels({ layout }: { layout: SiteDiagramLayout }) {
   return (
     <g>
-      {layout.columns.map((col) => (
-        <text
-          key={col.key}
-          data-rack={col.key}
-          data-location={col.location ?? ''}
-          x={col.x + 22}
-          y={col.y + 9}
-          textAnchor="middle"
-          dominantBaseline="central"
-          fill={theme.text.secondary}
-          fontSize={12}
-          fontFamily="ui-sans-serif, system-ui, sans-serif"
-          paintOrder="stroke"
-          stroke="#ffffff"
-          strokeWidth={3}
-        >
-          {col.label}
-        </text>
-      ))}
+      {layout.columns.map((col) => {
+        // Skip 'other' column — its row label already says "other" (W14)
+        if (col.key === OTHER) return null
+        return (
+          <text
+            key={col.key}
+            data-rack={col.key}
+            data-location={col.location ?? ''}
+            x={col.x + 22}
+            y={col.y + 9}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fill={theme.text.secondary}
+            fontSize={12}
+            fontFamily="ui-sans-serif, system-ui, sans-serif"
+            paintOrder="stroke"
+            stroke="#ffffff"
+            strokeWidth={3}
+          >
+            {col.label}
+          </text>
+        )
+      })}
     </g>
   )
 })

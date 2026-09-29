@@ -71,6 +71,8 @@ export interface Glyph {
   band: Band
   tier: Tier
   label: string
+  /** Device role colour from NetBox (fallback: null, renderer uses tier colour). */
+  roleColor: string | null
 }
 
 export interface RackColumn {
@@ -125,6 +127,11 @@ export function layoutSiteDiagram(
   const columns: RackColumn[] = []
   const rows: RowLabel[] = []
   const links = new Map<string, { edgeId: string; peer: string }[]>()
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Phase 0: Build node lookup map for O(1) access
+  // ─────────────────────────────────────────────────────────────────────────
+  const nodeById = new Map(graph.nodes.map((n) => [n.id, n]))
 
   // ─────────────────────────────────────────────────────────────────────────
   // Phase 1: Build device → rack map (keyed by rack id for uniqueness)
@@ -269,7 +276,7 @@ export function layoutSiteDiagram(
   let peerX = cx - peerTotalW / 2
 
   for (const id of peerOrder) {
-    const node = graph.nodes.find(n => n.id === id)!
+    const node = nodeById.get( id)!
     glyphs.set(id, {
       id,
       x: peerX + (BAND_PITCH - PILL_W) / 2,
@@ -279,6 +286,7 @@ export function layoutSiteDiagram(
       band: 'peer',
       tier: 'remote',
       label: node.name, // peers keep full name
+      roleColor: node.device?.roleColor ?? null,
     })
     peerX += BAND_PITCH
   }
@@ -289,7 +297,7 @@ export function layoutSiteDiagram(
   let coreX = cx - coreTotalW / 2
 
   for (const id of cores) {
-    const node = graph.nodes.find(n => n.id === id)!
+    const node = nodeById.get( id)!
     glyphs.set(id, {
       id,
       x: coreX + (BAND_PITCH - PILL_W) / 2,
@@ -299,6 +307,7 @@ export function layoutSiteDiagram(
       band: 'core',
       tier: 'core',
       label: shortLabel(node.name, site),
+      roleColor: node.device?.roleColor ?? null,
     })
     coreX += BAND_PITCH
   }
@@ -312,7 +321,7 @@ export function layoutSiteDiagram(
   let spineX = cx - totalSpineAggW / 2
 
   for (const id of spines) {
-    const node = graph.nodes.find(n => n.id === id)!
+    const node = nodeById.get( id)!
     glyphs.set(id, {
       id,
       x: spineX + (BAND_PITCH - PILL_W) / 2,
@@ -322,13 +331,14 @@ export function layoutSiteDiagram(
       band: 'spine',
       tier: 'spine',
       label: shortLabel(node.name, site),
+      roleColor: node.device?.roleColor ?? null,
     })
     spineX += BAND_PITCH
   }
 
   let aggX = spineX + AGG_GAP
   for (const id of aggs) {
-    const node = graph.nodes.find(n => n.id === id)!
+    const node = nodeById.get( id)!
     glyphs.set(id, {
       id,
       x: aggX + (BAND_PITCH - PILL_W) / 2,
@@ -338,6 +348,7 @@ export function layoutSiteDiagram(
       band: 'agg',
       tier: 'leaf',
       label: shortLabel(node.name, site),
+      roleColor: node.device?.roleColor ?? null,
     })
     aggX += BAND_PITCH
   }
@@ -347,7 +358,7 @@ export function layoutSiteDiagram(
   // ─────────────────────────────────────────────────────────────────────────
   const columnGlyphsByRack = new Map<string, string[]>()
   for (const nodeId of columnGlyphs) {
-    const node = graph.nodes.find(n => n.id === nodeId)!
+    const node = nodeById.get( nodeId)!
     const rack = node.device ? deviceToRack.get(node.device.id) : null
     if (rack) {
       if (!columnGlyphsByRack.has(rack.id)) columnGlyphsByRack.set(rack.id, [])
@@ -358,8 +369,8 @@ export function layoutSiteDiagram(
   // Sort glyphs within each rack by name
   for (const [, glyphIds] of columnGlyphsByRack) {
     glyphIds.sort((a, b) => {
-      const nodeA = graph.nodes.find(n => n.id === a)!
-      const nodeB = graph.nodes.find(n => n.id === b)!
+      const nodeA = nodeById.get( a)!
+      const nodeB = nodeById.get( b)!
       return naturalCompare(nodeA.name, nodeB.name)
     })
   }
@@ -404,7 +415,7 @@ export function layoutSiteDiagram(
         const rackShort = shortLabel(rack.name, site)
         for (let g = 0; g < colGlyphIds.length; g++) {
           const nodeId = colGlyphIds[g]!
-          const node = graph.nodes.find(n => n.id === nodeId)!
+          const node = nodeById.get( nodeId)!
           // Strip site prefix, then rack prefix: "AMS1-SRV-01-leaf-1" -> "leaf-1"
           const siteStripped = shortLabel(node.name, site)
           const glyphLabel = shortLabel(siteStripped, rackShort)
@@ -417,6 +428,7 @@ export function layoutSiteDiagram(
             band: 'rack',
             tier: 'leaf',
             label: glyphLabel,
+            roleColor: node.device?.roleColor ?? null,
           })
         }
 
@@ -453,7 +465,7 @@ export function layoutSiteDiagram(
   const otherEnds: string[] = []
 
   for (const endId of endNodes) {
-    const node = graph.nodes.find(n => n.id === endId)!
+    const node = nodeById.get( endId)!
     let assigned = false
 
     // Try own rack
@@ -470,7 +482,7 @@ export function layoutSiteDiagram(
       const neighbours = adjacency.get(endId) ?? new Set()
       const sortedNeighbours = [...neighbours].sort(naturalCompare)
       for (const neighbourId of sortedNeighbours) {
-        const neighbourNode = graph.nodes.find(n => n.id === neighbourId)
+        const neighbourNode = nodeById.get( neighbourId)
         if (neighbourNode?.device) {
           const rack = deviceToRack.get(neighbourNode.device.id)
           if (rack && columnByKey.has(rack.id)) {
@@ -501,7 +513,7 @@ export function layoutSiteDiagram(
     const glyphY = otherY + ROW_LABEL_H + RACK_LABEL_H
     for (let g = 0; g < unrackedLeaf.length; g++) {
       const nodeId = unrackedLeaf[g]!
-      const node = graph.nodes.find(n => n.id === nodeId)!
+      const node = nodeById.get( nodeId)!
       glyphs.set(nodeId, {
         id: nodeId,
         x: otherX,
@@ -511,6 +523,7 @@ export function layoutSiteDiagram(
         band: 'rack',
         tier: 'leaf',
         label: shortLabel(node.name, site),
+        roleColor: node.device?.roleColor ?? null,
       })
     }
 

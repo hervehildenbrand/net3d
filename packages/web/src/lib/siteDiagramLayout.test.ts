@@ -577,8 +577,8 @@ describe('layoutSiteDiagram irregular', () => {
 
 describe('edgePath', () => {
   test('test_edgePath_sameColumn_rightBracket', () => {
-    const a: Glyph = { id: 'a', x: 100, y: 100, w: 44, h: 12, band: 'rack', tier: 'leaf', label: 'a' }
-    const b: Glyph = { id: 'b', x: 100, y: 120, w: 44, h: 12, band: 'rack', tier: 'leaf', label: 'b' }
+    const a: Glyph = { id: 'a', x: 100, y: 100, w: 44, h: 12, band: 'rack', tier: 'leaf', label: 'a', roleColor: null }
+    const b: Glyph = { id: 'b', x: 100, y: 120, w: 44, h: 12, band: 'rack', tier: 'leaf', label: 'b', roleColor: null }
     const path = edgePath(a, b)
 
     // Should be a cubic bracket path (C command)
@@ -588,8 +588,8 @@ describe('edgePath', () => {
   })
 
   test('test_edgePath_sameBand_arcAbove', () => {
-    const a: Glyph = { id: 'a', x: 100, y: 100, w: 44, h: 12, band: 'spine', tier: 'spine', label: 'a' }
-    const b: Glyph = { id: 'b', x: 200, y: 100, w: 44, h: 12, band: 'spine', tier: 'spine', label: 'b' }
+    const a: Glyph = { id: 'a', x: 100, y: 100, w: 44, h: 12, band: 'spine', tier: 'spine', label: 'a', roleColor: null }
+    const b: Glyph = { id: 'b', x: 200, y: 100, w: 44, h: 12, band: 'spine', tier: 'spine', label: 'b', roleColor: null }
     const path = edgePath(a, b)
 
     // Should be a quadratic arc (Q command)
@@ -598,8 +598,8 @@ describe('edgePath', () => {
 
   test('test_edgePath_sameBand_apexBelowCoreBand', () => {
     // Same-band arc should not cross into core band (CORE_Y = 80)
-    const a: Glyph = { id: 'a', x: 0, y: SPINE_Y, w: 44, h: 12, band: 'spine', tier: 'spine', label: 'a' }
-    const b: Glyph = { id: 'b', x: 1000, y: SPINE_Y, w: 44, h: 12, band: 'spine', tier: 'spine', label: 'b' }
+    const a: Glyph = { id: 'a', x: 0, y: SPINE_Y, w: 44, h: 12, band: 'spine', tier: 'spine', label: 'a', roleColor: null }
+    const b: Glyph = { id: 'b', x: 1000, y: SPINE_Y, w: 44, h: 12, band: 'spine', tier: 'spine', label: 'b', roleColor: null }
     const path = edgePath(a, b)
 
     // Extract the Q control point y value
@@ -612,8 +612,8 @@ describe('edgePath', () => {
   })
 
   test('test_edgePath_differentBands_straightLine', () => {
-    const a: Glyph = { id: 'a', x: 100, y: CORE_Y, w: 44, h: 12, band: 'core', tier: 'core', label: 'a' }
-    const b: Glyph = { id: 'b', x: 150, y: SPINE_Y, w: 44, h: 12, band: 'spine', tier: 'spine', label: 'b' }
+    const a: Glyph = { id: 'a', x: 100, y: CORE_Y, w: 44, h: 12, band: 'core', tier: 'core', label: 'a', roleColor: null }
+    const b: Glyph = { id: 'b', x: 150, y: SPINE_Y, w: 44, h: 12, band: 'spine', tier: 'spine', label: 'b', roleColor: null }
     const path = edgePath(a, b)
 
     // Should be a straight line (M...L or just M)
