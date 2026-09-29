@@ -159,8 +159,11 @@ export interface SiteCounts {
   deviceCount: number | null
 }
 
+// Sites being torn down (or gone) aren't rendered; enum casing differs 3.7 vs 4.x.
+const HIDDEN_SITE_STATUSES = new Set(['decommissioning', 'retired'])
+
 export function normalizeRawSites(raw: RawSite[], counts: Map<string, SiteCounts>): Site[] {
-  return raw.map((s) => {
+  return raw.filter((s) => !HIDDEN_SITE_STATUSES.has(s.status?.toLowerCase())).map((s) => {
     const slugs = (s.tags ?? []).map((t) => t.slug)
     return {
       id: s.id,

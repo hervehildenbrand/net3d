@@ -47,6 +47,19 @@ describe('normalizeRawSites', () => {
     expect(site!.deviceCount).toBeNull()
   })
 
+  test('drops decommissioning and retired sites in either enum casing', () => {
+    const sites = normalizeRawSites(
+      [
+        { ...RAW, id: '1', name: 'LIVE' },
+        { ...RAW, id: '2', name: 'GOING', status: 'DECOMMISSIONING' }, // 3.7 casing
+        { ...RAW, id: '3', name: 'GONE', status: 'retired' }, // 4.x casing
+        { ...RAW, id: '4', name: 'SOON', status: 'planned' },
+      ],
+      new Map(),
+    )
+    expect(sites.map((s) => s.name)).toEqual(['LIVE', 'SOON'])
+  })
+
   test('empty address/facility normalize to null', () => {
     const [site] = normalizeRawSites(
       [{ ...RAW, physical_address: '', facility: '', tags: [] }],
