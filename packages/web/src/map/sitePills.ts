@@ -209,7 +209,7 @@ export function escapeHtml(s: string): string {
 /**
  * Build HTML for a site pill: HIT_PX-wide centring box around a flex column of n segments.
  * Includes data-site on the pill and class="lv-seg" data-router on each segment for harness selectors.
- * Includes role="button", tabindex="0", and aria-label for accessibility.
+ * The outer div has aria-label for accessibility; role/tabindex come from the Leaflet Marker.
  * Plain pills (no routers) render as a single role-coloured dot.
  */
 export function pillHtml(pill: SitePill): string {
@@ -220,7 +220,7 @@ export function pillHtml(pill: SitePill): string {
 
   // Plain pill (no routers): render as a single dot
   if (n === 0) {
-    return `<div role="button" tabindex="0" aria-label="${siteName}" data-site="${siteName}" style="width:${HIT_PX}px;height:${HIT_PX}px;display:flex;align-items:center;justify-content:center"><div class="lv-seg" style="width:14px;height:14px;background:${colors.fill};border:2px solid ${colors.color};border-radius:50%"></div></div>`
+    return `<div aria-label="${siteName}" data-site="${siteName}" style="width:${HIT_PX}px;height:${HIT_PX}px;display:flex;align-items:center;justify-content:center"><div class="lv-seg" style="width:14px;height:14px;background:${colors.fill};border:2px solid ${colors.color};border-radius:50%"></div></div>`
   }
 
   const pillHeight = n * SEG_PX
@@ -235,7 +235,7 @@ export function pillHtml(pill: SitePill): string {
     return `<div class="lv-seg" data-router="${routerName}" style="width:${PILL_W - 2}px;height:${SEG_PX - 1}px;background:${colors.fill};border:1px solid ${colors.color};border-radius:3px"></div>`
   }).join('')
 
-  return `<div role="button" tabindex="0" aria-label="${ariaLabel}" data-site="${siteName}" style="width:${HIT_PX}px;height:${containerHeight}px;display:flex;align-items:center;justify-content:center"><div style="display:flex;flex-direction:column;gap:0;background:#fff;border-radius:5px;padding:1px;border:1.5px solid #fff">${segments}</div></div>`
+  return `<div aria-label="${ariaLabel}" data-site="${siteName}" style="width:${HIT_PX}px;height:${containerHeight}px;display:flex;align-items:center;justify-content:center"><div style="display:flex;flex-direction:column;gap:0;background:#fff;border-radius:5px;padding:1px;border:1.5px solid #fff">${segments}</div></div>`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

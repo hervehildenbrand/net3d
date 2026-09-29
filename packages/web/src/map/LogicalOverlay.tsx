@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Marker, Tooltip, useMap, useMapEvents } from 'react-leaflet'
-import { divIcon } from 'leaflet'
+import { divIcon, type DivIcon, type Marker as LMarker } from 'leaflet'
 import type { CircuitGroup, CircuitLive, LogicalGraph, LogicalLayer } from '@net3d/shared'
 import type { Site } from '../hooks/useSites'
 import { useSitePrefetch } from '../hooks/useSitePrefetch'
@@ -47,11 +47,19 @@ interface SitePillsProps {
   onSiteSelect: (name: string) => void
 }
 
+interface PillRenderData {
+  siteName: string
+  pill: SitePill
+  position: LatLng
+  icon: DivIcon
+  rows: string[]
+}
+
 /**
  * Render site pills as Leaflet Markers with hover/permanent labels.
+ * Icons and positions are memoised per pill set to avoid setIcon/setLatLng churn on poll.
  */
 export function SitePills({ pills, showSid, onSiteSelect }: SitePillsProps) {
-  const map = useMap()
   const zoom = useZoom()
   const setMapView = useAppStore((s) => s.setMapView)
   const prefetchSite = useSitePrefetch()
@@ -59,61 +67,112 @@ export function SitePills({ pills, showSid, onSiteSelect }: SitePillsProps) {
   // Tooltip permanent from LABEL_ZOOM
   const labelZoom = zoom >= LABEL_ZOOM
 
-  // Memoise pills array to avoid re-rendering on every render
-  const pillArray = useMemo(() => [...pills.entries()], [pills])
+  // Memoize pill render data: icons, positions, and label rows per pill set.
+  // Recomputes only when pills or showSid changes — NOT on poll or zoom.
+  const pillData = useMemo((): PillRenderData[] => {
+    const result: PillRenderData[] = []
+    for (const [siteName, pill] of pills) {
+      const site = pill.site
+      const position: LatLng = [site.latitude!, site.longitude!]
+      const n = pill.routers.length
+      const pillHeight = n * SEG_PX
+      const containerHeight = Math.max(HIT_PX, pillHeight + 8)
+      const icon = divIcon({
+        className: 'lv-pill',
+        iconSize: [HIT_PX, containerHeight],
+        iconAnchor: [HIT_PX / 2, containerHeight / 2],
+        html: pillHtml(pill),
+      })
+      const rows = pillLabelRows(pill, showSid)
+      result.push({ siteName, pill, position, icon, rows })
+    }
+    return result
+  }, [pills, showSid])
 
   return (
     <>
-      {pillArray.map(([siteName, pill]) => {
-        const site = pill.site
-        const position: LatLng = [site.latitude!, site.longitude!]
-        const n = pill.routers.length
-        const pillHeight = n * SEG_PX
-        const containerHeight = Math.max(HIT_PX, pillHeight + 8)
-
-        // Build label rows
-        const rows = pillLabelRows(pill, showSid)
-        const labelContent = (
-          <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, lineHeight: 1.4 }}>
-            <strong>{siteName}</strong>
-            {rows.map((row, i) => (
-              <div key={i} style={{ color: '#64748b' }}>{row}</div>
-            ))}
-          </div>
-        )
-
-        return (
-          <Marker
-            key={labelZoom ? `${siteName}:p` : `${siteName}:h`}
-            position={position}
-            pane="sites"
-            icon={divIcon({
-              className: 'lv-pill',
-              iconSize: [HIT_PX, containerHeight],
-              iconAnchor: [HIT_PX / 2, containerHeight / 2],
-              html: pillHtml(pill),
-            })}
-            eventHandlers={{
-              mouseover: () => prefetchSite(siteName),
-              click: () => {
-                setMapView({ center: [site.latitude!, site.longitude!], zoom: 13 })
-                onSiteSelect(siteName)
-              },
-            }}
-          >
-            <Tooltip
-              permanent={labelZoom}
-              direction="right"
-              offset={[PILL_W / 2 + 2, 0]}
-              pane="pillLabels"
-              className="lv-label"
-            >
-              {labelContent}
-            </Tooltip>
-          </Marker>
-        )
-      })}
+      {pillData.map((pd) => (
+        <PillMarker
+          key={labelZoom ? `${pd.siteName}:p` : `${pd.siteName}:h`}
+          data={pd}
+          labelZoom={labelZoom}
+          setMapView={setMapView}
+          onSiteSelect={onSiteSelect}
+          prefetchSite={prefetchSite}
+        />
+      ))}
     </>
+  )
+}
+
+interface PillMarkerProps {
+  data: PillRenderData
+  labelZoom: boolean
+  setMapView: (view: { center: [number, number]; zoom: number }) => void
+  onSiteSelect: (name: string) => void
+  prefetchSite: (name: string) => void
+}
+
+/**
+ * Individual pill marker with keyboard support (Enter/Space triggers click).
+ */
+function PillMarker({ data, labelZoom, setMapView, onSiteSelect, prefetchSite }: PillMarkerProps) {
+  const markerRef = useRef<LMarker | null>(null)
+
+  const handleClick = useCallback(() => {
+    const lat = data.pill.site.latitude!
+    const lng = data.pill.site.longitude!
+    setMapView({ center: [lat, lng], zoom: 13 })
+    onSiteSelect(data.siteName)
+  }, [data, setMapView, onSiteSelect])
+
+  // Add keyboard handler to marker's DOM element
+  useEffect(() => {
+    const marker = markerRef.current
+    if (!marker) return
+    const el = marker.getElement()
+    if (!el) return
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        handleClick()
+      }
+    }
+    el.addEventListener('keydown', onKeyDown)
+    return () => el.removeEventListener('keydown', onKeyDown)
+  }, [handleClick])
+
+  const labelContent = (
+    <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, lineHeight: 1.4 }}>
+      <strong>{data.siteName}</strong>
+      {data.rows.map((row, i) => (
+        <div key={i} style={{ color: '#64748b' }}>{row}</div>
+      ))}
+    </div>
+  )
+
+  return (
+    <Marker
+      ref={markerRef}
+      position={data.position}
+      pane="sites"
+      icon={data.icon}
+      eventHandlers={{
+        mouseover: () => prefetchSite(data.siteName),
+        click: handleClick,
+      }}
+    >
+      <Tooltip
+        permanent={labelZoom}
+        direction="right"
+        offset={[PILL_W / 2 + 2, 0]}
+        pane="pillLabels"
+        className="lv-label"
+      >
+        {labelContent}
+      </Tooltip>
+    </Marker>
   )
 }
 

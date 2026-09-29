@@ -289,11 +289,11 @@ describe('pillHtml', () => {
       ],
     }
     const html = pillHtml(pill)
-    // Pill should have aria-label, role="button", and tabindex="0"
-    expect(html).toContain('role="button"')
-    expect(html).toContain('tabindex="0"')
-    // aria-label should contain site name and router short names
+    // Pill has aria-label (role/tabindex come from Leaflet marker, not inner HTML)
     expect(html).toMatch(/aria-label="AMS1\s*[—–-]\s*core-01,\s*core-02"/)
+    // No nested focusable element (W9: Leaflet marker is the focusable element)
+    expect(html).not.toContain('role="button"')
+    expect(html).not.toContain('tabindex="0"')
   })
 
   test('test_pillHtml_plainPill_roleColouredDot', () => {
