@@ -2,21 +2,29 @@ import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { apiUrl } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
-import { preloadSiteScene } from '../scene/lazySiteScene'
+import { preloadSiteScene, preloadSiteDiagram } from '../scene/lazySiteScene'
 
 /**
  * Warm the site-detail query before the user commits to entering a site
  * (marker hover, zoom approaching the enter threshold), so the map→site
  * transition is a cache hit. The server pre-warms its own cache, so this
  * fetch is cheap.
+ *
+ * Preloads the right chunk: SiteDiagram in logical mode, SiteScene in physical.
  */
 export function useSitePrefetch() {
   const queryClient = useQueryClient()
   const backend = useAppStore((s) => s.backend)
+  const viewMode = useAppStore((s) => s.viewMode)
 
   return useCallback(
     (siteName: string) => {
-      void preloadSiteScene()
+      // Preload the right chunk based on view mode
+      if (viewMode === 'logical') {
+        void preloadSiteDiagram()
+      } else {
+        void preloadSiteScene()
+      }
       void queryClient.prefetchQuery({
         // must match useSiteDetail's key so the map→site transition is a cache hit
         queryKey: ['site', backend, siteName],
@@ -28,6 +36,6 @@ export function useSitePrefetch() {
         staleTime: 300_000,
       })
     },
-    [queryClient, backend],
+    [queryClient, backend, viewMode],
   )
 }

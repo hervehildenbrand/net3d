@@ -76,17 +76,10 @@ export function MapLegend({ live, logical = false }: { live: boolean; logical?: 
       )}
       {logical && (
         <div style={{ ...row, marginTop: 2 }}>
-          <span
-            style={{
-              width: 14,
-              height: 3,
-              background: theme.map.circuit,
-              display: 'inline-block',
-              flexShrink: 0,
-              borderTop: '1px dashed',
-              borderBottom: '1px dashed',
-            }}
-          />
+          {/* SVG dashed line swatch — looks like the actual dashed arc (W14) */}
+          <svg width={14} height={6} style={{ flexShrink: 0, display: 'inline-block' }}>
+            <line x1={0} y1={3} x2={14} y2={3} stroke={theme.map.circuit} strokeWidth={2} strokeDasharray="4 3" />
+          </svg>
           <span style={{ color: theme.text.secondary }}>dashed = adjacency down</span>
         </div>
       )}

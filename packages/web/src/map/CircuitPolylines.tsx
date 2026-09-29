@@ -265,19 +265,7 @@ interface ArcLayerProps {
  * Supports dashed (dashArray) and stale (grey) arcs.
  */
 export function ArcLayer({ lines, live, circles, boxes }: ArcLayerProps) {
-  // Convert circles to MarkerCircle format for ArcLabels
-  const markers: MarkerCircle[] = useMemo(
-    () => circles.map((c) => ({ x: 0, y: 0, r: c.r })),
-    [circles],
-  )
-
-  // Convert boxes to LabelBox format for ArcLabels blocking
-  const blocked: LabelBox[] = useMemo(
-    () => boxes.map((b, i) => ({ key: `box-${i}`, x: b.dx, y: b.dy, w: b.w, h: b.h, priority: 0 })),
-    [boxes],
-  )
-
-  // Build circles from the circles prop for ArcLabels site circles
+  // Build fake Site[] from circles for ArcLabels (fallback path)
   const sites: Site[] = useMemo(
     () => circles.map((c, i) => ({ name: `site-${i}`, latitude: c.at[0], longitude: c.at[1] } as Site)),
     [circles],
