@@ -387,25 +387,27 @@ export function App() {
           </SceneErrorBoundary>
         )}
         {flags.siteDiagram && (
-          <Suspense fallback={null}>
-            <LazySiteDiagram
-              key={selectedSiteName}
-              siteName={selectedSiteName ?? ''}
-              graph={logicalView.data?.graph ?? null}
-              racks={siteDetail?.racks}
-              telemetry={telemetry}
-              hidden={hiddenLogical}
-              selectedDeviceId={selectedDeviceId}
-              insets={{
-                top: 280, // LogicalLayers panel (top-right corner) height + DeviceSearch
-                right: 16, // minimal margin (panel covers top-right, not full height)
-                bottom: 16,
-                left: leftOffset + 8, // sites menu + gap
-              }}
-              onSelectDevice={selectDevice}
-              onSelectSite={zoomToSite}
-            />
-          </Suspense>
+          <SceneErrorBoundary>
+            <Suspense fallback={null}>
+              <LazySiteDiagram
+                key={selectedSiteName}
+                siteName={selectedSiteName ?? ''}
+                graph={logicalView.data?.graph ?? null}
+                racks={siteDetail?.racks}
+                telemetry={telemetry}
+                hidden={hiddenLogical}
+                selectedDeviceId={selectedDeviceId}
+                insets={{
+                  top: 280, // LogicalLayers panel (top-right corner) height + DeviceSearch
+                  right: 16, // minimal margin (panel covers top-right, not full height)
+                  bottom: 16,
+                  left: leftOffset + 8, // sites menu + gap
+                }}
+                onSelectDevice={selectDevice}
+                onSelectSite={zoomToSite}
+              />
+            </Suspense>
+          </SceneErrorBoundary>
         )}
       </div>
 
@@ -437,8 +439,8 @@ export function App() {
 
       {/* Source-of-truth switch — shown on the map (switching resets to the map anyway).
           Top-right is free here; the in-scene legends occupy it only at site/rack level.
-          Hidden when logical view is active at map level. */}
-      {level === 'map' && !flags.logical && <BackendSwitcher />}
+          Show even in logical mode since setBackend already resets viewMode to physical. */}
+      {level === 'map' && <BackendSwitcher />}
 
       {/* Global device finder — persistent (top-center) so any device is reachable
           from any level. Selecting one stages a zoom to its rack. */}
