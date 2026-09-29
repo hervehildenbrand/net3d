@@ -13,3 +13,18 @@ export const preloadSiteScene = () => {
   return pending
 }
 export const LazySiteScene = lazy(preloadSiteScene)
+
+// Site diagram lazy loading (no three.js)
+const importSiteDiagram = () => import('../diagram/SiteDiagram')
+let diagramPromise: ReturnType<typeof importSiteDiagram> | undefined
+
+export const preloadSiteDiagram = () => {
+  if (diagramPromise) return diagramPromise
+  const pending = importSiteDiagram()
+  diagramPromise = pending
+  void pending.catch(() => {
+    if (diagramPromise === pending) diagramPromise = undefined
+  })
+  return pending
+}
+export const LazySiteDiagram = lazy(preloadSiteDiagram)

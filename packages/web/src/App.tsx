@@ -13,7 +13,7 @@ import { useCapabilities } from './hooks/useCapabilities'
 import { useSiteTelemetry } from './hooks/useSiteTelemetry'
 import { useCircuitTelemetry } from './hooks/useCircuitTelemetry'
 import { useComputedSiteLayout } from './hooks/useComputedSiteLayout'
-import { LazySiteScene, preloadSiteScene } from './scene/lazySiteScene'
+import { LazySiteScene, preloadSiteScene, LazySiteDiagram, preloadSiteDiagram } from './scene/lazySiteScene'
 import { useSites } from './hooks/useSites'
 import { connectionErrorMessage } from './connectionError'
 import { useCircuits } from './hooks/useCircuits'
@@ -386,6 +386,27 @@ export function App() {
             </Suspense>
           </SceneErrorBoundary>
         )}
+        {flags.siteDiagram && (
+          <Suspense fallback={null}>
+            <LazySiteDiagram
+              key={selectedSiteName}
+              siteName={selectedSiteName ?? ''}
+              graph={logicalView.data?.graph ?? null}
+              racks={siteDetail?.racks}
+              telemetry={telemetry}
+              hidden={hiddenLogical}
+              selectedDeviceId={selectedDeviceId}
+              insets={{
+                top: 280, // LogicalLayers panel (top-right corner) height + DeviceSearch
+                right: 16, // minimal margin (panel covers top-right, not full height)
+                bottom: 16,
+                left: leftOffset + 8, // sites menu + gap
+              }}
+              onSelectDevice={selectDevice}
+              onSelectSite={zoomToSite}
+            />
+          </Suspense>
+        )}
       </div>
 
       {/* Sites menu (left edge): all sites grouped by region, one click from any level. */}
@@ -451,7 +472,11 @@ export function App() {
           leftOffset={leftOffset}
           inEditMode={editModeActive}
           onSwitch={setViewMode}
-          onMouseEnter={preloadSiteScene}
+          onMouseEnter={() => {
+            // Preload diagram when hovering at site level, scene otherwise
+            if (level === 'site') preloadSiteDiagram()
+            else preloadSiteScene()
+          }}
         />
       )}
 

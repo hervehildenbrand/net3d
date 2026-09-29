@@ -31,14 +31,14 @@ export const GLYPH_W = 44
 export const GLYPH_H = 12
 export const GLYPH_PITCH = 16
 export const ROW_LABEL_H = 14
-export const RACK_LABEL_H = 14
+export const RACK_LABEL_H = 18
 export const CHIP_H = 14
 export const ROW_GAP = 28
 export const MAX_COLS = 24
 
-export const OVERLAY_ROW_H = 14
-export const OVERLAY_NAME_W = 64
-export const OVERLAY_LINK_W = 64
+export const OVERLAY_ROW_H = 16
+export const OVERLAY_NAME_W = 72
+export const OVERLAY_LINK_W = 56
 
 export const MARGIN = 16
 
@@ -65,6 +65,7 @@ export interface Glyph {
 export interface RackColumn {
   key: string
   label: string
+  location: string | null
   x: number
   y: number
   glyphIds: string[]
@@ -251,51 +252,51 @@ export function layoutSiteDiagram(
   // ─────────────────────────────────────────────────────────────────────────
   // Phase 6: Position upper bands (centred on rack area)
   // ─────────────────────────────────────────────────────────────────────────
-  // Peers
+  // Peers (keep full name — they belong to other sites)
   const peerCount = peerOrder.length
-  const peerTotalW = peerCount * PILL_W + (peerCount - 1) * 8
+  const peerTotalW = peerCount * BAND_PITCH
   let peerX = cx - peerTotalW / 2
 
   for (const id of peerOrder) {
     const node = graph.nodes.find(n => n.id === id)!
     glyphs.set(id, {
       id,
-      x: peerX,
+      x: peerX + (BAND_PITCH - PILL_W) / 2,
       y: PEER_Y,
       w: PILL_W,
       h: PILL_H,
       band: 'peer',
       tier: 'remote',
-      label: node.name,
+      label: node.name, // peers keep full name
     })
-    peerX += PILL_W + 8
+    peerX += BAND_PITCH
   }
 
-  // Cores
+  // Cores (strip site prefix)
   const coreCount = cores.length
-  const coreTotalW = coreCount * PILL_W + (coreCount - 1) * 8
+  const coreTotalW = coreCount * BAND_PITCH
   let coreX = cx - coreTotalW / 2
 
   for (const id of cores) {
     const node = graph.nodes.find(n => n.id === id)!
     glyphs.set(id, {
       id,
-      x: coreX,
+      x: coreX + (BAND_PITCH - PILL_W) / 2,
       y: CORE_Y,
       w: PILL_W,
       h: PILL_H,
       band: 'core',
       tier: 'core',
-      label: node.name,
+      label: shortLabel(node.name, site),
     })
-    coreX += PILL_W + 8
+    coreX += BAND_PITCH
   }
 
-  // Spines + Aggs (aggs to the right with AGG_GAP)
+  // Spines + Aggs as pills at BAND_PITCH (aggs to the right with AGG_GAP)
   const spineCount = spines.length
   const aggCount = aggs.length
-  const spineGroupW = spineCount * GLYPH_W + (spineCount - 1) * 8
-  const aggGroupW = aggCount * GLYPH_W + (aggCount - 1) * 8
+  const spineGroupW = spineCount * BAND_PITCH
+  const aggGroupW = aggCount * BAND_PITCH
   const totalSpineAggW = spineGroupW + (aggCount > 0 ? AGG_GAP + aggGroupW : 0)
   let spineX = cx - totalSpineAggW / 2
 
@@ -303,31 +304,31 @@ export function layoutSiteDiagram(
     const node = graph.nodes.find(n => n.id === id)!
     glyphs.set(id, {
       id,
-      x: spineX,
+      x: spineX + (BAND_PITCH - PILL_W) / 2,
       y: SPINE_Y,
-      w: GLYPH_W,
-      h: GLYPH_H,
+      w: PILL_W,
+      h: PILL_H,
       band: 'spine',
       tier: 'spine',
-      label: node.name,
+      label: shortLabel(node.name, site),
     })
-    spineX += GLYPH_W + 8
+    spineX += BAND_PITCH
   }
 
-  let aggX = spineX + AGG_GAP - 8
+  let aggX = spineX + AGG_GAP
   for (const id of aggs) {
     const node = graph.nodes.find(n => n.id === id)!
     glyphs.set(id, {
       id,
-      x: aggX,
+      x: aggX + (BAND_PITCH - PILL_W) / 2,
       y: SPINE_Y,
-      w: GLYPH_W,
-      h: GLYPH_H,
+      w: PILL_W,
+      h: PILL_H,
       band: 'agg',
       tier: 'leaf',
-      label: node.name,
+      label: shortLabel(node.name, site),
     })
-    aggX += GLYPH_W + 8
+    aggX += BAND_PITCH
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -372,23 +373,30 @@ export function layoutSiteDiagram(
       const end = Math.min(start + MAX_COLS, locRacks.length)
       const lineRacks = locRacks.slice(start, end)
 
-      // Row label (only for first line of location)
+      // Row label (only for first line of location) - place above the row, left-aligned
       if (line === 0) {
         const labelText = loc === '￿' ? 'no location' : loc
-        rows.push({ label: labelText, x: 0, y: currentY + ROW_LABEL_H })
+        // Place inside the layout bounds at x=0 (first column's left edge)
+        rows.push({ label: labelText, x: 0, y: currentY })
       }
 
-      // Columns
+      // Columns start below the row label
+      const colY = currentY + ROW_LABEL_H
       for (let i = 0; i < lineRacks.length; i++) {
         const rack = lineRacks[i]!
         const colX = i * COL_W + (COL_W - GLYPH_W) / 2
         const colGlyphIds = columnGlyphsByRack.get(rack.name) ?? []
 
-        // Place glyphs
-        const glyphY = currentY + ROW_LABEL_H + RACK_LABEL_H
+        // Place glyphs (strip site+rack prefix for glyph labels: "leaf-1", "oob")
+        const glyphY = colY + RACK_LABEL_H
+        // Strip site prefix from rack name too (live API: "AMS1-SRV-01", fixture: "SRV-01")
+        const rackShort = shortLabel(rack.name, site)
         for (let g = 0; g < colGlyphIds.length; g++) {
           const nodeId = colGlyphIds[g]!
           const node = graph.nodes.find(n => n.id === nodeId)!
+          // Strip site prefix, then rack prefix: "AMS1-SRV-01-leaf-1" -> "leaf-1"
+          const siteStripped = shortLabel(node.name, site)
+          const glyphLabel = shortLabel(siteStripped, rackShort)
           glyphs.set(nodeId, {
             id: nodeId,
             x: colX,
@@ -397,18 +405,20 @@ export function layoutSiteDiagram(
             h: GLYPH_H,
             band: 'rack',
             tier: 'leaf',
-            label: node.name,
+            label: glyphLabel,
           })
         }
 
         // Collect end devices for this rack
         const endIdsForRack: string[] = []
 
+        // Rack label: strip site prefix ("AMS1-SRV-01" -> "SRV-01")
         columns.push({
           key: rack.name,
-          label: rack.name,
+          label: shortLabel(rack.name, site),
+          location: rack.location,
           x: colX,
-          y: currentY,
+          y: colY,
           glyphIds: [...colGlyphIds],
           endIds: endIdsForRack,
           chip: colGlyphIds.length > 0 ? {
@@ -418,7 +428,7 @@ export function layoutSiteDiagram(
         })
       }
 
-      // Row height
+      // Row height: row label + rack label + glyphs + chip gap + chip + row gap
       currentY += ROW_LABEL_H + RACK_LABEL_H + maxGlyphsPerRack * GLYPH_PITCH + 4 + CHIP_H + ROW_GAP
     }
   }
@@ -471,9 +481,10 @@ export function layoutSiteDiagram(
     const otherX = 0
     const otherY = currentY
 
-    rows.push({ label: 'other', x: 0, y: otherY + ROW_LABEL_H })
+    // Row label above the row, left-aligned
+    rows.push({ label: 'other', x: 0, y: otherY })
 
-    // Place unracked leaf glyphs
+    // Place unracked leaf glyphs (strip site prefix)
     const glyphY = otherY + ROW_LABEL_H + RACK_LABEL_H
     for (let g = 0; g < unrackedLeaf.length; g++) {
       const nodeId = unrackedLeaf[g]!
@@ -486,13 +497,14 @@ export function layoutSiteDiagram(
         h: GLYPH_H,
         band: 'rack',
         tier: 'leaf',
-        label: node.name,
+        label: shortLabel(node.name, site),
       })
     }
 
     columns.push({
       key: OTHER,
       label: 'other',
+      location: null,
       x: otherX,
       y: otherY,
       glyphIds: [...unrackedLeaf],

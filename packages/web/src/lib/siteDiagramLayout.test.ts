@@ -104,16 +104,33 @@ describe('layoutSiteDiagram AMS1', () => {
       .filter(g => g.band === 'agg')
       .sort((a, b) => a.x - b.x)
 
-    // Spines should be in natural order
+    // Spines should be in natural order (short labels: site prefix stripped)
     expect(spineGlyphs.map(g => g.label)).toEqual([
-      'AMS1-spine-01', 'AMS1-spine-02', 'AMS1-spine-03', 'AMS1-spine-04',
-      'AMS1-spine-05', 'AMS1-spine-06', 'AMS1-spine-07', 'AMS1-spine-08',
+      'spine-01', 'spine-02', 'spine-03', 'spine-04',
+      'spine-05', 'spine-06', 'spine-07', 'spine-08',
     ])
 
     // Aggs should be to the right of spines
     const rightmostSpine = Math.max(...spineGlyphs.map(g => g.x))
     const leftmostAgg = Math.min(...aggGlyphs.map(g => g.x))
     expect(leftmostAgg).toBeGreaterThan(rightmostSpine)
+  })
+
+  test('test_layoutSiteDiagram_ams1_spinesPillWidthBandPitch', () => {
+    const spineGlyphs = [...layout.glyphs.values()]
+      .filter(g => g.band === 'spine')
+      .sort((a, b) => a.x - b.x)
+
+    // Spines should be PILL_W wide (88), not GLYPH_W (44)
+    for (const g of spineGlyphs) {
+      expect(g.w).toBe(88) // PILL_W
+    }
+
+    // Spine pitch should be BAND_PITCH (100)
+    if (spineGlyphs.length >= 2) {
+      const pitch = spineGlyphs[1]!.x - spineGlyphs[0]!.x
+      expect(pitch).toBeCloseTo(100, 1) // BAND_PITCH
+    }
   })
 
   test('test_layoutSiteDiagram_ams1_rowsByLocation23Columns', () => {
@@ -139,15 +156,14 @@ describe('layoutSiteDiagram AMS1', () => {
 
   test('test_layoutSiteDiagram_ams1_rackColumnLeafTierInNameOrder', () => {
     // Each rack column should have leaf-tier glyphs in name order: leaf-1, leaf-2, oob
+    // Labels are short (site+rack prefix stripped)
     const col = layout.columns.find(c => c.key === 'SRV-01')
     expect(col).toBeDefined()
 
     const colGlyphs = col!.glyphIds.map(id => layout.glyphs.get(id)!)
     const labels = colGlyphs.map(g => g.label)
-    // Should be in name order
-    expect(labels[0]).toContain('leaf-1')
-    expect(labels[1]).toContain('leaf-2')
-    expect(labels[2]).toContain('oob')
+    // Should be in name order with short labels
+    expect(labels).toEqual(['leaf-1', 'leaf-2', 'oob'])
   })
 
   test('test_layoutSiteDiagram_ams1_chipsCount18PerRack', () => {
@@ -155,6 +171,16 @@ describe('layoutSiteDiagram AMS1', () => {
     for (const col of layout.columns.filter(c => c.key.startsWith('SRV-'))) {
       expect(col.endIds.length).toBe(18)
       expect(col.chip).not.toBeNull()
+    }
+  })
+
+  test('test_layoutSiteDiagram_ams1_rowLabelsInsideBounds', () => {
+    // Row labels should be inside the layout bounds (not clipped by menu)
+    for (const row of layout.rows) {
+      // Row label x >= bounds.x (inside left edge)
+      expect(row.x).toBeGreaterThanOrEqual(layout.bounds.x)
+      // Row label y >= bounds.y (inside top edge)
+      expect(row.y).toBeGreaterThanOrEqual(layout.bounds.y)
     }
   })
 
@@ -353,7 +379,8 @@ describe('layoutSiteDiagram irregular', () => {
     const layout = layoutSiteDiagram(modifiedGraph, fixture.racks, 'AMS1')
     const otherCol = layout.columns.find(c => c.key === OTHER)
     expect(otherCol).toBeDefined()
-    expect(otherCol!.glyphIds.some(id => layout.glyphs.get(id)?.label === 'AMS1-leaf-x')).toBe(true)
+    // Short label: site prefix stripped
+    expect(otherCol!.glyphIds.some(id => layout.glyphs.get(id)?.label === 'leaf-x')).toBe(true)
   })
 
   test('test_layoutSiteDiagram_rackWithoutLocation_lastRowNoLocation', () => {
@@ -471,10 +498,10 @@ describe('layoutSiteDiagram irregular', () => {
     const layout = layoutSiteDiagram(fixture.graph, fixture.racks, 'AMS1')
 
     // oob-agg devices are in NET-01/02 which have cores, so they should be in agg band
+    // Labels are short (site prefix stripped)
     const aggGlyphs = [...layout.glyphs.values()].filter(g => g.band === 'agg')
     expect(aggGlyphs.length).toBe(2)
-    expect(aggGlyphs.some(g => g.label.includes('oob-agg-1'))).toBe(true)
-    expect(aggGlyphs.some(g => g.label.includes('oob-agg-2'))).toBe(true)
+    expect(aggGlyphs.map(g => g.label).sort()).toEqual(['oob-agg-1', 'oob-agg-2'])
   })
 })
 
@@ -587,6 +614,103 @@ describe('shortLabel', () => {
   test('test_shortLabel_rackPrefixAndDomain_stripped', () => {
     expect(shortLabel('AMS1-SRV-01-leaf-1.example.com', 'AMS1')).toBe('SRV-01-leaf-1')
     expect(shortLabel('AMS1-core-01', 'AMS1')).toBe('core-01')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Label overlap tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('label overlap', () => {
+  // Estimate text width: 7 px per character at 12 unit font
+  const CHAR_WIDTH = 7
+  const LABEL_HEIGHT = 14
+
+  function labelBox(glyph: Glyph): { x: number; y: number; w: number; h: number } {
+    const textW = glyph.label.length * CHAR_WIDTH
+    return {
+      x: glyph.x + glyph.w / 2 - textW / 2,
+      y: glyph.y,
+      w: textW,
+      h: glyph.h,
+    }
+  }
+
+  function overlaps(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }): boolean {
+    return !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y)
+  }
+
+  test('test_labelOverlap_rowLabelAboveRackLabels', () => {
+    const { graph, racks } = ams1Fixture()
+    const layout = layoutSiteDiagram(graph, racks, 'AMS1')
+
+    // Row labels must be at least ROW_LABEL_H above the rack labels
+    for (const row of layout.rows) {
+      // Find columns in this row (same starting y region)
+      const rowCols = layout.columns.filter(col => {
+        // Column is in this row if its y is close to row.y + ROW_LABEL_H
+        return Math.abs(col.y - (row.y + LABEL_HEIGHT)) < 2
+      })
+
+      // Row label y must be ABOVE the column y (row label on its own line)
+      for (const col of rowCols) {
+        const rowLabelBottom = row.y + LABEL_HEIGHT
+        const rackLabelTop = col.y
+        expect(rowLabelBottom).toBeLessThanOrEqual(rackLabelTop + 1) // +1 for rounding
+      }
+    }
+  })
+
+  test('test_labelOverlap_ams1_noOverlapInSameBand', () => {
+    const { graph, racks } = ams1Fixture()
+    const layout = layoutSiteDiagram(graph, racks, 'AMS1')
+
+    // Group glyphs by band
+    const byBand = new Map<string, Glyph[]>()
+    for (const g of layout.glyphs.values()) {
+      const band = g.band
+      if (!byBand.has(band)) byBand.set(band, [])
+      byBand.get(band)!.push(g)
+    }
+
+    // Check no overlap within each band
+    for (const [band, glyphs] of byBand) {
+      for (let i = 0; i < glyphs.length; i++) {
+        for (let j = i + 1; j < glyphs.length; j++) {
+          const boxA = labelBox(glyphs[i]!)
+          const boxB = labelBox(glyphs[j]!)
+          if (overlaps(boxA, boxB)) {
+            throw new Error(`Labels overlap in ${band}: "${glyphs[i]!.label}" and "${glyphs[j]!.label}"`)
+          }
+        }
+      }
+    }
+  })
+
+  test('test_labelOverlap_pop_noOverlapInSameBand', () => {
+    const { graph, racks } = popFixture()
+    const layout = layoutSiteDiagram(graph, racks, 'DXB1')
+
+    // Group glyphs by band
+    const byBand = new Map<string, Glyph[]>()
+    for (const g of layout.glyphs.values()) {
+      const band = g.band
+      if (!byBand.has(band)) byBand.set(band, [])
+      byBand.get(band)!.push(g)
+    }
+
+    // Check no overlap within each band
+    for (const [band, glyphs] of byBand) {
+      for (let i = 0; i < glyphs.length; i++) {
+        for (let j = i + 1; j < glyphs.length; j++) {
+          const boxA = labelBox(glyphs[i]!)
+          const boxB = labelBox(glyphs[j]!)
+          if (overlaps(boxA, boxB)) {
+            throw new Error(`Labels overlap in ${band}: "${glyphs[i]!.label}" and "${glyphs[j]!.label}"`)
+          }
+        }
+      }
+    }
   })
 })
 
