@@ -14,6 +14,7 @@ import { useSiteTelemetry } from './hooks/useSiteTelemetry'
 import { useCircuitTelemetry } from './hooks/useCircuitTelemetry'
 import { useComputedSiteLayout } from './hooks/useComputedSiteLayout'
 import { LazySiteScene, preloadSiteScene, LazySiteDiagram, preloadSiteDiagram } from './scene/lazySiteScene'
+import { chunkForSwitchHover } from './lib/chunkForSwitchHover'
 import { useSites } from './hooks/useSites'
 import { connectionErrorMessage } from './connectionError'
 import { useCircuits } from './hooks/useCircuits'
@@ -475,8 +476,8 @@ export function App() {
           inEditMode={editModeActive}
           onSwitch={setViewMode}
           onMouseEnter={() => {
-            // Preload diagram when hovering at site level, scene otherwise
-            if (level === 'site') preloadSiteDiagram()
+            // Preload the chunk for the mode we're switching TO
+            if (chunkForSwitchHover(viewMode) === 'diagram') preloadSiteDiagram()
             else preloadSiteScene()
           }}
         />
