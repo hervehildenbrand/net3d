@@ -82,10 +82,14 @@ at their true U-positions, connected by one continuous mouse-wheel journey.
   utilisation on cables, map circuit arcs and room DC links, and per-port rates in the
   device panel — see "Live telemetry" below.
 - 🔀 **Logical topology view** (opt-in): with telemetry or NAPALM available, a
-  **Physical | Logical** switch replaces the 3D rack layout with a tiered graph of the
-  network's control plane. Nodes are devices grouped by role (core/spine/leaf/end);
-  edges carry IS-IS, OSPF and SR layers with up/down counts and live utilisation. The
-  map level shows inter-site links between site clusters. See
+  **Physical | Logical** switch shows the network's control plane. At map level, the
+  logical layer draws directly on the Leaflet map: one vertical pill per site with
+  one segment per core router, router-to-router arcs with two-way rate beads,
+  `AMS1-core-01 · 16001` labels from zoom 5, and toggles for physical, IS-IS and SR
+  layers. Dashed arcs mark adjacency down; grey arcs mark stale telemetry. At site
+  level, a flat 2D diagram shows peers → core → spines/aggregation → rack columns,
+  faint uplinks lit on hover, and per-rack server chips that unfold the rack's
+  servers. Rack level stays physical. See
   [docs/telemetry.md](docs/telemetry.md#logical-topology-endpoints-optional) for the
   collector contract.
 

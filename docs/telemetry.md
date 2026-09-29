@@ -69,7 +69,20 @@ telemetry.
 
 net3d can display a **logical topology view** when the collector serves four additional
 endpoints. All four are fetched in parallel with a 5 s timeout; any that answers
-contributes its layer to the graph.
+contributes its layer to the view.
+
+At map level, the logical layer draws directly on the Leaflet map: one vertical pill
+per site with one segment per core router, router-to-router arcs with two-way rate
+beads, physical/IS-IS/SR layer toggles, and permanent `AMS1-core-01 · 16001` labels
+from zoom 5. Click a pill to open the site. Dashed arcs mean an IS-IS or SR adjacency
+is down; grey arcs mean stale telemetry.
+
+At site level, a flat top-down 2D diagram replaces the 3D room: horizontal bands
+(peers → core → spine/aggregation → racks grouped by rack location) with faint
+uplinks lit on hover. Each rack row shows a server chip that unfolds the rack's
+servers; the End devices toggle hides the chips entirely.
+
+Rack level is always physical.
 
 ### `GET /api/v1/links`
 
@@ -245,9 +258,11 @@ partial collector failure returns what succeeded.
 
 The **Physical | Logical** switch appears when at least one capability enables it:
 
+- **Map level**: telemetry available only. Physical shows site markers; Logical draws
+  the backbone pills and arcs on the same Leaflet map.
 - **Site level**: telemetry available (`NETSTATEX_URL` set) **or** NAPALM available
-  (NetBox with the NAPALM plugin).
-- **Map level**: telemetry available only. NAPALM is never queried at map level.
+  (NetBox with the NAPALM plugin). Physical shows the 3D room; Logical shows the 2D
+  diagram.
 - **Rack level**: logical view is not available (always physical).
 
 No new env var or `/api/meta` flag is needed; the existing `telemetryAvailable` and
