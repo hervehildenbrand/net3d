@@ -192,6 +192,17 @@ export function pillLabelRows(pill: SitePill, showSid: boolean): string[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// escapeHtml
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Escape HTML special characters for safe interpolation into innerHTML.
+ */
+export function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // pillHtml
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -205,23 +216,26 @@ export function pillHtml(pill: SitePill): string {
   const n = pill.routers.length
   const colors = markerColorsForRole(pill.site.role)
 
+  const siteName = escapeHtml(pill.site.name)
+
   // Plain pill (no routers): render as a single dot
   if (n === 0) {
-    return `<div role="button" tabindex="0" aria-label="${pill.site.name}" data-site="${pill.site.name}" style="width:${HIT_PX}px;height:${HIT_PX}px;display:flex;align-items:center;justify-content:center"><div class="lv-seg" style="width:14px;height:14px;background:${colors.fill};border:2px solid ${colors.color};border-radius:50%"></div></div>`
+    return `<div role="button" tabindex="0" aria-label="${siteName}" data-site="${siteName}" style="width:${HIT_PX}px;height:${HIT_PX}px;display:flex;align-items:center;justify-content:center"><div class="lv-seg" style="width:14px;height:14px;background:${colors.fill};border:2px solid ${colors.color};border-radius:50%"></div></div>`
   }
 
   const pillHeight = n * SEG_PX
   const containerHeight = Math.max(HIT_PX, pillHeight + 8)
 
   // Build accessible name: "AMS1 — core-01, core-02"
-  const routerShortNames = pill.routers.map((r) => shortName(r.name, pill.site.name))
-  const ariaLabel = `${pill.site.name} — ${routerShortNames.join(', ')}`
+  const routerShortNames = pill.routers.map((r) => escapeHtml(shortName(r.name, pill.site.name)))
+  const ariaLabel = `${siteName} — ${routerShortNames.join(', ')}`
 
   const segments = pill.routers.map((router) => {
-    return `<div class="lv-seg" data-router="${router.name}" style="width:${PILL_W - 2}px;height:${SEG_PX - 1}px;background:${colors.fill};border:1px solid ${colors.color};border-radius:3px"></div>`
+    const routerName = escapeHtml(router.name)
+    return `<div class="lv-seg" data-router="${routerName}" style="width:${PILL_W - 2}px;height:${SEG_PX - 1}px;background:${colors.fill};border:1px solid ${colors.color};border-radius:3px"></div>`
   }).join('')
 
-  return `<div role="button" tabindex="0" aria-label="${ariaLabel}" data-site="${pill.site.name}" style="width:${HIT_PX}px;height:${containerHeight}px;display:flex;align-items:center;justify-content:center"><div style="display:flex;flex-direction:column;gap:0;background:#fff;border-radius:5px;padding:1px;border:1.5px solid #fff">${segments}</div></div>`
+  return `<div role="button" tabindex="0" aria-label="${ariaLabel}" data-site="${siteName}" style="width:${HIT_PX}px;height:${containerHeight}px;display:flex;align-items:center;justify-content:center"><div style="display:flex;flex-direction:column;gap:0;background:#fff;border-radius:5px;padding:1px;border:1.5px solid #fff">${segments}</div></div>`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

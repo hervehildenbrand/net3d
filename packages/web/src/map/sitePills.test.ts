@@ -9,6 +9,7 @@ import {
   pillLabelRows,
   pillHtml,
   pillObstacles,
+  escapeHtml,
   SEG_PX,
   PILL_W,
   HIT_PX,
@@ -311,6 +312,57 @@ describe('pillHtml', () => {
     expect(html).toContain('border-radius:50%')
     // Should not have data-router (no routers)
     expect(html).not.toContain('data-router')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// escapeHtml tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('escapeHtml', () => {
+  test('test_escapeHtml_specialChars_escaped', () => {
+    expect(escapeHtml('&<>"\'')).toBe('&amp;&lt;&gt;&quot;&#39;')
+  })
+
+  test('test_escapeHtml_normalText_unchanged', () => {
+    expect(escapeHtml('AMS1-core-01')).toBe('AMS1-core-01')
+  })
+
+  test('test_escapeHtml_xssPayload_neutralized', () => {
+    const hostile = '"><img src=x onerror=alert(1)>'
+    const escaped = escapeHtml(hostile)
+    // Should not contain unescaped angle brackets or quotes
+    expect(escaped).not.toContain('<')
+    expect(escaped).not.toContain('>')
+    expect(escaped).not.toContain('"')
+    expect(escaped).toBe('&quot;&gt;&lt;img src=x onerror=alert(1)&gt;')
+  })
+})
+
+describe('pillHtml hostile names', () => {
+  test('test_pillHtml_hostileSiteName_escapedInHtml', () => {
+    const hostileSite = site('"><script>alert(1)</script>', 52.37, 4.89)
+    const pill: SitePill = {
+      site: hostileSite,
+      routers: [],
+    }
+    const html = pillHtml(pill)
+    // The hostile name should be escaped, not raw
+    expect(html).not.toContain('<script>')
+    expect(html).toContain('&lt;script&gt;')
+  })
+
+  test('test_pillHtml_hostileRouterName_escapedInHtml', () => {
+    const pill: SitePill = {
+      site: SITES[0]!,
+      routers: [
+        { ...mkNode('AMS1-"><img', 'AMS1', 16001), name: '"><img src=x onerror=alert(1)>' },
+      ],
+    }
+    const html = pillHtml(pill)
+    // The hostile router name should be escaped
+    expect(html).not.toContain('<img')
+    expect(html).toContain('&lt;img')
   })
 })
 
