@@ -21,7 +21,7 @@ const TILE_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
 
 /** Feeds zoom/center signals into the navigation machine (map → site threshold). */
-function MapNavWatcher({ sites }: { sites: Site[] }) {
+function MapNavWatcher({ sites, logical }: { sites: Site[]; logical: boolean }) {
   const handleMapSignals = useAppStore((s) => s.handleMapSignals)
   const prefetchSite = useSitePrefetch()
 
@@ -29,6 +29,10 @@ function MapNavWatcher({ sites }: { sites: Site[] }) {
   // "a site marker is visible in the (small, high-zoom) viewport",
   // picking the one nearest the center when several are.
   const report = (map: ReturnType<typeof useMap>) => {
+    // Logical mode at map level: pan/zoom the backbone graph, never zoom-enter a site.
+    // This is the single gatekeeper (not the store) to avoid NAPALM-only dead ends.
+    if (logical) return
+
     const zoom = map.getZoom()
     const viewBounds = map.getBounds()
     const centerPt = map.latLngToContainerPoint(map.getCenter())
@@ -133,7 +137,7 @@ export function MapLayer({
     >
       <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} noWrap />
       <FitToSites sites={sites} />
-      <MapNavWatcher sites={sites} />
+      <MapNavWatcher sites={sites} logical={logical} />
       <MapViewRestorer />
       {/* Links sit in a lower pane so site markers (upper pane) win the click. */}
       <Pane name="circuits" style={{ zIndex: 399 }}>
@@ -151,6 +155,9 @@ export function MapLayer({
           <CircuitPolylines sites={sites} groups={circuitGroups} live={circuitLive} />
         )}
       </Pane>
+      {/* Dedicated pane for pill labels - must exist before SitePills renders Tooltips into it.
+          Below the sites pane (401), above arcLabels (400 when live) and circuits (399). */}
+      {logical && <Pane name="pillLabels" style={{ zIndex: 400 }} />}
       <Pane name="sites" style={{ zIndex: 401 }}>
         {/* In logical mode: render pills and fall back to dots for sites without pills */}
         {/* In physical mode: render all geocoded sites as dots */}

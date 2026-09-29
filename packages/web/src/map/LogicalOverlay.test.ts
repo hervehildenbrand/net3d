@@ -211,7 +211,7 @@ test('test_SitePills_belowLabelZoom_tooltipOnHoverOnly', () => {
   expect(tooltipInstances[0]!.permanent).toBe(false)
 })
 
-test('test_SitePills_tooltip_hasTranslucentClassAndArcLabelsPane', () => {
+test('test_SitePills_tooltip_hasTranslucentClassAndPillLabelsPane', () => {
   mockZoom = 5
 
   const nodes = [mkNode('AMS1-core-01', 'AMS1', 16001)]
@@ -226,9 +226,9 @@ test('test_SitePills_tooltip_hasTranslucentClassAndArcLabelsPane', () => {
     }),
   )
 
-  // Tooltip should have pane="arcLabels" (below sites pane)
+  // Tooltip should have pane="pillLabels" (dedicated always-present pane)
   expect(tooltipInstances).toHaveLength(1)
-  expect(tooltipInstances[0]!.pane).toBe('arcLabels')
+  expect(tooltipInstances[0]!.pane).toBe('pillLabels')
   // Tooltip should have className for translucent styling
   expect(tooltipInstances[0]!.className).toContain('lv-label')
 })

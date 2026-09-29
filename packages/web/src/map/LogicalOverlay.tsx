@@ -105,7 +105,7 @@ export function SitePills({ pills, showSid, onSiteSelect }: SitePillsProps) {
               permanent={labelZoom}
               direction="right"
               offset={[PILL_W / 2 + 2, 0]}
-              pane="arcLabels"
+              pane="pillLabels"
               className="lv-label"
             >
               {labelContent}
