@@ -6,7 +6,6 @@ import type {
   LogicalNode,
   CircuitGroup,
   SiteTelemetry,
-  CircuitLive,
   TopologyCable,
 } from '@net3d/shared'
 import type { SiteRack } from '../hooks/useSiteDetail'
@@ -20,12 +19,9 @@ import {
   findDevice,
   graphInput,
   siteEdgeLive,
-  mapEdgeLive,
-  edgeGeometry,
   edgeStyle,
   edgeTooltip,
   nodeClickAction,
-  cameraFrame,
   visibleLayers,
   isEdgeHidden,
 } from './logicalView'
@@ -397,30 +393,6 @@ describe('siteEdgeLive', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// mapEdgeLive
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('mapEdgeLive', () => {
-  test('test_mapEdgeLive_circuitMember_usesCid', () => {
-    const edge: LogicalEdge = {
-      id: 'site:site-a~site:site-b',
-      a: 'site:site-a',
-      b: 'site:site-b',
-      layers: {},
-      members: [{ id: 'cid-1', a: null, b: null }],
-    }
-    const circuitLive = new Map<string, CircuitLive>([
-      ['cid-1', { pct: 50, bps: 5e9, stale: false }],
-    ])
-
-    const live = mapEdgeLive(edge, circuitLive)
-    expect(live).not.toBeNull()
-    expect(live!.pct).toBe(50)
-    expect(live!.bps).toBe(5e9)
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
 // visibleLayers
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -503,113 +475,6 @@ describe('isEdgeHidden', () => {
     // No layers = physical-only implied; hidden when physical hidden
     expect(isEdgeHidden(e, tierOf(nodes), new Set(['physical']))).toBe(true)
     expect(isEdgeHidden(e, tierOf(nodes), new Set())).toBe(false)
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// edgeGeometry
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('edgeGeometry', () => {
-  const node = (id: string, tier: 'core' | 'end' = 'core'): LogicalNode => ({
-    id,
-    name: id,
-    tier,
-    siteName: 'site-a',
-    device: null,
-    sid: null,
-  })
-
-  const edge = (a: string, b: string, hasIgp = true): LogicalEdge => ({
-    id: `${a}~${b}`,
-    a,
-    b,
-    layers: hasIgp ? { isis: { up: 1, total: 1, label: 'L2 UP' } } : {},
-    members: [],
-  })
-
-  const graph = (nodes: LogicalNode[], edges: LogicalEdge[]): LogicalGraph => ({ nodes, edges })
-  const positions = new Map<string, [number, number, number]>([
-    ['a', [0, 0, 0]],
-    ['b', [1, 0, 0]],
-    ['c', [2, 0, 0]],
-    ['d', [3, 0, 0]],
-  ])
-
-  test('test_edgeGeometry_allLayersHidden_omitsEdge', () => {
-    const g = graph([node('a'), node('b')], [edge('a', 'b', true)])
-    const hidden = new Set(['isis', 'ospf', 'sr', 'physical'] as const)
-    const geom = edgeGeometry(g, positions, hidden)
-    // Edge has only isis layer which is hidden
-    expect(geom.lines.length).toBe(0)
-    expect(geom.batch.edgeIds.length).toBe(0)
-  })
-
-  test('test_edgeGeometry_endHidden_omitsEndEdges', () => {
-    const g = graph([node('a', 'core'), node('b', 'end')], [edge('a', 'b', false)])
-    const hidden = new Set(['end'] as const)
-    const geom = edgeGeometry(g, positions, hidden)
-    expect(geom.lines.length).toBe(0)
-    expect(geom.batch.edgeIds.length).toBe(0)
-  })
-
-  test('test_edgeGeometry_overCap_batchesNonIgpEdges', () => {
-    // Create more than 600 edges; non-IGP edges go to batch
-    const nodes: LogicalNode[] = []
-    const edges: LogicalEdge[] = []
-    const pos = new Map<string, [number, number, number]>()
-
-    for (let i = 0; i < 650; i++) {
-      const a = `n${i}`
-      const b = `n${i + 1000}`
-      nodes.push(node(a, 'core'), node(b, 'core'))
-      edges.push(edge(a, b, i < 100)) // first 100 have IGP, rest don't
-      pos.set(a, [i, 0, 0])
-      pos.set(b, [i + 1, 0, 0])
-    }
-
-    const geom = edgeGeometry(graph(nodes, edges), pos, new Set())
-    // IGP edges (first 100) go to lines, capped at 600, rest go to batch
-    // Actually all 100 IGP + up to 500 non-IGP fit in lines (600 cap)
-    // The remaining 50 non-IGP go to batch
-    expect(geom.lines.length).toBeLessThanOrEqual(600)
-    expect(geom.batch.edgeIds.length).toBeGreaterThan(0)
-  })
-
-  test('test_edgeGeometry_endTierEdges_alwaysBatched', () => {
-    // End-tier edges always go to batch, regardless of the 600 cap
-    // Design: "The rest, and all end-tier edges, go into one <Line segments vertexColors>"
-    const nodes: LogicalNode[] = [
-      node('core-1', 'core'),
-      node('core-2', 'core'),
-      node('end-1', 'end'),
-      node('end-2', 'end'),
-    ]
-    const edges: LogicalEdge[] = [
-      edge('core-1', 'core-2', true), // core-to-core, IGP
-      { id: 'core-1~end-1', a: 'core-1', b: 'end-1', layers: { physical: { up: 1, total: 1, label: '' } }, members: [] },
-      { id: 'core-2~end-2', a: 'core-2', b: 'end-2', layers: { physical: { up: 1, total: 1, label: '' } }, members: [] },
-    ]
-    const pos = new Map<string, [number, number, number]>([
-      ['core-1', [0, 0, 0]],
-      ['core-2', [1, 0, 0]],
-      ['end-1', [2, 0, 0]],
-      ['end-2', [3, 0, 0]],
-    ])
-
-    const geom = edgeGeometry(graph(nodes, edges), pos, new Set())
-
-    // End-tier edges should be in batch, not lines, even though we're well under 600
-    const endTierEdgeIds = ['core-1~end-1', 'core-2~end-2']
-    const linesWithEndTier = geom.lines.filter((l) => endTierEdgeIds.includes(l.id))
-    expect(linesWithEndTier.length).toBe(0)
-
-    // They should be in the batch
-    const batchedEndTier = geom.batch.edgeIds.filter((id) => endTierEdgeIds.includes(id))
-    expect(batchedEndTier.length).toBe(2)
-
-    // Core-to-core edge should be in lines
-    expect(geom.lines.some((l) => l.id === 'core-1~core-2')).toBe(true)
   })
 })
 
@@ -766,21 +631,5 @@ describe('nodeClickAction', () => {
   test('test_nodeClickAction_extNode_null', () => {
     const action = nodeClickAction(extNode, 'site')
     expect(action).toBeNull()
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// cameraFrame
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('cameraFrame', () => {
-  test('test_cameraFrame_tinyBounds_spanFloored', () => {
-    // Bounds smaller than 4 should be floored to 4 (as in CameraRig.tsx:74)
-    const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }
-    const frame = cameraFrame(bounds)
-    expect(frame.position).toBeDefined()
-    expect(frame.target).toBeDefined()
-    // maxDistance is based on span, floored at 4
-    expect(frame.maxDistance).toBeGreaterThanOrEqual(4)
   })
 })

@@ -74,7 +74,7 @@ export const theme = {
       '400G': '#ec4899', // magenta
     },
   },
-  // Logical view tier colors (moved from LogicalLevel.tsx)
+  // Logical view tier colors
   tier: {
     remote: '#8b5cf6', // purple
     core: '#dc2626',   // red

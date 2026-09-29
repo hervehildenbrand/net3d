@@ -250,7 +250,7 @@ export function App() {
     return segments
   }, [lldp.byDevice, siteDetail])
 
-  // Logical view data (graph, layout, geometry, helpers).
+  // Logical view data (graph + layers) and live accessors.
   const logicalView = useLogicalView({
     enabled: flags.logical,
     level,
@@ -258,12 +258,11 @@ export function App() {
     siteName: selectedSiteName,
     siteDetail,
     deviceIndex,
-    sites,
     circuitGroups,
     lldp,
     telemetry,
-    circuitLive,
-    hiddenLogical,
+    pollSiteTopology: flags.poll.siteTopology,
+    pollBackboneTopology: flags.poll.backboneTopology,
   })
 
   // Inter-DC links for the site in view: each circuit group touching this site,
@@ -309,8 +308,8 @@ export function App() {
     [dcLinks, circuitLive, cableColorMode, selectedSiteName],
   )
 
-  // In scene when at site/rack level, OR when at map level with logical view active.
-  const inScene = flags.inScene || flags.logical
+  // In scene when at site/rack level.
+  const inScene = flags.inScene
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', background: '#fafbfc' }}>
@@ -375,10 +374,6 @@ export function App() {
                 selectedDeviceId={selectedDeviceId}
                 siteSubnets={siteSubnets}
                 cableLive={cableLive}
-                logical={flags.logical}
-                logicalData={logicalView.data ?? undefined}
-                onLogicalSelectDevice={selectDevice}
-                onLogicalSelectSite={zoomToSite}
               />
             </Suspense>
           </SceneErrorBoundary>
@@ -463,7 +458,7 @@ export function App() {
           layers={logicalView.data.layers}
           hidden={hiddenLogical}
           onToggle={toggleHiddenLogical}
-          hasLive={logicalView.data.hasLive}
+          hasLive={flags.siteDiagram && logicalView.live.hasLive}
           isError={logicalView.isError}
         />
       )}

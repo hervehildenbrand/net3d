@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import { queryOptions, useQuery } from '@tanstack/react-query'
 import {
   buildLogicalGraph,
@@ -6,31 +6,22 @@ import {
   type CollectorTopology,
   type LogicalGraph,
   type LogicalEdge,
-  type CircuitLive,
-  type SiteTelemetry,
   type CircuitGroup,
   type GraphDevice,
   type TopologyCable,
+  type SiteTelemetry,
+  type LogicalLayer,
 } from '@net3d/shared'
 import { apiUrl, type Backend } from '../lib/api'
 import type { SiteDetailData } from './useSiteDetail'
 import type { DeviceIndexData } from './useDeviceIndex'
-import type { Site } from './useSites'
 import type { LldpDiscovery } from './useLldpDiscovery'
 import type { ViewLevel } from '../store/useAppStore'
 import {
   graphInput,
   siteEdgeLive,
-  mapEdgeLive,
-  edgeGeometry,
-  edgeStyle,
-  edgeTooltip,
-  nodeClickAction,
-  cameraFrame,
   type EdgeLive,
-  type Bounds,
 } from '../lib/logicalView'
-import { layoutSite, layoutBackbone, sitePairEdges } from '../lib/logicalLayout'
 
 const POLL_MS = 30_000
 
@@ -73,29 +64,27 @@ interface UseLogicalViewInput {
   siteName: string | null
   siteDetail: SiteDetailData | undefined
   deviceIndex: DeviceIndexData | undefined
-  sites: Site[] | undefined
   circuitGroups: CircuitGroup[] | undefined
   lldp: LldpDiscovery
   telemetry: SiteTelemetry | undefined
-  circuitLive: Map<string, CircuitLive> | undefined
-  hiddenLogical: Set<import('@net3d/shared').LogicalLayer | 'end'>
+  // Topology poll gates from flags.poll.*
+  pollSiteTopology: boolean
+  pollBackboneTopology: boolean
 }
 
+/** Data that only changes when topology/siteDetail/lldp change, never on a telemetry poll. */
 export interface LogicalViewData {
   graph: LogicalGraph
-  positions: Map<string, [number, number, number]>
-  bounds: Bounds
-  geometry: import('../lib/logicalView').EdgeGeometry
+  layers: LogicalLayer[]
+}
+
+/** Live telemetry accessors — new identity each poll. */
+export interface LogicalLive {
   getEdgeLive: (edge: LogicalEdge) => EdgeLive | null
-  getEdgeStyle: (edge: LogicalEdge, live: EdgeLive | null) => import('../lib/logicalView').EdgeStyle
-  getEdgeTooltip: (edge: LogicalEdge, live: EdgeLive | null) => string
-  getCameraFrame: (bounds: Bounds) => import('../lib/logicalView').CameraFrame
-  getNodeClickAction: (node: import('@net3d/shared').LogicalNode, level: ViewLevel) => import('../lib/logicalView').NodeClickAction
-  layers: import('@net3d/shared').LogicalLayer[]
   hasLive: boolean
 }
 
-export function useLogicalView(input: UseLogicalViewInput): { data: LogicalViewData | null; isError: boolean } {
+export function useLogicalView(input: UseLogicalViewInput): { data: LogicalViewData | null; live: LogicalLive; isError: boolean } {
   const {
     enabled,
     level,
@@ -103,17 +92,16 @@ export function useLogicalView(input: UseLogicalViewInput): { data: LogicalViewD
     siteName,
     siteDetail,
     deviceIndex,
-    sites,
     circuitGroups,
     lldp,
     telemetry,
-    circuitLive,
-    hiddenLogical,
+    pollSiteTopology,
+    pollBackboneTopology,
   } = input
 
-  // Topology queries
-  const siteTopologyEnabled = enabled && level === 'site' && !!siteName
-  const backboneTopologyEnabled = enabled && level === 'map'
+  // Topology queries — gated by flags.poll.* so NAPALM-only deployments never poll a 404 route
+  const siteTopologyEnabled = pollSiteTopology && enabled && level === 'site' && !!siteName
+  const backboneTopologyEnabled = pollBackboneTopology && enabled && level === 'map'
 
   const siteTopology = useQuery({
     ...siteTopologyQueryOptions(backend, siteName ?? ''),
@@ -124,9 +112,6 @@ export function useLogicalView(input: UseLogicalViewInput): { data: LogicalViewD
     ...backboneTopologyQueryOptions(backend),
     enabled: backboneTopologyEnabled,
   })
-
-  // Keep last data on error
-  const lastDataRef = useRef<LogicalViewData | null>(null)
 
   // Build devices list from siteDetail + deviceIndex
   const devices = useMemo<GraphDevice[]>(() => {
@@ -187,7 +172,7 @@ export function useLogicalView(input: UseLogicalViewInput): { data: LogicalViewD
     return graphInput(level, siteName, siteDetail?.cables ?? [], circuitGroups, topology)
   }, [enabled, level, siteName, siteDetail, circuitGroups, topology])
 
-  // Build logical graph
+  // Build logical graph — identity changes only when topology/siteDetail/lldp change
   const graph = useMemo<LogicalGraph | null>(() => {
     if (!enabled) return null
     if (devices.length === 0 && !topology) return null
@@ -205,125 +190,49 @@ export function useLogicalView(input: UseLogicalViewInput): { data: LogicalViewD
     )
   }, [enabled, devices, links, gi, lldp.byDevice, topology, level, siteName])
 
-  // Add site-pair edges for backbone
-  const graphWithSitePairs = useMemo<LogicalGraph | null>(() => {
-    if (!graph || level !== 'map' || !circuitGroups) return graph
-    const pairEdges = sitePairEdges(graph, circuitGroups)
-    if (pairEdges.length === 0) return graph
-
-    // Collect unique site: node IDs that need to be added
-    const existingIds = new Set(graph.nodes.map((n) => n.id))
-    const newSiteIds = new Set<string>()
-    for (const e of pairEdges) {
-      if (e.a.startsWith('site:') && !existingIds.has(e.a)) newSiteIds.add(e.a)
-      if (e.b.startsWith('site:') && !existingIds.has(e.b)) newSiteIds.add(e.b)
-    }
-
-    return {
-      nodes: [
-        ...graph.nodes,
-        ...[...newSiteIds].map((id) => ({
-          id,
-          name: id.slice(5),
-          tier: 'remote' as const,
-          siteName: id.slice(5),
-          device: null,
-          sid: null,
-        })),
-      ],
-      edges: [...graph.edges, ...pairEdges],
-    }
-  }, [graph, level, circuitGroups])
-
-  // Layout
-  const layout = useMemo(() => {
-    if (!graphWithSitePairs) return null
-    if (level === 'site') {
-      return layoutSite(graphWithSitePairs)
-    }
-    // Backbone layout
-    if (!sites) return null
-    return {
-      positions: layoutBackbone(graphWithSitePairs, sites),
-      bounds: {
-        min: { x: -20, y: -2, z: -20 },
-        max: { x: 20, y: 2, z: 20 },
-      } as Bounds,
-    }
-  }, [graphWithSitePairs, level, sites])
-
-  // Geometry (memoised on layout + hidden)
-  const geometry = useMemo(() => {
-    if (!graphWithSitePairs || !layout) return null
-    return edgeGeometry(graphWithSitePairs, layout.positions, hiddenLogical)
-  }, [graphWithSitePairs, layout, hiddenLogical])
-
   // Collect layers present in the graph
-  const layers = useMemo(() => {
-    if (!graphWithSitePairs) return []
-    const layerSet = new Set<import('@net3d/shared').LogicalLayer>()
-    for (const edge of graphWithSitePairs.edges) {
-      for (const layer of Object.keys(edge.layers) as import('@net3d/shared').LogicalLayer[]) {
+  const layers = useMemo<LogicalLayer[]>(() => {
+    if (!graph) return []
+    const layerSet = new Set<LogicalLayer>()
+    for (const edge of graph.edges) {
+      for (const layer of Object.keys(edge.layers) as LogicalLayer[]) {
         layerSet.add(layer)
       }
     }
     return [...layerSet].sort()
-  }, [graphWithSitePairs])
+  }, [graph])
 
-  // Edge live helper
+  // Edge live helper — site level only for now (Task 4 adds map-level via ArcLayer)
   const getEdgeLive = useMemo(() => {
     return (edge: LogicalEdge): EdgeLive | null => {
       if (level === 'site' && telemetry) {
         return siteEdgeLive(edge, telemetry)
       }
-      if (level === 'map' && circuitLive) {
-        return mapEdgeLive(edge, circuitLive)
-      }
       return null
     }
-  }, [level, telemetry, circuitLive])
+  }, [level, telemetry])
 
   // Check if any edge has live data
   const hasLive = useMemo(() => {
-    if (!graphWithSitePairs) return false
+    if (!graph) return false
     if (level === 'site' && telemetry) {
-      return graphWithSitePairs.edges.some((e) => siteEdgeLive(e, telemetry) !== null)
-    }
-    if (level === 'map' && circuitLive) {
-      return graphWithSitePairs.edges.some((e) => mapEdgeLive(e, circuitLive) !== null)
+      return graph.edges.some((e) => siteEdgeLive(e, telemetry) !== null)
     }
     return false
-  }, [graphWithSitePairs, level, telemetry, circuitLive])
+  }, [graph, level, telemetry])
 
-  // Build result data
+  // Build data (graph + layers) — stable identity across telemetry polls
   const data = useMemo<LogicalViewData | null>(() => {
-    if (!graphWithSitePairs || !layout || !geometry) return null
+    if (!graph) return null
+    return { graph, layers }
+  }, [graph, layers])
 
-    return {
-      graph: graphWithSitePairs,
-      positions: layout.positions,
-      bounds: layout.bounds,
-      geometry,
-      getEdgeLive,
-      getEdgeStyle: (edge: LogicalEdge, live: EdgeLive | null) => edgeStyle(edge, live),
-      getEdgeTooltip: (edge: LogicalEdge, live: EdgeLive | null) => edgeTooltip(edge, live),
-      getCameraFrame: cameraFrame,
-      getNodeClickAction: nodeClickAction,
-      layers,
-      hasLive,
-    }
-  }, [graphWithSitePairs, layout, geometry, getEdgeLive, layers, hasLive])
-
-  // Keep last data on error
-  if (data) {
-    lastDataRef.current = data
-  }
+  // Build live accessors — new identity each telemetry poll
+  const live = useMemo<LogicalLive>(() => {
+    return { getEdgeLive, hasLive }
+  }, [getEdgeLive, hasLive])
 
   const isError = (siteTopologyEnabled && siteTopology.isError) || (backboneTopologyEnabled && backboneTopology.isError)
 
-  // Return last data on error
-  return {
-    data: data ?? lastDataRef.current,
-    isError,
-  }
+  return { data, live, isError }
 }
