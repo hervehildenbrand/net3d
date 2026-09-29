@@ -7,7 +7,7 @@
 import type { SiteCircuit } from '@net3d/shared'
 import type { CableEndpoint, SiteCable } from '../cables'
 import type { SitePower } from '../power'
-import type { DeviceSpecs, Site, SiteDevice, SiteRack } from '../sot/types'
+import { isHiddenSiteStatus, type DeviceSpecs, type Site, type SiteDevice, type SiteRack } from '../sot/types'
 import type {
   Many,
   One,
@@ -35,7 +35,7 @@ const num = (a: Val<string> | undefined): number | null => {
 }
 
 export function normalizeInfrahubSites(raw: RawSite[]): Site[] {
-  return raw.map((s) => {
+  return raw.filter((s) => !isHiddenSiteStatus(val(s.status))).map((s) => {
     const role = val(s.role)
     return {
       id: s.id,

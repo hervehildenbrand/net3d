@@ -11,7 +11,7 @@ import {
 } from './graphql-dialect'
 import { normalizeRawPower, type RawSitePower, type SitePower } from './power'
 import type { SoTClient } from './sot/client'
-import type { DeviceSpecs, Site, SiteDevice, SiteRack, SoTStatus } from './sot/types'
+import { isHiddenSiteStatus, type DeviceSpecs, type Site, type SiteDevice, type SiteRack, type SoTStatus } from './sot/types'
 import { NapalmUnreachableError } from './sot/errors'
 
 // Back-compat aliases: the domain types now live in ./sot/types (backend-agnostic)
@@ -159,11 +159,8 @@ export interface SiteCounts {
   deviceCount: number | null
 }
 
-// Sites being torn down (or gone) aren't rendered; enum casing differs 3.7 vs 4.x.
-const HIDDEN_SITE_STATUSES = new Set(['decommissioning', 'retired'])
-
 export function normalizeRawSites(raw: RawSite[], counts: Map<string, SiteCounts>): Site[] {
-  return raw.filter((s) => !HIDDEN_SITE_STATUSES.has(s.status?.toLowerCase())).map((s) => {
+  return raw.filter((s) => !isHiddenSiteStatus(s.status)).map((s) => {
     const slugs = (s.tags ?? []).map((t) => t.slug)
     return {
       id: s.id,

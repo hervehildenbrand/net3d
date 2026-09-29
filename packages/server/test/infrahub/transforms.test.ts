@@ -63,6 +63,21 @@ describe('normalizeInfrahubSites', () => {
     expect(s.rackCount).toBeNull()
     expect(s.physicalAddress).toBeNull()
   })
+
+  test('drops decommissioned/decommissioning/retired sites', () => {
+    const site = (name: string, status: string) => ({
+      id: name, name: v(name), latitude: v('1'), longitude: v('1'), region: v('EMEA'),
+      status: v(status), physical_address: v(''), facility: v(''), role: v(null), racks: null, devices: null,
+    })
+    const sites = normalizeInfrahubSites([
+      site('LIVE', 'active'),
+      site('OLD', 'decommissioned'), // Infrahub showcase schema choice
+      site('GOING', 'decommissioning'),
+      site('GONE', 'retired'),
+      site('SOON', 'planned'),
+    ])
+    expect(sites.map((s) => s.name)).toEqual(['LIVE', 'SOON'])
+  })
 })
 
 describe('normalizeInfrahubRacks', () => {

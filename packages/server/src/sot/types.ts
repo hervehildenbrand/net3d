@@ -18,6 +18,12 @@ export interface Site {
   deviceCount: number | null
 }
 
+// Sites being torn down (or gone) aren't rendered. Covers NetBox (decommissioning,
+// retired; 3.7 returns them UPPERCASE) and the Infrahub schema (decommissioned).
+const HIDDEN_SITE_STATUSES = new Set(['decommissioning', 'decommissioned', 'retired'])
+export const isHiddenSiteStatus = (status: string | null | undefined): boolean =>
+  HIDDEN_SITE_STATUSES.has(status?.toLowerCase() ?? '')
+
 export interface DeviceSpecs {
   cpuModel?: string
   cpuCores?: number
